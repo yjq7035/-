@@ -167,6 +167,7 @@ class UIDrawer {
     ctx.fillText('🔄 刷新', btnX + btnWidth / 2, btnY + btnHeight / 2);
   }
 
+
   /**
    * 绘制选中塔的详细信息
    */
