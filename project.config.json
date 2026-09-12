@@ -11,7 +11,7 @@
     "packNpmManually": false,
     "packNpmRelationList": [],
     "minifyWXSS": true,
-    "localPlugins": false,
+    "localPlugins": true,
     "condition": false,
     "compileWorklet": false,
     "babelSetting": {
