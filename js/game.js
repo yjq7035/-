@@ -96,7 +96,7 @@ class Game {
     if (this.placement.isDragging()) return;
 
     const towerTypes = this.waveManager.getShopTowerTypes();
-    this.placement.handleMouseDown(towerTypes, pos);
+    this.placement.handleMouseDown(towerTypes, pos, this.canvas);
   }
 
   handleMouseMove(pos) {
@@ -121,6 +121,9 @@ class Game {
   }
 
   handleClick(pos) {
+    // 如果正在拖放，忽略点击事件
+    if (this.placement.isDragging()) return;
+
     // 检查是否点击了刷新按钮
     const btn = this.uiDrawer.refreshButton;
     if (btn && btn.width > 0 &&
@@ -194,7 +197,7 @@ class Game {
       }
     }
 
-    // 更新怪物
+    // 更新怪物...
     for (const enemy of this.enemies) {
       const result = enemy.update(deltaTime);
       if (result === 'reachedEnd') {
@@ -260,9 +263,8 @@ class Game {
     const width = this.canvas.width;
     const height = this.canvas.height;
 
-    // 清空画布
-    ctx.fillStyle = '#1a1a2e';
-    ctx.fillRect(0, 0, width, height);
+    // 清空画布（移除背景）
+    ctx.clearRect(0, 0, width, height);
 
     // 绘制路径
     this.path.draw(ctx);

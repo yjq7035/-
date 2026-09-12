@@ -8,19 +8,21 @@ class PlacementSystem {
     this.slots = slots;
     this.getGold = getGold;
     this.canAfford = canAfford;
+    this.canvas = null;
     this.dragging = false;
     this.dragType = null;
     this.dragX = 0;
     this.dragY = 0;
   }
 
-  handleMouseDown(towerTypes, pos) {
+  handleMouseDown(towerTypes, pos, canvas) {
+    this.canvas = canvas;
     const slotWidth = 120;
     const slotHeight = 70;
     const gap = 15;
     const totalWidth = towerTypes.length * slotWidth + (towerTypes.length - 1) * gap;
-    const startX = (this.dragging ? this.canvas.width - totalWidth : (this.canvas.width - totalWidth)) / 2;
-    const startY = this.canvas.height - 90;
+    const startX = (canvas.width - totalWidth) / 2;
+    const startY = canvas.height - 90;
 
     for (let i = 0; i < towerTypes.length; i++) {
       const type = towerTypes[i];

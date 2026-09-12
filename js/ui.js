@@ -134,18 +134,18 @@ class UIDrawer {
     }
 
     // 绘制刷新按钮（在塔槽右侧）
-    this._drawRefreshButton(ctx, startX, startY, totalWidth, slotWidth, slotHeight);
+    this._drawRefreshButton(ctx, startX, startY, totalWidth, slotWidth, slotHeight, height);
   }
 
   /**
    * 绘制刷新按钮
    */
-  _drawRefreshButton(ctx, startX, startY, totalWidth, slotWidth, slotHeight) {
+  _drawRefreshButton(ctx, startX, startY, totalWidth, slotWidth, slotHeight, canvasHeight) {
     const btnWidth = 80;
     const btnHeight = 30;
-    // 将刷新按钮放在商城底部中央
+    // 将刷新按钮放在商城区域内，距离底部适当位置
     const btnX = (this.canvas.width - btnWidth) / 2;
-    const btnY = startY + slotHeight + 10;
+    const btnY = canvasHeight - 100 + 10;
 
     // 更新按钮位置记录
     this.refreshButton = { x: btnX, y: btnY, width: btnWidth, height: btnHeight };
