@@ -7,7 +7,7 @@ const waveMod = require('./wave');
 const renderer = require('./renderer');
 const input = require('./input');
 
-const { LAYOUT, BALANCE, TOWER_DEFS } = config;
+const { LAYOUT, BALANCE, TOWER_DEFS, SHOP_TOWERS } = config;
 
 class Game {
   constructor(canvas, ctx, windowInfo) {
