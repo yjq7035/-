@@ -14,11 +14,30 @@ let windowInfo = null;
 const Game = require('./src/game_core');
 
 /**
- * 延迟启动：等运行时（jsbridge）就绪后再创建 canvas / 读取窗口信息 / 实例化游戏。
- * 同时优先使用新接口 wx.getWindowInfo，避开已废弃的 wx.getSystemInfoSync
- * （其内部会访问 deviceOrientation getter，正是触发 getSystemInfo 的引擎内部路径）。
+ * 延迟启动：等 wx 环境完全就绪后再创建 canvas / 读取窗口信息 / 实例化游戏。
+ * 使用 wx.ready 确保 JSBridge 已连接，规避 "jsbridge not ready" 警告。
  */
 function boot() {
+  // 检查 wx 环境
+  if (typeof wx === 'undefined') {
+    // 非微信环境（如浏览器调试），使用默认值
+    windowInfo = { screenWidth: 640, screenHeight: 960 };
+  } else if (typeof wx.ready === 'function') {
+    // 微信小游戏环境：等待 jsbridge 就绪
+    wx.ready(() => {
+      initGame();
+    });
+    return;
+  }
+
+  // 无 ready 接口或微信外环境，直接初始化
+  initGame();
+}
+
+/**
+ * 统一的初始化逻辑
+ */
+function initGame() {
   canvas = wx.createCanvas();
   ctx = canvas.getContext('2d');
 
@@ -37,9 +56,14 @@ function boot() {
   new Game(canvas, ctx, windowInfo);
 }
 
-// 首帧再启动，确保微信 JS 桥已连接；规避 "jsbridge not ready" 警告
+// 启动
 if (typeof wx !== 'undefined') {
-  requestAnimationFrame(boot);
+  // 优先使用 wx.ready 确保 jsbridge 就绪
+  if (typeof wx.ready === 'function') {
+    wx.ready(boot);
+  } else {
+    requestAnimationFrame(boot);
+  }
 } else {
   boot();
 }

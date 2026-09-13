@@ -31,4 +31,10 @@ function generateWave(waveNumber) {
   return enemies;
 }
 
-module.exports = { generateWave };
+// 根据波数计算怪物生命值的倍率
+function getWaveHPMultiplier(waveNumber) {
+  // 从第1波开始，每波生命值增加5%
+  return Math.pow(1.05, waveNumber - 1);
+}
+
+module.exports = { generateWave, getWaveHPMultiplier };

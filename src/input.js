@@ -26,12 +26,42 @@ function handleTouchStart(game, e) {
   // 检查是否正在拖放中
   if (game.dragging) return;
 
-  // 商店塔列表（与绘制一致）
-  const towerTypes = SHOP_TOWERS.map((t) => ({ type: t, ...TOWER_DEFS[t] }));
+  // 如果正在显示面板，检查是否点击面板外
+  if (game.showPanel) {
+    const panelW = 280;
+    const panelH = 320;
+    const panelX = (canvas.width - panelW) / 2;
+    const panelY = (canvas.height - panelH) / 2;
+    
+    // 点击面板外关闭面板
+    if (!isPointInPanel(pos, panelX, panelY, panelW, panelH)) {
+      game.showPanel = false;
+      game.panelTowerType = null;
+      game.selectedTower = null;
+    }
+    return;
+  }
+
+  // 先检查是否点击了放置槽（已有塔）- 优先处理
+  for (const slot of game.slots) {
+    if (slot.occupied && slot.tower) {
+      if (pos.x >= slot.x && pos.x <= slot.x + slot.size &&
+          pos.y >= slot.y && pos.y <= slot.y + slot.size) {
+        game.showPanel = true;
+        game.panelTowerType = slot.tower.type;
+        game.selectedTower = slot.tower;
+        return;
+      }
+    }
+  }
+
+  // 商店塔列表（与渲染一致，从刷新后的塔池中获取）
+  const towerTypes = game.refreshTowerTypes.map((t) => ({ type: t, ...TOWER_DEFS[t] }));
   const slotWidth = LAYOUT.shopSlotWidth;
   const gap = LAYOUT.shopGap;
   const totalWidth = towerTypes.length * slotWidth + (towerTypes.length - 1) * gap;
   const startX = (canvas.width - totalWidth) / 2;
+  const shopY = height - LAYOUT.shopBarYOffset;
   const btnX = startX + towerTypes.length * (slotWidth + gap) - 5;
   const btnY = height - LAYOUT.refreshBtnClick.yOffset;
   const btnW = LAYOUT.refreshBtnClick.w;
@@ -51,8 +81,8 @@ function handleTouchStart(game, e) {
     const t = towerTypes[i];
     const x = startX + i * (slotWidth + gap);
 
-    if (pos.x >= x && pos.x <= x + slotWidth && pos.y >= btnY && pos.y <= btnY + slotWidth) {
-      // 只有金币足够才能拖放
+    if (pos.x >= x && pos.x <= x + slotWidth && pos.y >= shopY && pos.y <= shopY + slotWidth) {
+      // 启动拖放
       if (game.gold >= t.cost) {
         game.dragging = true;
         game.dragType = t.type;
@@ -76,6 +106,8 @@ function handleTouchEnd(game, e) {
   if (!game.dragging) return;
 
   const pos = getTouchPos(e);
+  const dragType = game.dragType;
+  let placed = false;
 
   // 检查是否释放到了空槽位
   for (const slot of game.slots) {
@@ -84,28 +116,53 @@ function handleTouchEnd(game, e) {
         pos.y >= slot.y && pos.y <= slot.y + slot.size) {
 
       // 检查金币是否足够
-      const cost = towerMod.getTowerCost(game.dragType);
+      const cost = towerMod.getTowerCost(dragType);
       if (game.gold >= cost) {
-        const tower = towerMod.createTower(game.dragType, slot.x + slot.size / 2, slot.y + slot.size / 2);
-        slot.occupied = true;
-        slot.tower = tower;
-        game.towers.push(tower);
-        game.gold -= cost;
+        // 检查是否有相同类型且可升级的塔
+        let upgraded = false;
+        for (const existingTower of game.towers) {
+          if (towerMod.canUpgradeTower(existingTower, { type: dragType, level: 0 })) {
+            // 合并进阶（同类型+已有塔>=1级且<6级）
+            existingTower.level += 1;
+            game.gold -= cost;
+            upgraded = true;
+            break;
+          }
+        }
+        
+        if (!upgraded) {
+          // 创建新塔
+          const tower = towerMod.createTower(dragType, slot.x + slot.size / 2, slot.y + slot.size / 2);
+          slot.occupied = true;
+          slot.tower = tower;
+          game.towers.push(tower);
+          game.gold -= cost;
+          placed = true;
+        }
       }
-
-      game.dragging = false;
-      game.dragType = null;
-      return;
+      break;
     }
   }
 
-  // 没有放置到槽位，取消拖拽，但标记商店槽为空
-  const dragIndex = SHOP_TOWERS.indexOf(game.dragType);
-  if (dragIndex !== -1) {
-    game.shopSlotState[dragIndex].empty = true;
+  // 只有成功放置才标记商店槽为空
+  if (placed) {
+    // 在 refreshTowerTypes 中找到对应类型并标记为空
+    const dragIndex = game.refreshTowerTypes.indexOf(dragType);
+    if (dragIndex !== -1) {
+      game.shopSlotState[dragIndex].empty = true;
+    }
   }
+  
   game.dragging = false;
   game.dragType = null;
+}
+
+/**
+ * 检查坐标是否在面板内
+ */
+function isPointInPanel(pos, panelX, panelY, panelW, panelH) {
+  return pos.x >= panelX && pos.x <= panelX + panelW &&
+         pos.y >= panelY && pos.y <= panelY + panelH;
 }
 
 module.exports = {

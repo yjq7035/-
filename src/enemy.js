@@ -1,18 +1,23 @@
 // 敌人：工厂 + 更新逻辑（从原 Game.spawnEnemy / updateEnemy 抽离）
 const { ENEMY_TYPES } = require('./config');
 const { getPathLength, getPathPosition } = require('./geometry');
+const { getWaveHPMultiplier } = require('./wave');
 
 // 在路径起点创建一只敌人
-function spawnEnemy(type, pathPoints) {
+function spawnEnemy(type, pathPoints, waveNumber) {
   const config = ENEMY_TYPES[type] || ENEMY_TYPES.normal;
   const pos = getPathPosition(pathPoints, 0);
+  
+  // 根据波数计算生命值倍率
+  const hpMultiplier = waveNumber ? getWaveHPMultiplier(waveNumber) : 1;
+  const scaledHp = Math.floor(config.hp * hpMultiplier);
 
   return {
     type: type,
     x: pos.x,
     y: pos.y,
-    maxHp: config.hp,
-    hp: config.hp,
+    maxHp: scaledHp,
+    hp: scaledHp,
     speed: config.speed,
     color: config.color,
     tier: config.tier,
