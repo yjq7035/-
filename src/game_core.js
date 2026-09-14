@@ -7,9 +7,11 @@ const waveMod = require('./wave');
 const renderer = require('./renderer');
 const input = require('./input');
 const towerMod = require('./tower');
+const units = require('./units');
 const EventBus = require('./eventBus');
+const AuraManager = require('./auraManager');
 
-const { LAYOUT, BALANCE, TOWER_DEFS, SHOP_TOWERS } = config;
+const { LAYOUT, BALANCE, TOWER_DEFS, PLAYER, ATTACK_SPEED_BASE } = config;
 
 class Game {
   constructor(canvas, ctx, windowInfo) {
@@ -28,8 +30,15 @@ class Game {
     // 游戏状态
     this.gold = BALANCE.startGold;
     this.lives = BALANCE.startLives;
+    this.maxLives = BALANCE.startLives; // 生存积分上限（进度条分母）
     this.selectedTowerType = null;
     this.selectedTower = null;
+
+    // 游戏结束状态
+    this.gameOver = false;
+    this.gameOverButtons = {}; // 游戏结束界面按钮区域
+    this.watchingVideo = false;
+    this.videoTimer = 30;
 
     // 游戏对象
     this.enemies = [];
@@ -37,6 +46,9 @@ class Game {
     this.effects = [];
     // 弹道系统
     this.projectiles = []; // 弹道系统
+    
+    // 点击效果
+    this.clickEffect = null; // {x, y, startTime, duration}
 
     // 事件总线
     this.eventBus = new EventBus();
@@ -49,6 +61,8 @@ class Game {
     this.spawnTimer = 0;
     this.spawnInterval = BALANCE.spawnInterval;
     this.enemiesToSpawn = [];
+
+    // 生存积分：玩家0=本地红色方（进度条 = lives / maxLives）；玩家1=蓝色方（预留联机，进度条暂用占位值）
 
     // 倒计时显示
     this.countdownText = '';
@@ -76,6 +90,13 @@ class Game {
     this.dragType = null;
     this.dragX = 0;
     this.dragY = 0;
+    this.touchStartPos = null;   // touchstart 起点 {x, y}，用于区分点击/拖放
+    this.pendingDrag = false;    // 触摸开始时是否在商店塔上
+    this.draggingFromSlot = null; // 从哪个放置槽开始拖放
+    this.dragFromShop = false;   // 是否从商店拖放（用于区分拖放来源，避免商店槽误亮）
+
+    // 光环管理器
+    this.auraManager = new AuraManager();
 
     // 属性面板状态
     this.showPanel = false;
@@ -170,20 +191,34 @@ class Game {
     const totalHeight = rows * slotSize + (rows - 1) * gap;
     const startY = mapY + mapHeight - totalHeight - 10;
 
-    // 关键槽位位置（外围）
-    const slot1LeftTop = { x: startX, y: startY };
-    const slot4LeftBottom = { x: startX, y: startY + slotSize + gap };
-    const slot6RightBottom = { x: startX + (slotSize + gap) * 2 + slotSize, y: startY + (slotSize + gap) * 1 + slotSize };
-    const slot3RightTop = { x: startX + (slotSize + gap) * 2, y: startY };
+    // 关键位置：左列上下角、右列上下角
+    const topLeft = { x: startX, y: startY };                          // 左上角
+    const bottomLeft = { x: startX, y: startY + (rows - 1) * (slotSize + gap) };  // 左下角
+    const bottomRight = { x: startX + (cols - 1) * (slotSize + gap) + slotSize, y: startY + (rows - 1) * (slotSize + gap) };  // 右下角
+    const topRight = { x: startX + (cols - 1) * (slotSize + gap), y: startY };    // 右上角
 
-    const padding = LAYOUT.pathPadding; // 外围偏移
+    const padding = LAYOUT.pathPadding;
 
-    // H型路径：1槽左上外围 → 4槽左下外围 → 6槽右下外围 → 3槽右上外围（与起点同Y）
+    // 槽位编号（从左到右，从下到上，0起始）：
+    // 第2行（顶部）: 8  9  10 11
+    // 第1行（中间）: 4  5  6  7
+    // 第0行（底部）: 0  1  2  3
+    
+    // 0槽左上角 (col=0, row=0)
+    const slot0TopLeft = { x: startX, y: startY };
+    // 8槽左下角 (col=0, row=2)
+    const slot8BottomLeft = { x: startX, y: startY + 2 * (slotSize + gap) };
+    // 11槽右下角 (col=3, row=2)
+    const slot11BottomRight = { x: startX + 3 * (slotSize + gap) + slotSize, y: startY + 2 * (slotSize + gap) };
+    // 3槽右上角 (col=3, row=0)
+    const slot3TopRight = { x: startX + 3 * (slotSize + gap) + slotSize, y: startY };
+
+    // 怪物路径：起点(0槽左上角) → 转点1(8槽左下角) → 转点2(11槽右下角) → 终点(3槽右上角)
     this.pathPoints = [
-      { x: slot1LeftTop.x - padding, y: slot1LeftTop.y - padding },
-      { x: slot4LeftBottom.x - padding, y: slot4LeftBottom.y + slotSize + padding },
-      { x: slot6RightBottom.x + padding, y: slot6RightBottom.y + padding },
-      { x: slot3RightTop.x + slotSize + padding, y: slot1LeftTop.y - padding },
+      { x: slot0TopLeft.x - 10, y: slot0TopLeft.y - 10 },      // 起点 - 0槽左上角偏移
+      { x: slot8BottomLeft.x - 10, y: slot8BottomLeft.y + 45 }, // 转点1 - 8槽左下角偏移
+      { x: slot11BottomRight.x + 10, y: slot11BottomRight.y + 45 }, // 转点2 - 11槽右下角偏移
+      { x: slot3TopRight.x + 10, y: slot3TopRight.y - 10 },    // 终点 - 3槽右上角偏移
     ];
 
     // 保存起点终点用于绘制文字
@@ -205,8 +240,8 @@ class Game {
     const towerTypes = Object.keys(TOWER_DEFS);
     const shuffled = towerTypes.sort(() => Math.random() - 0.5);
     this.refreshTowerTypes = shuffled.slice(0, 3);
-    // 重置商店槽状态（所有槽恢复为非空）
-    this.shopSlotState = SHOP_TOWERS.map((type) => ({
+    // 重置商店槽状态（与当前展示的 refreshTowerTypes 一一对应，避免索引错位）
+    this.shopSlotState = this.refreshTowerTypes.map((type) => ({
       type: type,
       empty: false,
     }));
@@ -241,9 +276,27 @@ class Game {
   }
 
   initEvents() {
-    this.canvas.addEventListener('touchstart', (e) => input.handleTouchStart(this, e));
-    this.canvas.addEventListener('touchmove', (e) => input.handleTouchMove(this, e));
-    this.canvas.addEventListener('touchend', (e) => input.handleTouchEnd(this, e));
+    // 微信小游戏环境：使用 wx 全局触摸事件 API（更可靠，不受元素绑定限制）
+    const onTouchStart = (e) => input.handleTouchStart(this, e);
+    const onTouchMove = (e) => input.handleTouchMove(this, e);
+    const onTouchEnd = (e) => input.handleTouchEnd(this, e);
+
+    if (typeof wx !== 'undefined' && wx.onTouchStart) {
+      wx.onTouchStart(onTouchStart);
+      wx.onTouchMove(onTouchMove);
+      wx.onTouchEnd(onTouchEnd);
+      wx.onTouchCancel(onTouchEnd);
+    } else {
+      // 浏览器调试环境兜底
+      this.canvas.addEventListener('touchstart', onTouchStart);
+      this.canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+      this.canvas.addEventListener('touchend', onTouchEnd);
+      this.canvas.addEventListener('touchcancel', onTouchEnd);
+      // 同时监听 document 防止手指拖出 canvas
+      document.addEventListener('touchmove', onTouchMove, { passive: false });
+      document.addEventListener('touchend', onTouchEnd);
+      document.addEventListener('touchcancel', onTouchEnd);
+    }
   }
 
   startNextWave() {
@@ -252,6 +305,109 @@ class Game {
     this.spawnTimer = 0;
     this.waveInProgress = true;
   }
+
+  /**
+   * 重新开始：重置所有数据
+   */
+  restart() {
+    // 恢复运行
+    this.isRunning = true;
+    this.gameOver = false;
+    this.watchingVideo = false;
+    this.videoTimer = 30;
+
+    // 恢复游戏状态
+    this.gold = BALANCE.startGold;
+    this.lives = BALANCE.startLives;
+    this.maxLives = BALANCE.startLives;
+
+    // 清空游戏对象
+    this.enemies = [];
+    this.towers = [];
+    this.effects = [];
+    this.projectiles = [];
+    this.clickEffect = null;
+
+    // 清除所有单位注册表
+    units.clearAllUnits();
+
+    // 清除光环管理器
+    this.auraManager.clear();
+
+    // 重置波次
+    this.currentWave = 0;
+    this.waveInProgress = false;
+    this.waitTimer = this.waitDuration;
+    this.countdownText = '';
+
+    // 重置槽位
+    this.slots = this.calculateSlots();
+
+    // 重置商店
+    this.refreshCost = BALANCE.refreshCost;
+    this.refreshTowerTypes = [];
+    this.initRefresh();
+
+    // 重置拖放状态
+    this.dragging = false;
+    this.dragType = null;
+    this.dragX = 0;
+    this.dragY = 0;
+    this.touchStartPos = null;
+    this.pendingDrag = false;
+    this.draggingFromSlot = null;
+    this.dragFromShop = false;
+
+    // 重置属性面板
+    this.showPanel = false;
+    this.panelTowerType = null;
+
+    // 重置商店槽状态
+    this.shopSlotState = [];
+    for (let i = 0; i < this.refreshTowerTypes.length; i++) {
+      this.shopSlotState.push({
+        type: this.refreshTowerTypes[i],
+        empty: false,
+      });
+    }
+
+    // 重新开始游戏循环
+    this.loop();
+  }
+
+  /**
+   * 观看继续：30秒视频后恢复当前波次 + 金币奖励
+   */
+  watchContinue() {
+    this.watchingVideo = true;
+    this.videoTimer = 30;
+    // 暂停游戏循环
+    this.isRunning = false;
+  }
+
+  /**
+   * 视频倒计时完成
+   */
+  onVideoComplete() {
+    this.watchingVideo = false;
+    this.videoTimer = 30;
+
+    // 恢复游戏
+    this.isRunning = true;
+    this.gameOver = false;
+
+    // 恢复当前波次
+    this.enemiesToSpawn = waveMod.generateWave(this.currentWave);
+    this.spawnTimer = 0;
+    this.waveInProgress = true;
+
+    // 获得当前波次 * 500 金币
+    this.gold += this.currentWave * 500;
+
+    // 重置倒计时
+    this.waitTimer = this.waitDuration;
+  }
+
 
   update(deltaTime) {
     // 更新倒计时 / 波次
@@ -282,13 +438,46 @@ class Game {
     // 更新怪物
     for (const enemy of this.enemies) {
       const reached = enemyMod.updateEnemy(enemy, deltaTime, this.pathPoints);
-      if (reached) this.lives--;
+      if (reached) {
+        // 根据怪物类型扣分
+        this.applyPenaltyByEnemyType(enemy);
+      }
     }
 
     this.enemies = this.enemies.filter((e) => e.alive);
+    
+    // 检查第20波胜利条件：最终BOSS死亡后清空全场，还有积分则胜利
+    if (this.currentWave === 20 && !this.gameOver) {
+      const hasFinalBoss = this.enemies.some(e => e.type === 'finalBoss');
+      if (!hasFinalBoss && this.enemiesToSpawn.length === 0) {
+        // 最终BOSS已死且没有更多怪可刷
+        if (this.lives > 0) {
+          this.gameOver = true;
+          this.isRunning = false;
+          this.gameWon = true; // 标记胜利
+        }
+      }
+    }
 
     // 更新塔的攻击
+      // 更新光环管理器
+      this.auraManager.update(deltaTime);
+      // 在攻击更新之前先应用光环
+      this.applyTrapezoidAuras();
+      
       this.updateTowers(deltaTime);
+
+      // 更新长方塔堆叠倒计时
+      for (const tower of this.towers) {
+        if (tower.type === 'long_rectangle' && tower.stackTimer > 0) {
+          tower.stackTimer -= deltaTime;
+          if (tower.stackTimer <= 0) {
+            tower.stackCount = 0;
+            tower.stackTarget = null;
+            tower.stackTimer = 0;
+          }
+        }
+      }
 
       // 更新弹道
       this.updateProjectiles(deltaTime);
@@ -303,13 +492,35 @@ class Game {
       this.effects = this.effects.filter(e => e.life > 0);
 
     // 检查游戏结束
-    if (this.lives <= 0) {
+    if (this.lives <= 0 && !this.gameOver) {
+      this.gameOver = true;
       this.isRunning = false;
+    }
+
+    // 视频倒计时
+    if (this.watchingVideo) {
+      this.videoTimer -= deltaTime;
+      if (this.videoTimer <= 0) {
+        this.onVideoComplete();
+      }
     }
   }
 
   updateTowers(dt) {
+    // 每帧开始时重置光环管理器的重置列表
+    this.auraManager.resetFrame();
+
     for (const tower of this.towers) {
+      // 辅助塔（梯塔）不攻击
+      if (tower.isSupport) {
+        continue;
+      }
+
+      // 通过光环管理器获取带光环加成的攻击速度
+      const stats = renderer.getTowerStats(tower.type);
+      const baseAttackSpeed = stats.attackSpeedMultiplier || ATTACK_SPEED_BASE;
+      const effectiveAttackSpeed = this.auraManager.getBuffedValue(tower.uniqueId, baseAttackSpeed);
+
       tower.attackTimer -= dt;
       if (tower.attackTimer > 0) continue;
 
@@ -362,7 +573,9 @@ class Game {
         }
         
         if (nearestTarget && this.findSectorTarget(tower)) {
-          tower.attackTimer = 2.0; // 间隔2.0秒
+          // 基础攻击间隔 2.0秒，应用攻击速度乘数（使用光环管理器计算）
+          const effectiveInterval = 2.0 / (effectiveAttackSpeed / 100);
+          tower.attackTimer = effectiveInterval;
           this.fireSectorProjectile(tower);
         }
         continue;
@@ -371,7 +584,8 @@ class Game {
       // 圆塔：爆炸溅射
       if (tower.type === 'circle') {
         if (nearestTarget) {
-          tower.attackTimer = 0.8;
+          const effectiveInterval = 0.8 / (effectiveAttackSpeed / 100);
+          tower.attackTimer = effectiveInterval;
           this.fireExplosiveProjectile(tower, nearestTarget);
           continue;
         }
@@ -380,7 +594,8 @@ class Game {
       // 正方塔：旋转弹道直线冲锋
       if (tower.type === 'square') {
         if (nearestTarget) {
-          tower.attackTimer = 1.0; // 间隔1.0秒
+          const effectiveInterval = 1.0 / (effectiveAttackSpeed / 100);
+          tower.attackTimer = effectiveInterval;
           this.fireSquareProjectile(tower, nearestTarget);
         }
         continue;
@@ -388,18 +603,94 @@ class Game {
 
       // 普通塔：单体攻击
       if (nearestTarget) {
+        // 长方塔：堆叠伤害机制
+        if (tower.type === 'long_rectangle') {
+          // 检查目标是否切换或堆叠已过期
+          if (tower.lockedTarget !== nearestTarget || tower.stackTimer <= 0) {
+            // 切换目标或堆叠过期 → 重置
+            tower.stackCount = 0;
+            tower.stackTarget = null;
+            tower.stackTimer = 5.0; // 新目标开始5秒计时
+          }
+          
+          // 攻击时增加堆叠层数（最多10层）
+          tower.stackCount = Math.min(tower.stackCount + 1, 10);
+          
+          // 堆叠伤害计算：基础攻击力(2) + 层数加成，应用攻击增幅
+          const baseDamage = towerMod.calculateFinalDamage(2, tower.level, tower.attackPowerBoost);
+          const stackBonus = tower.stackCount * 2;
+          const totalDamage = baseDamage + stackBonus;
+          
+          const effectiveInterval = 2.0 / (effectiveAttackSpeed / 100);
+          tower.attackTimer = effectiveInterval;
+          this.fireProjectile(tower, nearestTarget, totalDamage);
+          continue;
+        }
+        
+        // 六边塔：对精英级以上怪物伤害×5，应用攻击增幅
+        if (tower.type === 'hexagon' && nearestTarget.tier >= 3) {
+          const towerStats = renderer.getTowerStats(tower.type);
+          const totalDamage = towerMod.calculateFinalDamage(towerStats.damage, tower.level, tower.attackPowerBoost) * 5;
+          
+          const effectiveInterval = 1.2 / (effectiveAttackSpeed / 100);
+          tower.attackTimer = effectiveInterval;
+          this.fireProjectile(tower, nearestTarget, totalDamage);
+          continue;
+        }
+        
+        // 普通塔正常伤害计算，使用配置中的 attackInterval
         const towerStats = renderer.getTowerStats(tower.type);
-        tower.attackTimer = towerStats.attackSpeed;
+        const effectiveInterval = towerStats.attackInterval / (effectiveAttackSpeed / 100);
+        tower.attackTimer = effectiveInterval;
         this.fireProjectile(tower, nearestTarget);
       }
     }
   }
 
-  fireProjectile(tower, target) {
+  /**
+   * 应用梯塔光环效果：遍历所有梯塔，给周围我方塔增加攻击速度
+   * 使用光环管理器控制持续时间（3秒）
+   */
+  applyTrapezoidAuras() {
+    for (const tower of this.towers) {
+      if (!tower.isSupport) continue;
+
+      const stats = renderer.getTowerStats(tower.type);
+      const range = stats.range || 150;
+      const buff = stats.supportBuff || { attackSpeedMultiplier: 25 };
+      
+      // 遍历所有我方塔，检查是否在光环范围内
+      for (const other of this.towers) {
+        // 跳过梯塔自身，只对我方非辅助塔生效
+        if (other === tower) continue;
+        if (other.owner !== PLAYER.OWN) continue;
+        if (other.isSupport) continue;
+
+        const dx = other.x - tower.x;
+        const dy = other.y - tower.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist <= range) {
+          // 在光环范围内，通过光环管理器应用加成
+          // 首次赋予才施加实质属性，后续只更新持续时间
+          this.auraManager.applyAura(tower.uniqueId, buff, other.uniqueId, ATTACK_SPEED_BASE);
+        }
+      }
+    }
+  }
+
+  fireProjectile(tower, target, customDamage) {
     const towerDef = TOWER_DEFS[tower.type];
     const towerStats = renderer.getTowerStats(tower.type);
-    const attackBonus = towerMod.getLevelAttackBonus(tower.level);
-    const damage = Math.floor(towerStats.damage * attackBonus);
+    
+    // 使用 tower.js 中的 calculateFinalDamage 计算最终攻击力
+    let damage;
+    if (customDamage !== undefined) {
+      // 自定义伤害（如长方塔堆叠）
+      damage = customDamage;
+    } else {
+      damage = towerMod.calculateFinalDamage(towerStats.damage, tower.level, tower.attackPowerBoost);
+    }
     
     // 计算从塔到目标的角度
     const dx = target.x - tower.x;
@@ -431,8 +722,7 @@ class Game {
   fireSquareProjectile(tower, target) {
     const towerDef = TOWER_DEFS[tower.type];
     const towerStats = renderer.getTowerStats(tower.type);
-    const attackBonus = towerMod.getLevelAttackBonus(tower.level);
-    const damage = Math.floor(towerStats.damage * attackBonus);
+    const damage = towerMod.calculateFinalDamage(towerStats.damage, tower.level, tower.attackPowerBoost);
     
     // 计算从塔到目标的方向
     const dx = target.x - tower.x;
@@ -461,8 +751,7 @@ class Game {
    */
   fireLaser(tower, target, dt) {
     const towerStats = renderer.getTowerStats(tower.type);
-    const attackBonus = towerMod.getLevelAttackBonus(tower.level);
-    const towerDamage = towerStats.damage * attackBonus;
+    const towerDamage = towerMod.calculateFinalDamage(towerStats.damage, tower.level, tower.attackPowerBoost);
     
     // 每秒伤害 = 塔攻击力，按时间比例计算单帧伤害
     const damage = Math.max(1, Math.floor(towerDamage * dt));
@@ -476,14 +765,16 @@ class Game {
       
       target.hp -= damage;
       if (target.hp <= 0) {
-        target.alive = false;
-        this.gold += target.reward;
-        // 触发死亡事件
-        this.triggerDeath(target, tower);
+          target.alive = false;
+          this.gold += target.reward;
+          // 从单位注册表移除
+          units.removeUnit(target.uniqueId);
+          // 触发死亡事件
+          this.triggerDeath(target, tower);
+        }
       }
-    }
-    
-    // 记录激光效果（持续线条）
+      
+      // 记录激光效果（持续线条）
     this.effects.push({
       type: 'laser',
       x1: tower.x,
@@ -538,8 +829,7 @@ class Game {
    */
   fireSectorProjectile(tower) {
     const towerStats = renderer.getTowerStats(tower.type);
-    const attackBonus = towerMod.getLevelAttackBonus(tower.level);
-    const damage = Math.floor(towerStats.damage * attackBonus);
+    const damage = towerMod.calculateFinalDamage(towerStats.damage, tower.level, tower.attackPowerBoost);
     
     const angle = tower.attackAngle || 0;
     
@@ -565,8 +855,7 @@ class Game {
   fireExplosiveProjectile(tower, target) {
     const towerDef = TOWER_DEFS[tower.type];
     const towerStats = renderer.getTowerStats(tower.type);
-    const attackBonus = towerMod.getLevelAttackBonus(tower.level);
-    const damage = Math.floor(towerStats.damage * attackBonus);
+    const damage = towerMod.calculateFinalDamage(towerStats.damage, tower.level, tower.attackPowerBoost);
     
     const dx = target.x - tower.x;
     const dy = target.y - tower.y;
@@ -639,6 +928,8 @@ class Game {
         if (enemy.hp <= 0) {
           enemy.alive = false;
           this.gold += enemy.reward;
+          // 从单位注册表移除
+          units.removeUnit(enemy.uniqueId);
           // 触发死亡事件（爆炸作为击杀者）
           this.triggerDeath(enemy, { type: 'explosion', x: x, y: y });
         }
@@ -677,6 +968,8 @@ class Game {
             if (target.hp <= 0) {
               target.alive = false;
               this.gold += target.reward;
+              // 从单位注册表移除
+              units.removeUnit(target.uniqueId);
               // 触发死亡事件
               this.triggerDeath(target, proj);
             }
@@ -737,6 +1030,8 @@ class Game {
             if (enemy.hp <= 0) {
               enemy.alive = false;
               this.gold += enemy.reward;
+              // 从单位注册表移除
+              units.removeUnit(enemy.uniqueId);
               // 触发死亡事件
               this.triggerDeath(enemy, proj);
             }
@@ -802,6 +1097,8 @@ class Game {
             if (enemy.hp <= 0) {
               enemy.alive = false;
               this.gold += enemy.reward;
+              // 从单位注册表移除
+              units.removeUnit(enemy.uniqueId);
               // 触发死亡事件
               this.triggerDeath(enemy, proj);
             }
@@ -832,6 +1129,8 @@ class Game {
           if (target.hp <= 0) {
             target.alive = false;
             this.gold += target.reward; // 获得金币奖励
+            // 从单位注册表移除
+            units.removeUnit(target.uniqueId);
             // 触发死亡事件
             this.triggerDeath(target, proj);
           }
@@ -847,6 +1146,31 @@ class Game {
 
     // 清理已死亡的弹道
     this.projectiles = this.projectiles.filter(p => p.alive);
+  }
+
+  /**
+   * 根据怪物类型扣分
+   */
+  applyPenaltyByEnemyType(enemy) {
+    switch (enemy.type) {
+      case 'normal':
+        this.lives -= 2;
+        break;
+      case 'fast':
+        this.lives -= 5;
+        break;
+      case 'heavy':
+      case 'elite':
+        this.lives -= 20;
+        break;
+      case 'boss':
+        this.lives -= 50;
+        break;
+      case 'finalBoss':
+        // 最终BOSS直接判负
+        this.lives = 0;
+        break;
+    }
   }
 
   findTarget(tower) {

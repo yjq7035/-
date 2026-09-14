@@ -1,8 +1,9 @@
 // 渲染层：所有绘制函数从原 Game.draw* 抽离。
 // 约定：每个绘制函数接收 game 实例，内部用 game.ctx / game.canvas；
 // drawTowerIcon 为纯函数，直接吃 ctx。
-const { SHOP_TOWERS, TOWER_DEFS, LAYOUT } = require('./config');
+const { SHOP_TOWERS, TOWER_DEFS, LAYOUT, TOWER_STATS } = require('./config');
 const towerMod = require('./tower');
+const { anchorPointOf } = require('./geometry');
 
 function drawPath(game) {
   const ctx = game.ctx;
@@ -36,7 +37,11 @@ function drawPath(game) {
 
 function drawSlots(game) {
   const ctx = game.ctx;
+  const time = Date.now() / 1000;
+  
   for (const slot of game.slots) {
+    ctx.save();
+    
     // 放置槽位 - 浅蓝色边框
     ctx.fillStyle = slot.occupied ? 'rgba(100, 200, 255, 0.15)' : 'rgba(100, 200, 255, 0.05)';
     ctx.strokeStyle = game.selectedTowerType ? 'rgba(100, 200, 255, 0.6)' : 'rgba(100, 200, 255, 0.25)';
@@ -44,6 +49,56 @@ function drawSlots(game) {
 
     ctx.fillRect(slot.x, slot.y, slot.size, slot.size);
     ctx.strokeRect(slot.x, slot.y, slot.size, slot.size);
+    
+    // 如果有塔，绘制等级光晕效果
+    if (slot.occupied && slot.tower) {
+      const tower = slot.tower;
+      if (tower.level > 0) {
+        // 等级越高，光晕越强
+        const glowIntensity = Math.min(tower.level / 6, 1);
+        const pulse = 0.5 + 0.5 * Math.sin(time * 3); // 0~1 的脉动
+        const alpha = glowIntensity * 0.3 * pulse;
+        
+        // 光晕范围
+        const glowSize = slot.size / 2 + 8;
+        const gradient = ctx.createRadialGradient(
+          slot.x + slot.size / 2, slot.y + slot.size / 2, slot.size / 4,
+          slot.x + slot.size / 2, slot.y + slot.size / 2, glowSize
+        );
+        gradient.addColorStop(0, `rgba(255, 215, 0, ${alpha})`);
+        gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(slot.x + slot.size / 2, slot.y + slot.size / 2, glowSize, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    // 绘制点击波纹效果
+    if (game.clickEffect && 
+        !slot.occupied &&
+        Math.abs(game.clickEffect.x - (slot.x + slot.size / 2)) < 5 &&
+        Math.abs(game.clickEffect.y - (slot.y + slot.size / 2)) < 5) {
+      const elapsed = Date.now() - game.clickEffect.startTime;
+      const progress = elapsed / game.clickEffect.duration;
+      
+      if (progress < 1) {
+        const alpha = (1 - progress) * 0.8;
+        const radius = slot.size / 2 * progress;
+        
+        ctx.strokeStyle = `rgba(100, 200, 255, ${alpha})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(game.clickEffect.x, game.clickEffect.y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        // 效果结束，清除
+        game.clickEffect = null;
+      }
+    }
+    
+    ctx.restore();
   }
 }
 
@@ -174,6 +229,30 @@ function drawTowerIcon(ctx, x, y, color, type) {
 }
 
 /**
+ * 绘制五角星图案（用作等级/阶段星星显示，替代文本字符⭐）
+ * @param {object} ctx 画布
+ * @param {number} cx 中心x
+ * @param {number} cy 中心y
+ * @param {number} outerR 外接圆半径
+ * @param {string} color 填充色
+ */
+function drawStar(ctx, cx, cy, outerR, color) {
+  const innerR = outerR * 0.38;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const radius = i % 2 === 0 ? outerR : innerR;
+    const angle = (Math.PI * i) / 5 - Math.PI / 2;
+    const x = cx + Math.cos(angle) * radius;
+    const y = cy + Math.sin(angle) * radius;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+/**
  * 绘制已放置的塔
  */
 function drawTower(ctx, game, tower) {
@@ -193,14 +272,54 @@ function drawTower(ctx, game, tower) {
 
   ctx.restore();
   
-  // 绘制等级星星
-  if (tower.level > 0) {
-    const stars = towerMod.getTowerStars(tower.level);
-    ctx.fillStyle = '#FFD700';
-    ctx.font = '12px Arial';
+  // 查找塔所在的槽位，用于UI定位
+  let slot = null;
+  for (const s of game.slots) {
+    if (s.tower === tower) {
+      slot = s;
+      break;
+    }
+  }
+  
+  // 绘制等级星星（图案五角星，顶部相对槽位顶边）
+  if (tower.level > 0 && slot) {
+    // level>=6 显示单个大星，否则显示 level 颗小星
+    const big = tower.level >= 6;
+    const count = big ? 1 : tower.level;
+    const outerR = big ? 9 : 6;
+    const spacing = big ? 0 : 13;
+    const starTop = anchorPointOf(slot, 'top', { y: -12 });
+    const centerY = starTop.y + outerR; // 五角星外顶点对齐槽位顶边
+    const totalWidth = count * spacing;
+    const startX = tower.x - totalWidth / 2;
+    for (let i = 0; i < count; i++) {
+      drawStar(ctx, startX + i * spacing + outerR, centerY, outerR, '#FFD700');
+    }
+  }
+  
+  // 绘制阶段星星（图案五角星，顶部相对槽位顶边）
+  if (tower.stage > 0 && slot) {
+    const count = tower.stage;
+    const outerR = 5;
+    const spacing = 11;
+    const stageTop = anchorPointOf(slot, 'top', { y: -2 });
+    const centerY = stageTop.y + outerR;
+    const totalWidth = count * spacing;
+    const startX = tower.x - totalWidth / 2;
+    for (let i = 0; i < count; i++) {
+      drawStar(ctx, startX + i * spacing + outerR, centerY, outerR, '#FF69B4');
+    }
+  }
+  
+  // 绘制攻击增幅标识（底部相对槽位底边，textBaseline='bottom' 使其底边对齐槽位底部）
+  if (tower.attackPowerBoost > 0 && slot) {
+    const boostText = `+${tower.attackPowerBoost}%`;
+    const textBottom = anchorPointOf(slot, 'bottom', { y: 4 });
+    ctx.fillStyle = '#00FF00';
+    ctx.font = 'bold 10px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(stars, tower.x, tower.y - 15);
+    ctx.fillText(boostText, tower.x, textBottom.y);
   }
 }
 
@@ -268,30 +387,67 @@ function drawTowerPanel(game) {
   ctx.font = '14px Arial';
   ctx.textAlign = 'left';
   
-  // 攻击力（含等级加成）
+  // 攻击力（含等级加成和攻击增幅）
   const attackBonus = tower ? towerMod.getLevelAttackBonus(tower.level) : 1;
+  const attackPowerBoost = tower ? tower.attackPowerBoost : 0;
+  const boostPercent = attackPowerBoost > 0 ? `(+${attackPowerBoost}%)` : '';
   const baseDamage = towerStats.damage;
-  const finalDamage = Math.floor(baseDamage * attackBonus);
+  const finalDamage = tower ? towerMod.calculateFinalDamage(baseDamage, tower.level, attackPowerBoost) : Math.floor(baseDamage * attackBonus);
   
   ctx.textAlign = 'left';
   ctx.fillStyle = '#FF6B6B';
-  ctx.fillText(`⚔️ 攻击力:`, attrX, attrY);
+  ctx.fillText(`攻击力:`, attrX, attrY);
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'right';
-  ctx.fillText(`${finalDamage}${attackBonus > 1 ? `(+${Math.floor((attackBonus - 1) * 100)}%)` : ''}`, panelX + panelW - 40, attrY);
+  ctx.fillText(`${finalDamage}${boostPercent ? ` ${boostPercent}` : ''}`, panelX + panelW - 40, attrY);
   attrY += lineH;
   
   // 保存tower到game供后续使用
   game._currentPanelTower = tower;
   
-  // 攻击速度
+  // 攻击间隔（秒）
+  const attackInterval = towerStats.attackInterval || 1.0;
+  
   ctx.textAlign = 'left';
   ctx.fillStyle = '#FF6B6B';
-  ctx.fillText(`⚡ 攻速:`, attrX, attrY);
+  ctx.fillText(`攻速:`, attrX, attrY);
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'right';
-  ctx.fillText(`每${towerStats.attackSpeed}秒`, panelX + panelW - 40, attrY);
+  ctx.fillText(`每${attackInterval}秒`, panelX + panelW - 40, attrY);
   attrY += lineH;
+  
+  // 攻击速度（百分比显示）
+  const attackSpeedMultiplier = tower ? tower.attackSpeedMultiplier : towerStats.attackSpeedMultiplier;
+  const attackSpeedPercent = Math.floor((attackSpeedMultiplier / 100) * 100);
+  
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#FF6B6B';
+  ctx.fillText(`攻速倍率:`, attrX, attrY);
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'right';
+  ctx.fillText(`${attackSpeedPercent}%`, panelX + panelW - 40, attrY);
+  attrY += lineH;
+  
+  // 阶段
+  const stageStars = tower && tower.stage > 0 ? towerMod.getStageStars(tower.stage) : '无';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#FF69B4';
+  ctx.fillText(`阶段:`, attrX, attrY);
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'right';
+  ctx.fillText(stageStars, panelX + panelW - 40, attrY);
+  attrY += lineH;
+  
+  // 攻击增幅
+  if (tower && tower.attackPowerBoost > 0) {
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#00FF00';
+    ctx.fillText(`攻击增幅:`, attrX, attrY);
+    ctx.fillStyle = '#00FF00';
+    ctx.textAlign = 'right';
+    ctx.fillText(`+${tower.attackPowerBoost}%`, panelX + panelW - 40, attrY);
+    attrY += lineH;
+  }
   
   // 造价
   ctx.textAlign = 'left';
@@ -364,19 +520,10 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
 
 /**
  * 获取塔的详细属性（纯函数）
+ * 从配置中读取，与 TOWER_STATS 同步
  */
 function getTowerStats(type) {
-  const stats = {
-    triangle: { hp: 100, damage: 20, range: 200, attackSpeed: 0.5, description: '快速射击，对单个目标造成持续伤害。适合应对大量敌人。' },
-    circle: { hp: 150, damage: 35, range: 200, attackSpeed: 1.5, description: '圆塔攻击命中目标时触发二段爆炸，对周围敌人造成25%溅射伤害。' },
-    hexagon: { hp: 200, damage: 50, range: 200, attackSpeed: 1.2, description: '强力单体攻击，对单一目标造成大量伤害。适合对付高血量敌人。' },
-    square: { hp: 220, damage: 55, range: 200, attackSpeed: 1.0, description: '正方塔，均衡的单体输出，适合应对各类敌人。' },
-    trapezoid: { hp: 230, damage: 45, range: 200, attackSpeed: 1.1, description: '梯塔，稳定的输出能力，适合中期使用。' },
-    semicircle: { hp: 130, damage: 2, range: 200, attackSpeed: 0.15, description: '半圆塔发射持续直线激光，连接目标造成持续伤害。' },
-    sector: { hp: 180, damage: 40, range: 250, attackSpeed: 2.0, description: '扇塔攻击扇形范围，AOE伤害，适合应对密集敌人群。' },
-    long_rectangle: { hp: 250, damage: 80, range: 200, attackSpeed: 2.0, description: '超级火炮，对目标造成巨额伤害。适合对付BOSS级别敌人。' },
-  };
-  return stats[type] || stats.triangle;
+  return TOWER_STATS[type] || TOWER_STATS.triangle;
 }
 
 function drawDragPreview(game) {
@@ -401,14 +548,56 @@ function drawDragPreview(game) {
   // 绘制对应类型的塔图标（使用 drawTowerIcon 显示具体形状）
   drawTowerIcon(ctx, game.dragX, game.dragY, '#FFFFFF', game.dragType);
 
-  // 显示金币状态
-  ctx.fillStyle = canAfford ? '#44FF44' : '#FF4444';
-  ctx.font = 'bold 12px Arial';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  ctx.fillText(canAfford ? '✅ 可放置' : '❌ 金币不足', game.dragX, game.dragY + 35);
-
   ctx.restore();
+}
+
+/**
+ * 绘制积分进度条（轨道 + 柔和渐变填充 + 描边）
+ * @param {number} percent 填充比例 0~1
+ * @param {string[]} gradient 渐变色列表（柔和色调，避免刺眼）
+ * @param {boolean} fillFromRight true=从右向左填充（右侧镜像条）
+ */
+function drawScoreBar(ctx, x, y, w, h, percent, gradient, fillFromRight) {
+  percent = Math.max(0, Math.min(1, percent || 0));
+  if (w <= 0) return;
+
+  // 轨道
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.beginPath();
+  ctx.roundRect(x, y - h / 2, w, h, h / 2);
+  ctx.fill();
+
+  // 渐变填充
+  if (percent > 0) {
+    const fw = Math.max(h, w * percent); // 极小填充时保留圆点
+    const fx = fillFromRight ? x + w - fw : x;
+    const grad = ctx.createLinearGradient(fx, 0, fx + fw, 0);
+    gradient.forEach((color, i) => grad.addColorStop(i / (gradient.length - 1), color));
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(fx, y - h / 2, fw, h, h / 2);
+    ctx.fill();
+  }
+
+  // 描边
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y - h / 2, w, h, h / 2);
+  ctx.stroke();
+}
+
+/**
+ * 获取玩家积分进度（0~1）
+ * 玩家0（本地红色方）= 真实生存积分 lives / maxLives；玩家1（蓝色方，预留联机）暂用占位值
+ */
+function getPlayerScoreProgress(game, index) {
+  // 玩家0（本地红色方）：真实生存积分进度
+  if (index === 0 && game.maxLives > 0) {
+    return Math.max(0, Math.min(1, game.lives / game.maxLives));
+  }
+  // 玩家1（蓝色方，预留联机）：暂无对手数据，保留占位演示值
+  return 0.5;
 }
 
 function drawUI(game) {
@@ -435,19 +624,26 @@ function drawUI(game) {
   ctx.roundRect(bgX, bgY, bgWidth, bgHeight, 8);
   ctx.fill();
   
-  // 左右两条横线
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-  ctx.lineWidth = 1;
-  // 左边横线
-  ctx.beginPath();
-  ctx.moveTo(0, centerLineY);
-  ctx.lineTo(bgX, centerLineY);
-  ctx.stroke();
-  // 右边横线
-  ctx.beginPath();
-  ctx.moveTo(bgX + bgWidth, centerLineY);
-  ctx.lineTo(width, centerLineY);
-  ctx.stroke();
+  // 左右积分进度条：与关卡标题平行，同一条水平线，标题左右两边各一条
+  // 左侧=玩家0 红色方（关卡标题 y 往下为红方区域），右侧=玩家1 蓝色方（反之为蓝方区域，预留联机）
+  const barH = 10;      // 进度条高度
+  const barEdge = 10;   // 距屏幕边缘
+  const barGap = 10;    // 距关卡标题盒
+  // 左侧：玩家0（红），填充方向 左→右
+  drawScoreBar(
+    ctx, barEdge, centerLineY,
+    bgX - barGap - barEdge, barH,
+    getPlayerScoreProgress(game, 0),
+    ['#FF9E9E', '#E57373'], false
+  );
+  // 右侧：玩家1（蓝），填充方向 右→左
+  const p1X = bgX + bgWidth + barGap;
+  drawScoreBar(
+    ctx, p1X, centerLineY,
+    width - barEdge - p1X, barH,
+    getPlayerScoreProgress(game, 1),
+    ['#92C5FF', '#64B5F6'], true
+  );
   
   // 波次文字
   ctx.fillStyle = '#FFD700';
@@ -501,7 +697,7 @@ function drawUI(game) {
     const type = towerTypes[i];
     const t = TOWER_DEFS[type];
     const x = startX + i * (slotWidth + gap);
-    const isSelected = game.dragging && game.dragType === type;
+    const isSelected = game.dragging && game.dragFromShop && game.dragType === type;
     const isEmpty = game.shopSlotState[i] && game.shopSlotState[i].empty;
 
     ctx.fillStyle = isSelected ? 'rgba(255, 255, 100, 0.4)' : (isEmpty ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.12)');
@@ -595,18 +791,103 @@ function drawUI(game) {
 
   // 游戏结束
   if (game.lives <= 0) {
+    // 记录游戏结束界面按钮区域（用于点击检测）
+    const centerY = height / 2 + 90;
+    const btnW = 160;
+    const btnH = 50;
+    const startX = (width - btnW * 2 - 20) / 2;
+
+    game.gameOverButtons = {
+      restart: { x: startX, y: centerY, w: btnW, h: btnH },
+      watchContinue: { x: startX + btnW + 20, y: centerY, w: btnW, h: btnH },
+    };
+
+    // 半透明遮罩
     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     ctx.fillRect(0, 0, width, height);
 
+    // 游戏结束文字
     ctx.fillStyle = '#FF0000';
-    ctx.font = '48px Arial';
+    ctx.font = 'bold 48px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('游戏结束', width / 2, height / 2 - 30);
 
+    // 坚持波数
     ctx.fillStyle = '#ffffff';
     ctx.font = '24px Arial';
-    ctx.fillText(`坚持波数: ${game.currentWave}`, width / 2, height / 2 + 30);
+    ctx.fillText(`坚持波数: ${game.currentWave}`, width / 2, height / 2 + 20);
+
+    if (game.watchingVideo) {
+      // 正在观看视频 - 显示倒计时
+      ctx.fillStyle = '#FFD700';
+      ctx.font = 'bold 32px Arial';
+      ctx.fillText(`视频倒计时: ${game.videoTimer}秒`, width / 2, centerY + 70);
+
+      ctx.fillStyle = '#AAAAAA';
+      ctx.font = '16px Arial';
+      ctx.fillText('观看广告后可继续游戏', width / 2, centerY + 100);
+    } else {
+      // 重新开始按钮
+      ctx.fillStyle = '#4CAF50';
+      ctx.fillRect(game.gameOverButtons.restart.x, game.gameOverButtons.restart.y, btnW, btnH);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(game.gameOverButtons.restart.x, game.gameOverButtons.restart.y, btnW, btnH);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 20px Arial';
+      ctx.fillText('重新开始', width / 2 - btnW / 2 - 10, centerY + btnH / 2);
+
+      // 重新挑战按钮
+      ctx.fillStyle = '#2196F3';
+      ctx.fillRect(game.gameOverButtons.watchContinue.x, game.gameOverButtons.watchContinue.y, btnW, btnH);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(game.gameOverButtons.watchContinue.x, game.gameOverButtons.watchContinue.y, btnW, btnH);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 18px Arial';
+      ctx.fillText('重新挑战', width / 2 + btnW / 2 + 10, centerY + btnH / 2 - 12);
+      ctx.font = '14px Arial';
+      ctx.fillText(`(${game.currentWave * 500}金币)`, width / 2 + btnW / 2 + 10, centerY + btnH / 2 + 10);
+    }
+  }
+  
+  // 胜利界面
+  if (game.gameWon) {
+    const centerY = height / 2 + 90;
+    const btnW = 160;
+    const btnH = 50;
+    const startX = (width - btnW) / 2;
+
+    game.gameOverButtons = {
+      restart: { x: startX, y: centerY, w: btnW, h: btnH },
+    };
+
+    // 半透明遮罩
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.fillRect(0, 0, width, height);
+
+    // 胜利文字
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 48px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('胜利！', width / 2, height / 2 - 30);
+
+    // 坚持波数
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '24px Arial';
+    ctx.fillText(`坚持波数: ${game.currentWave}`, width / 2, height / 2 + 20);
+
+    // 重新开始按钮
+    ctx.fillStyle = '#4CAF50';
+    ctx.fillRect(game.gameOverButtons.restart.x, game.gameOverButtons.restart.y, btnW, btnH);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(game.gameOverButtons.restart.x, game.gameOverButtons.restart.y, btnW, btnH);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 20px Arial';
+    ctx.fillText('重新开始', width / 2, centerY + btnH / 2);
   }
 }
 

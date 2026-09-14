@@ -27,6 +27,7 @@
   "libVersion": "latest",
   "appid": "wx245ba8eca4f4ee4e",
   "projectname": "quickstart",
+  "worker": "src/",
   "condition": {
     "search": {
       "current": -1,
