@@ -50,12 +50,12 @@ const SHOP_TOWERS = ['triangle', 'circle', 'hexagon', 'square', 'semicircle'];
 // elite = 15倍, boss = 50倍, finalBoss = 200倍
 // rewardPerWave: 击杀奖励随波次增长的额外金币（每波 +N），未配置则为固定奖励
 const ENEMY_TYPES = {
-  normal:    { hp: 100,      speed: 3.0, color: '#808080', tier: 0, reward: 10,  rewardPerWave: 1, size: 16 },
-  fast:      { hp: 100,      speed: 5.0, color: '#FF8C00', tier: 1, reward: 15,  rewardPerWave: 1, size: 14 },
-  heavy:     { hp: 500,      speed: 2.0, color: '#555555', tier: 2, reward: 50,  rewardPerWave: 3, size: 20 },
-  elite:     { hp: 1500,     speed: 3.0, color: '#FFD700', tier: 3, reward: 500,  size: 22 },
-  boss:      { hp: 5000,     speed: 2.5, color: '#FF0000', tier: 4, reward: 1000, size: 28 },
-  finalBoss: { hp: 20000,    speed: 1.5, color: '#9900FF', tier: 5, reward: 5000, size: 36 },
+  normal:    { hp: 100,      speed: 6.0, color: '#808080', tier: 0, reward: 10,  rewardPerWave: 1, size: 16 },
+  fast:      { hp: 100,      speed: 10.0, color: '#FF8C00', tier: 1, reward: 15,  rewardPerWave: 1, size: 14 },
+  heavy:     { hp: 500,      speed: 4.0, color: '#555555', tier: 2, reward: 50,  rewardPerWave: 3, size: 20 },
+  elite:     { hp: 1500,     speed: 6.0, color: '#FFD700', tier: 3, reward: 500,  size: 22 },
+  boss:      { hp: 5000,     speed: 5.0, color: '#FF0000', tier: 4, reward: 1000, size: 28 },
+  finalBoss: { hp: 20000,    speed: 3.0, color: '#9900FF', tier: 5, reward: 5000, size: 36 },
 };
 
 // 布局参数

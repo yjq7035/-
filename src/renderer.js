@@ -600,35 +600,70 @@ function getPlayerScoreProgress(game, index) {
   return 0.5;
 }
 
+/**
+ * 绘制屏幕中心波次标题（药丸形，风格与左右积分进度条统一）
+ * - 背景：红(左) → 中性 → 蓝(右) 柔和横向渐变，呼应两侧队伍色、把整条衔接成一体
+ * - 圆角(=h/2)与描边与 drawScoreBar 保持一致
+ * @param {object} ctx 画布
+ * @param {number} cx 中心x
+ * @param {number} cy 中心y
+ * @param {number} w  标题宽度
+ * @param {number} h  标题高度
+ * @param {string} text 标题文字
+ */
+function drawWaveTitle(ctx, cx, cy, w, h, text) {
+  const x = cx - w / 2;
+  const y = cy - h / 2;
+  const r = h / 2; // 药丸圆角，与积分条一致
+
+  // 柔和横向渐变：左红 → 中性 → 右蓝，衔接两侧队伍色
+  const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+  grad.addColorStop(0, 'rgba(229, 115, 115, 0.28)');   // 呼应左侧红方
+  grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.05)'); // 中心中性
+  grad.addColorStop(1, 'rgba(100, 181, 246, 0.28)');   // 呼应右侧蓝方
+
+  // 背景填充
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  ctx.fill();
+
+  // 描边（与积分条一致）
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  ctx.stroke();
+
+  // 标题文字
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 18px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, cx, cy);
+}
+
 function drawUI(game) {
   const ctx = game.ctx;
   const canvas = game.canvas;
   const width = canvas.width;
   const height = canvas.height;
 
-  // 屏幕中心波次显示 - 向上偏移
+  // 屏幕中心波次标题 - 向上偏移
   const centerLineY = height / 2 - 40;
   const waveText = `第 ${game.currentWave} 波`;
-  
-  // 测量文本宽度，自适应背景
-  const tempMetrics = ctx.measureText(waveText);
-  const textWidth = tempMetrics.width || 80;
+
+  // 测量文本宽度，自适应背景（标题与左右积分条同一条水平线）
+  ctx.font = 'bold 18px Arial';
+  const textWidth = ctx.measureText(waveText).width || 80;
   const bgWidth = textWidth + 60;
   const bgHeight = 40;
   const bgX = width / 2 - bgWidth / 2;
-  const bgY = centerLineY - bgHeight / 2;
-  
-  // 自适应背景方块
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-  ctx.beginPath();
-  ctx.roundRect(bgX, bgY, bgWidth, bgHeight, 8);
-  ctx.fill();
-  
-  // 左右积分进度条：与关卡标题平行，同一条水平线，标题左右两边各一条
-  // 左侧=玩家0 红色方（关卡标题 y 往下为红方区域），右侧=玩家1 蓝色方（反之为蓝方区域，预留联机）
+
+  // 左右积分进度条：左侧=玩家0 红色方（填充 左→右），右侧=玩家1 蓝色方（填充 右→左，预留联机）
   const barH = 10;      // 进度条高度
   const barEdge = 10;   // 距屏幕边缘
-  const barGap = 10;    // 距关卡标题盒
+  const barGap = 10;    // 距标题
   // 左侧：玩家0（红），填充方向 左→右
   drawScoreBar(
     ctx, barEdge, centerLineY,
@@ -644,13 +679,9 @@ function drawUI(game) {
     getPlayerScoreProgress(game, 1),
     ['#92C5FF', '#64B5F6'], true
   );
-  
-  // 波次文字
-  ctx.fillStyle = '#FFD700';
-  ctx.font = 'bold 18px Arial';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(waveText, width / 2, centerLineY);
+
+  // 标题：药丸形 + 红→蓝柔和渐变，风格与左右积分条统一
+  drawWaveTitle(ctx, width / 2, centerLineY, bgWidth, bgHeight, waveText);
 
   // 顶部状态栏 - 移除金币，只保留生命
   ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
