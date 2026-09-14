@@ -536,7 +536,7 @@ class Game {
           const dy = tower.lockedTarget.y - tower.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
           
-          if (dist > 200) {
+          if (dist > (stats.range || 200)) {
             // 目标跑出范围，重新锁定
             tower.lockedTarget = null;
           }
@@ -576,7 +576,7 @@ class Game {
           // 基础攻击间隔 2.0秒，应用攻击速度乘数（使用光环管理器计算）
           const effectiveInterval = 2.0 / (effectiveAttackSpeed / 100);
           tower.attackTimer = effectiveInterval;
-          this.fireSectorProjectile(tower);
+          this.fireSectorAOE(tower);
         }
         continue;
       }
@@ -605,6 +605,7 @@ class Game {
       if (nearestTarget) {
         // 长方塔：堆叠伤害机制
         if (tower.type === 'long_rectangle') {
+          const towerStats = renderer.getTowerStats(tower.type);
           // 检查目标是否切换或堆叠已过期
           if (tower.lockedTarget !== nearestTarget || tower.stackTimer <= 0) {
             // 切换目标或堆叠过期 → 重置
@@ -616,12 +617,13 @@ class Game {
           // 攻击时增加堆叠层数（最多10层）
           tower.stackCount = Math.min(tower.stackCount + 1, 10);
           
-          // 堆叠伤害计算：基础攻击力(2) + 层数加成，应用攻击增幅
-          const baseDamage = towerMod.calculateFinalDamage(2, tower.level, tower.attackPowerBoost);
+          // 堆叠伤害计算：配置基础攻击力 + 层数加成，应用攻击增幅
+          const baseDamage = towerMod.calculateFinalDamage(towerStats.damage, tower.level, tower.attackPowerBoost);
           const stackBonus = tower.stackCount * 2;
           const totalDamage = baseDamage + stackBonus;
           
-          const effectiveInterval = 2.0 / (effectiveAttackSpeed / 100);
+          // 攻击间隔取配置中的 attackInterval
+          const effectiveInterval = towerStats.attackInterval / (effectiveAttackSpeed / 100);
           tower.attackTimer = effectiveInterval;
           this.fireProjectile(tower, nearestTarget, totalDamage);
           continue;
@@ -825,27 +827,63 @@ class Game {
   }
 
   /**
-   * 扇塔：发射扇形弹道
+   * 扇塔：单次 AOE 攻击
+   * 发射瞬间对扇形范围内的所有敌人一次性结算伤害（单段，不扫掠多次）
+   * 弹道仅作视觉表现
    */
-  fireSectorProjectile(tower) {
+  fireSectorAOE(tower) {
     const towerStats = renderer.getTowerStats(tower.type);
     const damage = towerMod.calculateFinalDamage(towerStats.damage, tower.level, tower.attackPowerBoost);
     
+    const range = towerStats.range;
     const angle = tower.attackAngle || 0;
+    const halfAngle = Math.PI / 4; // 45度扇形
     
+    // 对扇形内所有存活敌人一次性结算伤害
+    for (const enemy of this.enemies) {
+      if (!enemy.alive) continue;
+      
+      const dx = enemy.x - tower.x;
+      const dy = enemy.y - tower.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > range) continue;
+      
+      const enemyAngle = Math.atan2(dy, dx);
+      let angleDiff = enemyAngle - angle;
+      while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+      while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+      
+      if (Math.abs(angleDiff) <= halfAngle) {
+        // 触发命中事件
+        this.triggerHit(enemy, tower, damage);
+        // 触发伤害事件
+        this.triggerDamage(tower, damage, enemy);
+        
+        enemy.hp -= damage;
+        if (enemy.hp <= 0) {
+          enemy.alive = false;
+          this.gold += enemy.reward;
+          // 从单位注册表移除
+          units.removeUnit(enemy.uniqueId);
+          // 触发死亡事件
+          this.triggerDeath(enemy, tower);
+        }
+      }
+    }
+    
+    // 纯视觉弹道（伤害已结算，不再参与命中判定）
     this.projectiles.push({
       x: tower.x,
       y: tower.y,
       angle: angle,
-      range: towerStats.range,
-      halfAngle: Math.PI / 4, // 45度扇形
+      range: range,
+      halfAngle: halfAngle,
       speed: 400,
-      damage: damage,
+      damage: 0,
       type: 'sector',
       color: '#FFFF44',
       alive: true,
-      progress: 0, // 0~1，弹道延伸进度
-      hitEnemy: null, // 已命中的敌人，避免重复伤害
+      progress: 0, // 0~1，弹道延伸进度（仅视觉）
     });
   }
 
@@ -987,7 +1025,7 @@ class Game {
         continue;
       }
 
-      // 处理扇形弹道
+      // 处理扇形弹道（纯视觉，伤害已在 fireSectorAOE 中一次性结算）
       if (proj.type === 'sector') {
         proj.progress += dt * 1.5; // 弹道延伸速度
         
@@ -996,55 +1034,8 @@ class Game {
           continue;
         }
         
-        // 计算弹道当前末端位置
-        const currentRange = proj.range * proj.progress;
-        const endX = proj.x + Math.cos(proj.angle) * currentRange;
-        const endY = proj.y + Math.sin(proj.angle) * currentRange;
-        
-        // 检测扇形范围内是否有敌人被命中
-        for (const enemy of this.enemies) {
-          if (!enemy.alive) continue;
-          if (proj.hitEnemy && proj.hitEnemy === enemy) continue;
-          
-          const dx = enemy.x - proj.x;
-          const dy = enemy.y - proj.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          
-          if (dist > currentRange) continue;
-          
-          const enemyAngle = Math.atan2(dy, dx);
-          let angleDiff = enemyAngle - proj.angle;
-          while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-          while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
-          
-          if (Math.abs(angleDiff) <= proj.halfAngle) {
-            // 命中敌人
-            // 触发命中事件
-            this.triggerHit(enemy, proj, proj.damage);
-            // 触发伤害事件
-            this.triggerDamage(proj, proj.damage, enemy);
-            
-            enemy.hp -= proj.damage;
-            proj.hitEnemy = enemy;
-            
-            if (enemy.hp <= 0) {
-              enemy.alive = false;
-              this.gold += enemy.reward;
-              // 从单位注册表移除
-              units.removeUnit(enemy.uniqueId);
-              // 触发死亡事件
-              this.triggerDeath(enemy, proj);
-            }
-            
-            // 命中后停止弹道延伸，显示命中效果
-            if (dist < currentRange * 0.8) {
-              proj.alive = false;
-            }
-            break;
-          }
-        }
-        
         // 记录扇形弹道效果
+        const currentRange = proj.range * proj.progress;
         this.effects.push({
           type: 'sector',
           x: proj.x,
@@ -1176,6 +1167,7 @@ class Game {
   findTarget(tower) {
     let closest = null;
     let closestDist = Infinity;
+    const range = (renderer.getTowerStats(tower.type).range) || 200;
 
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
@@ -1183,8 +1175,7 @@ class Game {
       const dy = enemy.y - tower.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
-      // 攻击范围 200 (已增加100%)
-      if (dist <= 200 && dist < closestDist) {
+      if (dist <= range && dist < closestDist) {
         closest = enemy;
         closestDist = dist;
       }

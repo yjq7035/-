@@ -601,46 +601,140 @@ function getPlayerScoreProgress(game, index) {
 }
 
 /**
- * 绘制屏幕中心波次标题（药丸形，风格与左右积分进度条统一）
- * - 背景：红(左) → 中性 → 蓝(右) 柔和横向渐变，呼应两侧队伍色、把整条衔接成一体
- * - 圆角(=h/2)与描边与 drawScoreBar 保持一致
+ * 绘制中央一体化横条：左进度条 + 中间波次标题 + 右进度条 融合成一条全宽整体
+ * - 全宽背景：红(左) → 中性 → 蓝(右) 柔和横向渐变，左右衔接成一体
+ * - 上下两条描边线：把屏幕视觉切分为上下两半
+ * - 标题两侧细分隔线区分三个区域，左右进度条保留在原位（drawScoreBar）
+ * @param {object} ctx 画布
+ * @param {number} width 画布宽度
+ * @param {number} cy 横条中心y
+ * @param {string} waveText 标题文字
+ * @param {number} p0 左侧玩家0进度 0~1
+ * @param {number} p1 右侧玩家1进度 0~1
+ */
+function drawCenterBar(ctx, width, cy, waveText, p0, p1) {
+  const barH = 40;
+  const y = Math.round(cy - barH / 2);
+
+  // 全宽背景：左红 → 中性 → 右蓝，呼应两侧队伍色，整条衔接成一体
+  const grad = ctx.createLinearGradient(0, 0, width, 0);
+  grad.addColorStop(0, 'rgba(229, 115, 115, 0.30)');
+  grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.06)');
+  grad.addColorStop(1, 'rgba(100, 181, 246, 0.30)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, y, width, barH);
+
+  // 上下描边线：强调屏幕上下分割
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, y + 0.5);
+  ctx.lineTo(width, y + 0.5);
+  ctx.moveTo(0, y + barH - 0.5);
+  ctx.lineTo(width, y + barH - 0.5);
+  ctx.stroke();
+
+  // 中间波次标题
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 18px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(waveText, width / 2, cy);
+  const textW = ctx.measureText(waveText).width;
+
+  // 标题两侧细分隔线（上下留 8px 边距）
+  const gap = 14;
+  const lDivX = Math.round(width / 2 - textW / 2 - gap);
+  const rDivX = Math.round(width / 2 + textW / 2 + gap);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.beginPath();
+  ctx.moveTo(lDivX + 0.5, y + 8);
+  ctx.lineTo(lDivX + 0.5, y + barH - 8);
+  ctx.moveTo(rDivX + 0.5, y + 8);
+  ctx.lineTo(rDivX + 0.5, y + barH - 8);
+  ctx.stroke();
+
+  // 左右进度条：左侧=玩家0 红色方（填充 左→右），右侧=玩家1 蓝色方（填充 右→左，预留联机）
+  const trackH = 10;   // 进度条高度
+  const edge = 12;     // 距屏幕边缘
+  const zoneGap = 10;  // 距分隔线
+  drawScoreBar(
+    ctx, edge, cy,
+    lDivX - zoneGap - edge, trackH,
+    p0, ['#FF9E9E', '#E57373'], false
+  );
+  drawScoreBar(
+    ctx, rDivX + zoneGap, cy,
+    width - edge - (rDivX + zoneGap), trackH,
+    p1, ['#92C5FF', '#64B5F6'], true
+  );
+}
+
+/**
+ * 绘制波次标题：药丸形背景 + 红→蓝柔和渐变，风格与左右积分条统一
  * @param {object} ctx 画布
  * @param {number} cx 中心x
  * @param {number} cy 中心y
- * @param {number} w  标题宽度
- * @param {number} h  标题高度
+ * @param {number} w 背景宽
+ * @param {number} h 背景高
  * @param {string} text 标题文字
  */
 function drawWaveTitle(ctx, cx, cy, w, h, text) {
   const x = cx - w / 2;
   const y = cy - h / 2;
-  const r = h / 2; // 药丸圆角，与积分条一致
 
-  // 柔和横向渐变：左红 → 中性 → 右蓝，衔接两侧队伍色
+  // 药丸形背景：红 → 中性 → 蓝 柔和渐变
   const grad = ctx.createLinearGradient(x, 0, x + w, 0);
-  grad.addColorStop(0, 'rgba(229, 115, 115, 0.28)');   // 呼应左侧红方
-  grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.05)'); // 中心中性
-  grad.addColorStop(1, 'rgba(100, 181, 246, 0.28)');   // 呼应右侧蓝方
-
-  // 背景填充
+  grad.addColorStop(0, 'rgba(229, 115, 115, 0.8)');
+  grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.3)');
+  grad.addColorStop(1, 'rgba(100, 181, 246, 0.8)');
   ctx.fillStyle = grad;
   ctx.beginPath();
-  ctx.roundRect(x, y, w, h, r);
+  ctx.roundRect(x, y, w, h, h / 2);
   ctx.fill();
 
-  // 描边（与积分条一致）
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  // 描边
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.roundRect(x, y, w, h, r);
+  ctx.roundRect(x, y, w, h, h / 2);
   ctx.stroke();
 
   // 标题文字
-  ctx.fillStyle = '#FFD700';
+  ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 18px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, cx, cy);
+}
+
+/**
+ * 绘制刷新图标（圆环箭头，标准刷新按钮样式）
+ * @param {object} ctx 画布
+ * @param {number} cx 中心x
+ * @param {number} cy 中心y
+ * @param {number} r 半径
+ * @param {string} color 颜色
+ */
+function drawRefreshIcon(ctx, cx, cy, r, color) {
+  // 270° 圆弧：从顶部顺时针经过右、下，到左侧
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, -Math.PI / 2, Math.PI);
+  ctx.stroke();
+
+  // 箭头：位于圆弧终点（左侧），沿切线方向朝上
+  const ax = cx - r;
+  const ay = cy;
+  ctx.beginPath();
+  ctx.moveTo(ax, ay - 6);
+  ctx.lineTo(ax - 5, ay + 1);
+  ctx.lineTo(ax + 5, ay + 1);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function drawUI(game) {
@@ -703,15 +797,21 @@ function drawUI(game) {
   ctx.lineTo(width, 30);
   ctx.stroke();
 
-  // 底部栏
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  ctx.fillRect(0, height - 97, width, 97);
+  // 底部栏 - 红→中性→蓝柔和渐变，与积分进度条风格统一
+  const barTop = height - 97;
+  const barGrad = ctx.createLinearGradient(0, 0, width, 0);
+  barGrad.addColorStop(0, 'rgba(229, 115, 115, 0.30)');
+  barGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.06)');
+  barGrad.addColorStop(1, 'rgba(100, 181, 246, 0.30)');
+  ctx.fillStyle = barGrad;
+  ctx.fillRect(0, barTop, width, 97);
 
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+  // 顶部描边（与进度条描边一致）
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(0, height - 97);
-  ctx.lineTo(width, height - 97);
+  ctx.moveTo(0, barTop + 0.5);
+  ctx.lineTo(width, barTop + 0.5);
   ctx.stroke();
 
   // 商店塔选择 - 从刷新后的塔池中获取
@@ -731,22 +831,33 @@ function drawUI(game) {
     const isSelected = game.dragging && game.dragFromShop && game.dragType === type;
     const isEmpty = game.shopSlotState[i] && game.shopSlotState[i].empty;
 
-    ctx.fillStyle = isSelected ? 'rgba(255, 255, 100, 0.4)' : (isEmpty ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.12)');
-    ctx.strokeStyle = isSelected ? '#FFFF00' : (isEmpty ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.25)');
-    ctx.lineWidth = isSelected ? 2.5 : 1;
+    // 槽位 - 方形 + 柔和渐变，与积分进度条风格统一
+    if (isSelected) {
+      // 选中：柔和金色高亮
+      const selGrad = ctx.createLinearGradient(x, 0, x + slotWidth, 0);
+      selGrad.addColorStop(0, 'rgba(255, 215, 155, 0.45)');
+      selGrad.addColorStop(1, 'rgba(255, 215, 0, 0.30)');
+      ctx.fillStyle = selGrad;
+      ctx.strokeStyle = 'rgba(255, 215, 0, 0.75)';
+      ctx.lineWidth = 2;
+    } else {
+      // 普通：柔和白色渐变（与进度条轨道同色系）
+      const slotGrad = ctx.createLinearGradient(x, startY, x, startY + slotHeight);
+      if (isEmpty) {
+        slotGrad.addColorStop(0, 'rgba(255, 255, 255, 0.08)');
+        slotGrad.addColorStop(1, 'rgba(255, 255, 255, 0.04)');
+      } else {
+        slotGrad.addColorStop(0, 'rgba(255, 255, 255, 0.18)');
+        slotGrad.addColorStop(1, 'rgba(255, 255, 255, 0.10)');
+      }
+      ctx.fillStyle = slotGrad;
+      ctx.strokeStyle = isEmpty ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 1;
+    }
 
-    const radius = 8;
+    // 方形槽位（小圆角）
     ctx.beginPath();
-    ctx.moveTo(x + radius, startY);
-    ctx.lineTo(x + slotWidth - radius, startY);
-    ctx.quadraticCurveTo(x + slotWidth, startY, x + slotWidth, startY + radius);
-    ctx.lineTo(x + slotWidth, startY + slotHeight - radius);
-    ctx.quadraticCurveTo(x + slotWidth, startY + slotHeight, x + slotWidth - radius, startY + slotHeight);
-    ctx.lineTo(x + radius, startY + slotHeight);
-    ctx.quadraticCurveTo(x, startY + slotHeight, x, startY + slotHeight - radius);
-    ctx.lineTo(x, startY + radius);
-    ctx.quadraticCurveTo(x, startY, x + radius, startY);
-    ctx.closePath();
+    ctx.roundRect(x, startY, slotWidth, slotHeight, 10);
     ctx.fill();
     ctx.stroke();
 
@@ -784,32 +895,27 @@ function drawUI(game) {
   const btnH = LAYOUT.refreshBtnDraw.h;
   const canAffordRefresh = game.gold >= game.refreshCost;
 
-  // 按钮背景 - 金币不足时变灰
-  ctx.fillStyle = canAffordRefresh ? 'rgba(100, 200, 255, 0.25)' : 'rgba(100, 100, 100, 0.25)';
-  ctx.strokeStyle = canAffordRefresh ? '#64C8FF' : '#666666';
-  ctx.lineWidth = 2;
+  // 按钮背景 - 方形 + 柔和渐变（与积分进度条风格统一），金币不足时变灰
+  if (canAffordRefresh) {
+    const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnH);
+    btnGrad.addColorStop(0, 'rgba(146, 197, 255, 0.40)');
+    btnGrad.addColorStop(1, 'rgba(100, 181, 246, 0.25)');
+    ctx.fillStyle = btnGrad;
+    ctx.strokeStyle = 'rgba(146, 197, 255, 0.7)';
+  } else {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+  }
+  ctx.lineWidth = 1.5;
 
-  const btnRadius = 8;
+  // 方形按钮（与槽位一致）
   ctx.beginPath();
-  ctx.moveTo(btnX + btnRadius, btnY);
-  ctx.lineTo(btnX + btnW - btnRadius, btnY);
-  ctx.quadraticCurveTo(btnX + btnW, btnY, btnX + btnW, btnY + btnRadius);
-  ctx.lineTo(btnX + btnW, btnY + btnH - btnRadius);
-  ctx.quadraticCurveTo(btnX + btnW, btnY + btnH, btnX + btnW - btnRadius, btnY + btnH);
-  ctx.lineTo(btnX + btnRadius, btnY + btnH);
-  ctx.quadraticCurveTo(btnX, btnY + btnH, btnX, btnY + btnH - btnRadius);
-  ctx.lineTo(btnX, btnY + btnRadius);
-  ctx.quadraticCurveTo(btnX, btnY, btnX + btnRadius, btnY);
-  ctx.closePath();
+  ctx.roundRect(btnX, btnY, btnW, btnH, 10);
   ctx.fill();
   ctx.stroke();
 
-  // 刷新图标
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '18px Arial';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('⟳', btnX + btnW / 2, btnY + 22);
+  // 刷新图标（圆环箭头，标准刷新按钮样式）
+  drawRefreshIcon(ctx, btnX + btnW / 2, btnY + 24, 10, canAffordRefresh ? '#ffffff' : 'rgba(255, 255, 255, 0.55)');
 
   // 显示当前金币/刷新所需金币
   ctx.fillStyle = canAffordRefresh ? '#FFD700' : '#FF4444';
