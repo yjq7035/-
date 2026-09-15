@@ -1308,6 +1308,15 @@ function drawUI(game) {
   ctx.font = '9px Arial';
   ctx.fillText('刷新', btnX + btnW / 2, btnY + 62);
 
+  // 刷新按钮按压态 + 点击波纹（游戏界面）
+  if (game.btnPress && game.btnPress.id === 'refresh' && Date.now() - game.btnPress.t0 <= 1200) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.beginPath();
+    ctx.roundRect(btnX, btnY, btnW, btnH, THEME.radius.medium);
+    ctx.fill();
+  }
+  drawButtonFx(game, ctx);
+
   // ========== 结算界面（失败 / 胜利）：与游戏内 UI 统一风格 ==========
   const showWin = !!game.gameWon;
   const showFail = game.lives <= 0 && !showWin;
@@ -1362,13 +1371,16 @@ function drawUI(game) {
         top: 'rgba(165, 214, 167, 0.5)', bottom: 'rgba(76, 175, 80, 0.32)',
         stroke: 'rgba(165, 214, 167, 0.8)',
         label: '重新开始', labelColor: THEME.text.primary, fontSize: 18,
+        pressed: isButtonPressed(game, 'restart'),
       });
+      // 结算界面按钮点击波纹
+      drawButtonFx(game, ctx);
     } else if (game.watchingVideo) {
       // 失败 - 观看视频倒计时
       game.gameOverButtons = {};
       ctx.fillStyle = THEME.accent.gold;
       ctx.font = 'bold 26px Arial';
-      ctx.fillText(`视频倒计时: ${game.videoTimer} 秒`, cx, panelY + 190);
+      ctx.fillText(`视频倒计时: ${Math.max(0, Math.ceil(game.videoTimer))} 秒`, cx, panelY + 190);
       ctx.fillStyle = THEME.text.secondary;
       ctx.font = '14px Arial';
       ctx.fillText('观看广告后可继续游戏', cx, panelY + 226);
@@ -1391,6 +1403,7 @@ function drawUI(game) {
         top: 'rgba(165, 214, 167, 0.5)', bottom: 'rgba(76, 175, 80, 0.32)',
         stroke: 'rgba(165, 214, 167, 0.8)',
         label: '重新开始', labelColor: THEME.text.primary, fontSize: 16,
+        pressed: isButtonPressed(game, 'restart'),
       });
       drawButton(ctx, {
         x: x2, y: btnY, w: btnW, h: btnH,
@@ -1398,7 +1411,10 @@ function drawUI(game) {
         stroke: 'rgba(146, 197, 255, 0.8)',
         label: '重新挑战', labelColor: THEME.text.primary, fontSize: 15,
         subLabel: `(${game.currentWave * 500} 金币)`, subColor: THEME.text.secondary,
+        pressed: isButtonPressed(game, 'watchContinue'),
       });
+      // 结算界面按钮点击波纹
+      drawButtonFx(game, ctx);
     }
   }
 }
@@ -1435,9 +1451,20 @@ function drawPillTitle(ctx, cx, cy, text, top, bottom, maxW) {
 /**
  * 绘制统一风格按钮：圆角 + 柔和纵向渐变 + 主题描边（风格与商店槽位 / 刷新按钮一致）。
  * 支持可选副文案（subLabel），主副文案垂直居中排布。
+ * pressed=true 时呈按压态：整体轻微缩小 + 压暗，作为点击反馈的按住阶段。
  */
 function drawButton(ctx, o) {
   const { x, y, w, h } = o;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+
+  if (o.pressed) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(0.96, 0.94);
+    ctx.translate(-cx, -cy);
+  }
+
   const grad = ctx.createLinearGradient(x, y, x, y + h);
   grad.addColorStop(0, o.top);
   grad.addColorStop(1, o.bottom);
@@ -1449,20 +1476,79 @@ function drawButton(ctx, o) {
   ctx.fill();
   ctx.stroke();
 
+  // 按压态压暗叠加
+  if (o.pressed) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, THEME.radius.medium);
+    ctx.fill();
+  }
+
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   if (o.subLabel) {
     ctx.fillStyle = o.labelColor;
     ctx.font = `bold ${o.fontSize || 16}px Arial`;
-    ctx.fillText(o.label, x + w / 2, y + h / 2 - 9);
+    ctx.fillText(o.label, cx, cy - 9);
     ctx.fillStyle = o.subColor || THEME.text.secondary;
     ctx.font = '12px Arial';
-    ctx.fillText(o.subLabel, x + w / 2, y + h / 2 + 11);
+    ctx.fillText(o.subLabel, cx, cy + 11);
   } else {
     ctx.fillStyle = o.labelColor;
     ctx.font = `bold ${o.fontSize || 18}px Arial`;
-    ctx.fillText(o.label, x + w / 2, y + h / 2);
+    ctx.fillText(o.label, cx, cy);
   }
+
+  if (o.pressed) ctx.restore();
+}
+
+/**
+ * 绘制按钮点击波纹（释放瞬间）：从按钮中心扩散的圆角矩形光环，
+ * 0.35s 内透明度衰减。game.buttonFx = { x, y, w, h, t0, duration, color }。
+ */
+function drawButtonFx(game, ctx) {
+  const fx = game.buttonFx;
+  if (!fx) return;
+
+  const now = Date.now();
+  const p = (now - fx.t0) / (fx.duration * 1000);
+  if (p >= 1) {
+    game.buttonFx = null;
+    return;
+  }
+
+  const cx = fx.x + fx.w / 2;
+  const cy = fx.y + fx.h / 2;
+  const alpha = 1 - p;
+  const grow = 1 + p * 0.25; // 轻微外扩
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(grow, grow);
+  ctx.translate(-cx, -cy);
+
+  ctx.strokeStyle = `rgba(${fx.color || '255,255,255'}, ${(alpha * 0.8).toFixed(3)})`;
+  ctx.lineWidth = 2 + (1 - p) * 2;
+  ctx.beginPath();
+  ctx.roundRect(fx.x, fx.y, fx.w, fx.h, THEME.radius.medium);
+  ctx.stroke();
+
+  // 内部柔光
+  ctx.fillStyle = `rgba(${fx.color || '255,255,255'}, ${(alpha * 0.15).toFixed(3)})`;
+  ctx.beginPath();
+  ctx.roundRect(fx.x, fx.y, fx.w, fx.h, THEME.radius.medium);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/**
+ * 按钮按压态查询：game.btnPress = { id, t0 }，按住超过 1.2s 视为误触自动松开。
+ */
+function isButtonPressed(game, id) {
+  if (!game.btnPress || game.btnPress.id !== id) return false;
+  if (Date.now() - game.btnPress.t0 > 1200) return false;
+  return true;
 }
 
 // 组合一帧的完整绘制（原 Game.draw）

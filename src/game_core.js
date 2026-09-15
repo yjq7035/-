@@ -36,6 +36,7 @@ class Game {
 
     // 游戏结束状态
     this.gameOver = false;
+    this.gameWon = false; // 胜利标记（与 gameOver 配合，决定结算界面显示胜利/失败）
     this.gameOverButtons = {}; // 游戏结束界面按钮区域
     this.watchingVideo = false;
     this.videoTimer = 30;
@@ -321,6 +322,7 @@ class Game {
     // 恢复运行
     this.isRunning = true;
     this.gameOver = false;
+    this.gameWon = false; // 必须重置，否则胜利界面会残留
     this.watchingVideo = false;
     this.videoTimer = 30;
 
