@@ -5,12 +5,69 @@ const { SHOP_TOWERS, TOWER_DEFS, LAYOUT, TOWER_STATS } = require('./config');
 const towerMod = require('./tower');
 const { anchorPointOf } = require('./geometry');
 
+// ========== 视觉风格 Token（design tokens，全 UI 唯一真源） ==========
+// 所有 UI 元素（进度条 / 槽位 / 商店 / 面板 / 按钮 / 胜负界面）都从这里取色，
+// 改一处即全局生效。战场身份色（塔色 / 怪物色）在 config.js 定义，不在此列。
+// 阵营语义：我方 = 红，对方 = 蓝（左右生存条、底部栏渐变皆基于此）。
+const THEME = {
+  // 阵营色（solid=实色，light=亮色，用于渐变两端）
+  team: {
+    red:  { solid: '#E57373', light: '#FF9E9E' },
+    blue: { solid: '#64B5F6', light: '#92C5F6' },
+  },
+  // 强调色
+  accent: {
+    gold:     '#FFD700',  // 金币 / 等级星 / 选中高亮
+    pink:     '#FF69B4',  // 阶段星
+    green:    '#4CAF50',  // 增益（攻击增幅 / 路径起点 / 确认按钮）
+    danger:   '#FF4444',  // 危险 / 金币不足
+    highlight: 'rgba(229, 115, 115, 0.45)',  // 我方交互高亮（选中范围圈 / 槽位高亮）
+  },
+  // 统一细白描边
+  border: {
+    subtle: 'rgba(255, 255, 255, 0.15)',  // 弱：空槽 / 禁用
+    normal: 'rgba(255, 255, 255, 0.30)',  // 常规：槽位 / 按钮
+    strong: 'rgba(255, 255, 255, 0.45)',  // 强调：标题药丸 / 分隔线
+  },
+  // 轨道 / 面板底色
+  track: {
+    faint: 'rgba(255, 255, 255, 0.05)',
+    soft:  'rgba(255, 255, 255, 0.10)',
+    bar:   'rgba(255, 255, 255, 0.12)',   // 进度条轨道
+  },
+  // 文字灰阶
+  text: {
+    primary:   '#ffffff',
+    secondary: '#AAAAAA',
+    dim:       '#888888',
+    off:       '#666666',
+  },
+  // 圆角
+  radius: {
+    small:  8,
+    medium: 10,   // 槽位 / 按钮
+  },
+};
+
+/**
+ * 阵营横向渐变：我方红(左) → 中性 → 对方蓝(右)，统一所有"对阵"背景。
+ * @param {number} alpha 整体透明度缩放（1=满，0.3=柔和底栏）
+ * @returns 可直接赋给 ctx.fillStyle 的 CanvasGradient
+ */
+function teamBandGradient(ctx, x0, x1, alpha) {
+  const grad = ctx.createLinearGradient(x0, 0, x1, 0);
+  grad.addColorStop(0,   `rgba(229, 115, 115, ${0.8 * alpha})`);
+  grad.addColorStop(0.5, `rgba(255, 255, 255, ${0.3 * alpha})`);
+  grad.addColorStop(1,   `rgba(100, 181, 246, ${0.8 * alpha})`);
+  return grad;
+}
+
 function drawPath(game) {
   const ctx = game.ctx;
   ctx.save();
 
   // 细线路径
-  ctx.strokeStyle = '#888888';
+  ctx.strokeStyle = THEME.text.dim;
   ctx.lineWidth = 4;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
@@ -21,15 +78,15 @@ function drawPath(game) {
   }
   ctx.stroke();
 
-  // 起点文字
-  ctx.fillStyle = '#00FF00';
+  // 起点文字（敌方出生 = 对方蓝）
+  ctx.fillStyle = THEME.team.blue.solid;
   ctx.font = 'bold 14px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('起', game.pathStart.x, game.pathStart.y);
 
-  // 终点文字
-  ctx.fillStyle = '#FF0000';
+  // 终点文字（我方基地 = 我方红）
+  ctx.fillStyle = THEME.team.red.solid;
   ctx.fillText('终', game.pathEnd.x, game.pathEnd.y);
 
   ctx.restore();
@@ -42,13 +99,15 @@ function drawSlots(game) {
   for (const slot of game.slots) {
     ctx.save();
     
-    // 放置槽位 - 浅蓝色边框
-    ctx.fillStyle = slot.occupied ? 'rgba(100, 200, 255, 0.15)' : 'rgba(100, 200, 255, 0.05)';
-    ctx.strokeStyle = game.selectedTowerType ? 'rgba(100, 200, 255, 0.6)' : 'rgba(100, 200, 255, 0.25)';
+    // 放置槽位 - 我方红（我方建造区，区别于敌方蓝）
+    ctx.fillStyle = slot.occupied ? 'rgba(229, 115, 115, 0.15)' : 'rgba(229, 115, 115, 0.05)';
+    ctx.strokeStyle = game.selectedTowerType ? 'rgba(229, 115, 115, 0.6)' : THEME.border.normal;
     ctx.lineWidth = 2;
 
-    ctx.fillRect(slot.x, slot.y, slot.size, slot.size);
-    ctx.strokeRect(slot.x, slot.y, slot.size, slot.size);
+    ctx.beginPath();
+    ctx.roundRect(slot.x, slot.y, slot.size, slot.size, THEME.radius.small);
+    ctx.fill();
+    ctx.stroke();
     
     // 如果有塔，绘制等级光晕效果
     if (slot.occupied && slot.tower) {
@@ -87,7 +146,7 @@ function drawSlots(game) {
         const alpha = (1 - progress) * 0.8;
         const radius = slot.size / 2 * progress;
         
-        ctx.strokeStyle = `rgba(100, 200, 255, ${alpha})`;
+        ctx.strokeStyle = `rgba(229, 115, 115, ${alpha})`;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(game.clickEffect.x, game.clickEffect.y, radius, 0, Math.PI * 2);
@@ -120,9 +179,9 @@ function drawEnemy(game, enemy) {
     const hpText = `${enemy.hp}`;
     let textColor = '#ffffff';
 
-    if (enemy.tier === 1) textColor = '#FFD700';
-    else if (enemy.tier === 2) textColor = '#FF69B4';
-    else if (enemy.tier === 3) textColor = '#FF0000';
+    if (enemy.tier === 1) textColor = THEME.accent.gold;
+    else if (enemy.tier === 2) textColor = THEME.accent.pink;
+    else if (enemy.tier === 3) textColor = THEME.accent.danger;
     else if (enemy.tier === 4) textColor = '#CC66FF';
 
     ctx.fillStyle = textColor;
@@ -293,7 +352,7 @@ function drawTower(ctx, game, tower) {
     const totalWidth = count * spacing;
     const startX = tower.x - totalWidth / 2;
     for (let i = 0; i < count; i++) {
-      drawStar(ctx, startX + i * spacing + outerR, centerY, outerR, '#FFD700');
+      drawStar(ctx, startX + i * spacing + outerR, centerY, outerR, THEME.accent.gold);
     }
   }
   
@@ -307,7 +366,7 @@ function drawTower(ctx, game, tower) {
     const totalWidth = count * spacing;
     const startX = tower.x - totalWidth / 2;
     for (let i = 0; i < count; i++) {
-      drawStar(ctx, startX + i * spacing + outerR, centerY, outerR, '#FF69B4');
+      drawStar(ctx, startX + i * spacing + outerR, centerY, outerR, THEME.accent.pink);
     }
   }
   
@@ -315,7 +374,7 @@ function drawTower(ctx, game, tower) {
   if (tower.attackPowerBoost > 0 && slot) {
     const boostText = `+${tower.attackPowerBoost}%`;
     const textBottom = anchorPointOf(slot, 'bottom', { y: 4 });
-    ctx.fillStyle = '#00FF00';
+    ctx.fillStyle = THEME.accent.green;
     ctx.font = 'bold 10px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
@@ -349,7 +408,7 @@ function drawTowerPanel(game) {
   ctx.strokeStyle = towerDef.color;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.roundRect(panelX, panelY, panelW, panelH, 10);
+  ctx.roundRect(panelX, panelY, panelW, panelH, THEME.radius.medium);
   ctx.fill();
   ctx.stroke();
   
@@ -364,7 +423,7 @@ function drawTowerPanel(game) {
   const tower = game.selectedTower;
   if (tower && tower.level > 0) {
     const stars = towerMod.getTowerStars(tower.level);
-    ctx.fillStyle = '#FFD700';
+    ctx.fillStyle = THEME.accent.gold;
     ctx.font = '14px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -372,7 +431,7 @@ function drawTowerPanel(game) {
   }
   
   // 分隔线
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.strokeStyle = THEME.border.normal;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(panelX + 20, panelY + 65);
@@ -395,9 +454,9 @@ function drawTowerPanel(game) {
   const finalDamage = tower ? towerMod.calculateFinalDamage(baseDamage, tower.level, attackPowerBoost) : Math.floor(baseDamage * attackBonus);
   
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#FF6B6B';
+  ctx.fillStyle = THEME.accent.danger;
   ctx.fillText(`攻击力:`, attrX, attrY);
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = THEME.text.primary;
   ctx.textAlign = 'right';
   ctx.fillText(`${finalDamage}${boostPercent ? ` ${boostPercent}` : ''}`, panelX + panelW - 40, attrY);
   attrY += lineH;
@@ -409,9 +468,9 @@ function drawTowerPanel(game) {
   const attackInterval = towerStats.attackInterval || 1.0;
   
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#FF6B6B';
+  ctx.fillStyle = THEME.accent.danger;
   ctx.fillText(`攻速:`, attrX, attrY);
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = THEME.text.primary;
   ctx.textAlign = 'right';
   ctx.fillText(`每${attackInterval}秒`, panelX + panelW - 40, attrY);
   attrY += lineH;
@@ -421,9 +480,9 @@ function drawTowerPanel(game) {
   const attackSpeedPercent = Math.floor((attackSpeedMultiplier / 100) * 100);
   
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#FF6B6B';
+  ctx.fillStyle = THEME.accent.danger;
   ctx.fillText(`攻速倍率:`, attrX, attrY);
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = THEME.text.primary;
   ctx.textAlign = 'right';
   ctx.fillText(`${attackSpeedPercent}%`, panelX + panelW - 40, attrY);
   attrY += lineH;
@@ -431,9 +490,9 @@ function drawTowerPanel(game) {
   // 阶段
   const stageStars = tower && tower.stage > 0 ? towerMod.getStageStars(tower.stage) : '无';
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#FF69B4';
+  ctx.fillStyle = THEME.accent.pink;
   ctx.fillText(`阶段:`, attrX, attrY);
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = THEME.text.primary;
   ctx.textAlign = 'right';
   ctx.fillText(stageStars, panelX + panelW - 40, attrY);
   attrY += lineH;
@@ -441,9 +500,9 @@ function drawTowerPanel(game) {
   // 攻击增幅
   if (tower && tower.attackPowerBoost > 0) {
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#00FF00';
+    ctx.fillStyle = THEME.accent.green;
     ctx.fillText(`攻击增幅:`, attrX, attrY);
-    ctx.fillStyle = '#00FF00';
+    ctx.fillStyle = THEME.accent.green;
     ctx.textAlign = 'right';
     ctx.fillText(`+${tower.attackPowerBoost}%`, panelX + panelW - 40, attrY);
     attrY += lineH;
@@ -451,7 +510,7 @@ function drawTowerPanel(game) {
   
   // 造价
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#FFD700';
+  ctx.fillStyle = THEME.accent.gold;
   ctx.fillText(`💰 造价:`, attrX, attrY);
   ctx.textAlign = 'right';
   ctx.fillText(`${towerDef.cost}`, panelX + panelW - 40, attrY);
@@ -459,7 +518,7 @@ function drawTowerPanel(game) {
   
   // 分隔线
   attrY += 10;
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.strokeStyle = THEME.border.normal;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(panelX + 20, attrY);
@@ -469,12 +528,12 @@ function drawTowerPanel(game) {
   
   // 攻击介绍 - 自适应居中
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#AAAAAA';
+  ctx.fillStyle = THEME.text.secondary;
   ctx.font = 'bold 13px Arial';
   ctx.fillText('攻击介绍', width / 2, attrY);
   attrY += 20;
   
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = THEME.text.primary;
   ctx.font = '13px Arial';
   wrapText(ctx, towerStats.description, width / 2, attrY, panelW - 60, 18);
   
@@ -484,14 +543,14 @@ function drawTowerPanel(game) {
   
   // 技能栏（预留）- 固定位置
   const skillY = panelY + panelH - 70;
-  ctx.fillStyle = '#666666';
+  ctx.fillStyle = THEME.text.off;
   ctx.font = '12px Arial';
   ctx.textAlign = 'center';
   ctx.fillText('技能槽（未解锁）', width / 2, skillY);
   
   // 关闭提示 - 固定在底部
   const closeY = panelY + panelH - 25;
-  ctx.fillStyle = '#888888';
+  ctx.fillStyle = THEME.text.dim;
   ctx.font = '11px Arial';
   ctx.fillText('点击任意位置关闭', width / 2, closeY);
 }
@@ -539,30 +598,31 @@ function drawDragPreview(game) {
   ctx.globalAlpha = canAfford ? 0.7 : 0.5;
 
   if (!canAfford) {
-    ctx.fillStyle = '#FF4444';
+    ctx.fillStyle = THEME.accent.danger;
   } else {
     ctx.fillStyle = towerConfig.color;
   }
-  ctx.strokeStyle = '#FFFFFF';
+  ctx.strokeStyle = THEME.text.primary;
   ctx.lineWidth = 2;
   // 绘制对应类型的塔图标（使用 drawTowerIcon 显示具体形状）
-  drawTowerIcon(ctx, game.dragX, game.dragY, '#FFFFFF', game.dragType);
+  drawTowerIcon(ctx, game.dragX, game.dragY, THEME.text.primary, game.dragType);
 
   ctx.restore();
 }
 
 /**
- * 绘制积分进度条（轨道 + 柔和渐变填充 + 描边）
+ * 绘制生存条（轨道 + 柔和渐变填充 + 描边）
+ * 语义：玩家剩余生存积分（生命）的进度，归零判负——是"剩余量"而非"得分"。
  * @param {number} percent 填充比例 0~1
  * @param {string[]} gradient 渐变色列表（柔和色调，避免刺眼）
  * @param {boolean} fillFromRight true=从右向左填充（右侧镜像条）
  */
-function drawScoreBar(ctx, x, y, w, h, percent, gradient, fillFromRight) {
+function drawLifeBar(ctx, x, y, w, h, percent, gradient, fillFromRight) {
   percent = Math.max(0, Math.min(1, percent || 0));
   if (w <= 0) return;
 
   // 轨道
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.fillStyle = THEME.track.bar;
   ctx.beginPath();
   ctx.roundRect(x, y - h / 2, w, h, h / 2);
   ctx.fill();
@@ -580,7 +640,7 @@ function drawScoreBar(ctx, x, y, w, h, percent, gradient, fillFromRight) {
   }
 
   // 描边
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.strokeStyle = THEME.border.normal;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.roundRect(x, y - h / 2, w, h, h / 2);
@@ -601,77 +661,7 @@ function getPlayerScoreProgress(game, index) {
 }
 
 /**
- * 绘制中央一体化横条：左进度条 + 中间波次标题 + 右进度条 融合成一条全宽整体
- * - 全宽背景：红(左) → 中性 → 蓝(右) 柔和横向渐变，左右衔接成一体
- * - 上下两条描边线：把屏幕视觉切分为上下两半
- * - 标题两侧细分隔线区分三个区域，左右进度条保留在原位（drawScoreBar）
- * @param {object} ctx 画布
- * @param {number} width 画布宽度
- * @param {number} cy 横条中心y
- * @param {string} waveText 标题文字
- * @param {number} p0 左侧玩家0进度 0~1
- * @param {number} p1 右侧玩家1进度 0~1
- */
-function drawCenterBar(ctx, width, cy, waveText, p0, p1) {
-  const barH = 40;
-  const y = Math.round(cy - barH / 2);
-
-  // 全宽背景：左红 → 中性 → 右蓝，呼应两侧队伍色，整条衔接成一体
-  const grad = ctx.createLinearGradient(0, 0, width, 0);
-  grad.addColorStop(0, 'rgba(229, 115, 115, 0.30)');
-  grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.06)');
-  grad.addColorStop(1, 'rgba(100, 181, 246, 0.30)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, y, width, barH);
-
-  // 上下描边线：强调屏幕上下分割
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, y + 0.5);
-  ctx.lineTo(width, y + 0.5);
-  ctx.moveTo(0, y + barH - 0.5);
-  ctx.lineTo(width, y + barH - 0.5);
-  ctx.stroke();
-
-  // 中间波次标题
-  ctx.fillStyle = '#FFD700';
-  ctx.font = 'bold 18px Arial';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(waveText, width / 2, cy);
-  const textW = ctx.measureText(waveText).width;
-
-  // 标题两侧细分隔线（上下留 8px 边距）
-  const gap = 14;
-  const lDivX = Math.round(width / 2 - textW / 2 - gap);
-  const rDivX = Math.round(width / 2 + textW / 2 + gap);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-  ctx.beginPath();
-  ctx.moveTo(lDivX + 0.5, y + 8);
-  ctx.lineTo(lDivX + 0.5, y + barH - 8);
-  ctx.moveTo(rDivX + 0.5, y + 8);
-  ctx.lineTo(rDivX + 0.5, y + barH - 8);
-  ctx.stroke();
-
-  // 左右进度条：左侧=玩家0 红色方（填充 左→右），右侧=玩家1 蓝色方（填充 右→左，预留联机）
-  const trackH = 10;   // 进度条高度
-  const edge = 12;     // 距屏幕边缘
-  const zoneGap = 10;  // 距分隔线
-  drawScoreBar(
-    ctx, edge, cy,
-    lDivX - zoneGap - edge, trackH,
-    p0, ['#FF9E9E', '#E57373'], false
-  );
-  drawScoreBar(
-    ctx, rDivX + zoneGap, cy,
-    width - edge - (rDivX + zoneGap), trackH,
-    p1, ['#92C5FF', '#64B5F6'], true
-  );
-}
-
-/**
- * 绘制波次标题：药丸形背景 + 红→蓝柔和渐变，风格与左右积分条统一
+ * 绘制波次标题：药丸形背景 + 红→蓝柔和渐变，风格与左右生存条统一
  * @param {object} ctx 画布
  * @param {number} cx 中心x
  * @param {number} cy 中心y
@@ -683,25 +673,21 @@ function drawWaveTitle(ctx, cx, cy, w, h, text) {
   const x = cx - w / 2;
   const y = cy - h / 2;
 
-  // 药丸形背景：红 → 中性 → 蓝 柔和渐变
-  const grad = ctx.createLinearGradient(x, 0, x + w, 0);
-  grad.addColorStop(0, 'rgba(229, 115, 115, 0.8)');
-  grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.3)');
-  grad.addColorStop(1, 'rgba(100, 181, 246, 0.8)');
-  ctx.fillStyle = grad;
+  // 药丸形背景：红 → 中性 → 蓝 柔和渐变（统一阵营色）
+  ctx.fillStyle = teamBandGradient(ctx, x, x + w, 1);
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, h / 2);
   ctx.fill();
 
   // 描边
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+  ctx.strokeStyle = THEME.border.strong;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, h / 2);
   ctx.stroke();
 
   // 标题文字
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = THEME.text.primary;
   ctx.font = 'bold 18px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -754,34 +740,34 @@ function drawUI(game) {
   const bgHeight = 40;
   const bgX = width / 2 - bgWidth / 2;
 
-  // 左右积分进度条：左侧=玩家0 红色方（填充 左→右），右侧=玩家1 蓝色方（填充 右→左，预留联机）
-  const barH = 10;      // 进度条高度
+  // 左右生存条：左侧=我方（红，填充 左→右），右侧=对方（蓝，填充 右→左，预留联机）
+  const barH = 10;      // 生存条高度
   const barEdge = 10;   // 距屏幕边缘
   const barGap = 10;    // 距标题
-  // 左侧：玩家0（红），填充方向 左→右
-  drawScoreBar(
+  // 左侧：我方（红），填充方向 左→右
+  drawLifeBar(
     ctx, barEdge, centerLineY,
     bgX - barGap - barEdge, barH,
     getPlayerScoreProgress(game, 0),
-    ['#FF9E9E', '#E57373'], false
+    [THEME.team.red.light, THEME.team.red.solid], false
   );
-  // 右侧：玩家1（蓝），填充方向 右→左
+  // 右侧：对方（蓝），填充方向 右→左
   const p1X = bgX + bgWidth + barGap;
-  drawScoreBar(
+  drawLifeBar(
     ctx, p1X, centerLineY,
     width - barEdge - p1X, barH,
     getPlayerScoreProgress(game, 1),
-    ['#92C5FF', '#64B5F6'], true
+    [THEME.team.blue.light, THEME.team.blue.solid], true
   );
 
-  // 标题：药丸形 + 红→蓝柔和渐变，风格与左右积分条统一
+  // 标题：药丸形 + 红→蓝柔和渐变，风格与左右生存条统一
   drawWaveTitle(ctx, width / 2, centerLineY, bgWidth, bgHeight, waveText);
 
   // 顶部状态栏 - 移除金币，只保留生命
   ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
   ctx.fillRect(0, 0, width, 30);
 
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = THEME.text.primary;
   ctx.font = 'bold 11px Arial';
   ctx.textBaseline = 'middle';
 
@@ -790,24 +776,20 @@ function drawUI(game) {
   ctx.fillText(`❤️ ${game.lives}`, width / 2, 15);
 
   // 分隔线
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+  ctx.strokeStyle = THEME.border.subtle;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(0, 30);
   ctx.lineTo(width, 30);
   ctx.stroke();
 
-  // 底部栏 - 红→中性→蓝柔和渐变，与积分进度条风格统一
+  // 底部栏 - 红→中性→蓝柔和渐变，与生存条风格统一
   const barTop = height - 97;
-  const barGrad = ctx.createLinearGradient(0, 0, width, 0);
-  barGrad.addColorStop(0, 'rgba(229, 115, 115, 0.30)');
-  barGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.06)');
-  barGrad.addColorStop(1, 'rgba(100, 181, 246, 0.30)');
-  ctx.fillStyle = barGrad;
+  ctx.fillStyle = teamBandGradient(ctx, 0, width, 0.4);
   ctx.fillRect(0, barTop, width, 97);
 
-  // 顶部描边（与进度条描边一致）
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+  // 顶部描边（与生存条描边一致）
+  ctx.strokeStyle = THEME.border.normal;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(0, barTop + 0.5);
@@ -831,7 +813,7 @@ function drawUI(game) {
     const isSelected = game.dragging && game.dragFromShop && game.dragType === type;
     const isEmpty = game.shopSlotState[i] && game.shopSlotState[i].empty;
 
-    // 槽位 - 方形 + 柔和渐变，与积分进度条风格统一
+    // 槽位 - 方形 + 柔和渐变，与生存条风格统一
     if (isSelected) {
       // 选中：柔和金色高亮
       const selGrad = ctx.createLinearGradient(x, 0, x + slotWidth, 0);
@@ -841,7 +823,7 @@ function drawUI(game) {
       ctx.strokeStyle = 'rgba(255, 215, 0, 0.75)';
       ctx.lineWidth = 2;
     } else {
-      // 普通：柔和白色渐变（与进度条轨道同色系）
+      // 普通：柔和白色渐变（与生存条轨道同色系）
       const slotGrad = ctx.createLinearGradient(x, startY, x, startY + slotHeight);
       if (isEmpty) {
         slotGrad.addColorStop(0, 'rgba(255, 255, 255, 0.08)');
@@ -851,13 +833,13 @@ function drawUI(game) {
         slotGrad.addColorStop(1, 'rgba(255, 255, 255, 0.10)');
       }
       ctx.fillStyle = slotGrad;
-      ctx.strokeStyle = isEmpty ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.3)';
+      ctx.strokeStyle = isEmpty ? THEME.border.subtle : THEME.border.normal;
       ctx.lineWidth = 1;
     }
 
     // 方形槽位（小圆角）
     ctx.beginPath();
-    ctx.roundRect(x, startY, slotWidth, slotHeight, 10);
+    ctx.roundRect(x, startY, slotWidth, slotHeight, THEME.radius.medium);
     ctx.fill();
     ctx.stroke();
 
@@ -866,10 +848,10 @@ function drawUI(game) {
       const canAfford = game.gold >= t.cost;
       
       // 绘制无填充的边框图标（根据塔类型）
-      drawTowerIcon(ctx, x + slotWidth / 2, startY + 30, canAfford ? t.color : '#666666', type);
+      drawTowerIcon(ctx, x + slotWidth / 2, startY + 30, canAfford ? t.color : THEME.text.off, type);
 
       // 金币文本 - 不足时显示为红色
-      ctx.fillStyle = canAfford ? '#FFD700' : '#FF4444';
+      ctx.fillStyle = canAfford ? THEME.accent.gold : THEME.accent.danger;
       ctx.font = '10px Arial';
       ctx.fillText(`💰${t.cost}`, x + slotWidth / 2, startY + 56);
       
@@ -880,7 +862,7 @@ function drawUI(game) {
       }
     } else {
       // 显示空槽提示
-      ctx.fillStyle = '#666666';
+      ctx.fillStyle = THEME.text.off;
       ctx.font = '24px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -895,7 +877,7 @@ function drawUI(game) {
   const btnH = LAYOUT.refreshBtnDraw.h;
   const canAffordRefresh = game.gold >= game.refreshCost;
 
-  // 按钮背景 - 方形 + 柔和渐变（与积分进度条风格统一），金币不足时变灰
+  // 按钮背景 - 方形 + 柔和渐变（与生存条风格统一），金币不足时变灰
   if (canAffordRefresh) {
     const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnH);
     btnGrad.addColorStop(0, 'rgba(146, 197, 255, 0.40)');
@@ -903,128 +885,183 @@ function drawUI(game) {
     ctx.fillStyle = btnGrad;
     ctx.strokeStyle = 'rgba(146, 197, 255, 0.7)';
   } else {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.fillStyle = THEME.track.soft;
+    ctx.strokeStyle = THEME.border.subtle;
   }
   ctx.lineWidth = 1.5;
 
   // 方形按钮（与槽位一致）
   ctx.beginPath();
-  ctx.roundRect(btnX, btnY, btnW, btnH, 10);
+  ctx.roundRect(btnX, btnY, btnW, btnH, THEME.radius.medium);
   ctx.fill();
   ctx.stroke();
 
   // 刷新图标（圆环箭头，标准刷新按钮样式）
-  drawRefreshIcon(ctx, btnX + btnW / 2, btnY + 24, 10, canAffordRefresh ? '#ffffff' : 'rgba(255, 255, 255, 0.55)');
+  drawRefreshIcon(ctx, btnX + btnW / 2, btnY + 24, 10, canAffordRefresh ? THEME.text.primary : 'rgba(255, 255, 255, 0.55)');
 
   // 显示当前金币/刷新所需金币
-  ctx.fillStyle = canAffordRefresh ? '#FFD700' : '#FF4444';
+  ctx.fillStyle = canAffordRefresh ? THEME.accent.gold : THEME.accent.danger;
   ctx.font = 'bold 10px Arial';
   ctx.fillText(`${game.gold}/${game.refreshCost}`, btnX + btnW / 2, btnY + 48);
 
-  ctx.fillStyle = '#AAAAAA';
+  ctx.fillStyle = THEME.text.secondary;
   ctx.font = '9px Arial';
   ctx.fillText('刷新', btnX + btnW / 2, btnY + 62);
 
-  // 游戏结束
-  if (game.lives <= 0) {
-    // 记录游戏结束界面按钮区域（用于点击检测）
-    const centerY = height / 2 + 90;
-    const btnW = 160;
-    const btnH = 50;
-    const startX = (width - btnW * 2 - 20) / 2;
-
-    game.gameOverButtons = {
-      restart: { x: startX, y: centerY, w: btnW, h: btnH },
-      watchContinue: { x: startX + btnW + 20, y: centerY, w: btnW, h: btnH },
-    };
-
-    // 半透明遮罩
+  // ========== 结算界面（失败 / 胜利）：与游戏内 UI 统一风格 ==========
+  const showWin = !!game.gameWon;
+  const showFail = game.lives <= 0 && !showWin;
+  if (showFail || showWin) {
+    // 全屏遮罩
     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     ctx.fillRect(0, 0, width, height);
 
-    // 游戏结束文字
-    ctx.fillStyle = '#FF0000';
-    ctx.font = 'bold 48px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('游戏结束', width / 2, height / 2 - 30);
+    // 居中圆角面板（自适应宽度，风格与塔属性面板一致）
+    const panelW = Math.min(360, width - 32);
+    const panelH = 290;
+    const panelX = (width - panelW) / 2;
+    const panelY = (height - panelH) / 2;
+    const accent = showFail
+      ? { top: 'rgba(229, 115, 115, 0.14)', bottom: 'rgba(229, 115, 115, 0.05)', stroke: 'rgba(229, 115, 115, 0.5)' }
+      : { top: 'rgba(255, 215, 0, 0.14)', bottom: 'rgba(255, 215, 0, 0.04)', stroke: 'rgba(255, 215, 0, 0.55)' };
+    const panelGrad = ctx.createLinearGradient(panelX, panelY, panelX, panelY + panelH);
+    panelGrad.addColorStop(0, accent.top);
+    panelGrad.addColorStop(1, accent.bottom);
+    ctx.fillStyle = panelGrad;
+    ctx.strokeStyle = accent.stroke;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(panelX, panelY, panelW, panelH, THEME.radius.medium + 4);
+    ctx.fill();
+    ctx.stroke();
+
+    const cx = width / 2;
+
+    // 标题药丸（风格与波次标题一致）
+    const titleText = showFail ? '游戏结束' : '胜利！';
+    const titleTop = showFail ? 'rgba(229, 115, 115, 0.55)' : 'rgba(255, 215, 0, 0.55)';
+    const titleBottom = showFail ? 'rgba(255, 68, 68, 0.35)' : 'rgba(255, 170, 0, 0.35)';
+    drawPillTitle(ctx, cx, panelY + 56, titleText, titleTop, titleBottom, panelW - 24);
 
     // 坚持波数
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '24px Arial';
-    ctx.fillText(`坚持波数: ${game.currentWave}`, width / 2, height / 2 + 20);
+    ctx.fillStyle = THEME.text.secondary;
+    ctx.font = '16px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`坚持波数: ${game.currentWave}`, cx, panelY + 120);
 
-    if (game.watchingVideo) {
-      // 正在观看视频 - 显示倒计时
-      ctx.fillStyle = '#FFD700';
-      ctx.font = 'bold 32px Arial';
-      ctx.fillText(`视频倒计时: ${game.videoTimer}秒`, width / 2, centerY + 70);
-
-      ctx.fillStyle = '#AAAAAA';
-      ctx.font = '16px Arial';
-      ctx.fillText('观看广告后可继续游戏', width / 2, centerY + 100);
-    } else {
-      // 重新开始按钮
-      ctx.fillStyle = '#4CAF50';
-      ctx.fillRect(game.gameOverButtons.restart.x, game.gameOverButtons.restart.y, btnW, btnH);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(game.gameOverButtons.restart.x, game.gameOverButtons.restart.y, btnW, btnH);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 20px Arial';
-      ctx.fillText('重新开始', width / 2 - btnW / 2 - 10, centerY + btnH / 2);
-
-      // 重新挑战按钮
-      ctx.fillStyle = '#2196F3';
-      ctx.fillRect(game.gameOverButtons.watchContinue.x, game.gameOverButtons.watchContinue.y, btnW, btnH);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(game.gameOverButtons.watchContinue.x, game.gameOverButtons.watchContinue.y, btnW, btnH);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 18px Arial';
-      ctx.fillText('重新挑战', width / 2 + btnW / 2 + 10, centerY + btnH / 2 - 12);
+    if (showWin) {
+      // 胜利：单个"重新开始"按钮（主操作 = 增益绿）
+      const btnW = Math.min(240, panelW - 48);
+      const btnH = 54;
+      const btnX = (width - btnW) / 2;
+      const btnY = panelY + panelH - 90;
+      game.gameOverButtons = { restart: { x: btnX, y: btnY, w: btnW, h: btnH } };
+      drawButton(ctx, {
+        x: btnX, y: btnY, w: btnW, h: btnH,
+        top: 'rgba(165, 214, 167, 0.5)', bottom: 'rgba(76, 175, 80, 0.32)',
+        stroke: 'rgba(165, 214, 167, 0.8)',
+        label: '重新开始', labelColor: THEME.text.primary, fontSize: 18,
+      });
+    } else if (game.watchingVideo) {
+      // 失败 - 观看视频倒计时
+      game.gameOverButtons = {};
+      ctx.fillStyle = THEME.accent.gold;
+      ctx.font = 'bold 26px Arial';
+      ctx.fillText(`视频倒计时: ${game.videoTimer} 秒`, cx, panelY + 190);
+      ctx.fillStyle = THEME.text.secondary;
       ctx.font = '14px Arial';
-      ctx.fillText(`(${game.currentWave * 500}金币)`, width / 2 + btnW / 2 + 10, centerY + btnH / 2 + 10);
+      ctx.fillText('观看广告后可继续游戏', cx, panelY + 226);
+    } else {
+      // 失败 - 双按钮：重新开始（主 = 增益绿）/ 重新挑战（次 = 对方蓝）
+      const gap = 16;
+      const inner = panelW - 40;
+      const btnW = (inner - gap) / 2;
+      const btnH = 54;
+      const totalW = btnW * 2 + gap;
+      const x1 = (width - totalW) / 2;
+      const x2 = x1 + btnW + gap;
+      const btnY = panelY + panelH - 90;
+      game.gameOverButtons = {
+        restart: { x: x1, y: btnY, w: btnW, h: btnH },
+        watchContinue: { x: x2, y: btnY, w: btnW, h: btnH },
+      };
+      drawButton(ctx, {
+        x: x1, y: btnY, w: btnW, h: btnH,
+        top: 'rgba(165, 214, 167, 0.5)', bottom: 'rgba(76, 175, 80, 0.32)',
+        stroke: 'rgba(165, 214, 167, 0.8)',
+        label: '重新开始', labelColor: THEME.text.primary, fontSize: 16,
+      });
+      drawButton(ctx, {
+        x: x2, y: btnY, w: btnW, h: btnH,
+        top: 'rgba(146, 197, 255, 0.5)', bottom: 'rgba(100, 181, 246, 0.32)',
+        stroke: 'rgba(146, 197, 255, 0.8)',
+        label: '重新挑战', labelColor: THEME.text.primary, fontSize: 15,
+        subLabel: `(${game.currentWave * 500} 金币)`, subColor: THEME.text.secondary,
+      });
     }
   }
-  
-  // 胜利界面
-  if (game.gameWon) {
-    const centerY = height / 2 + 90;
-    const btnW = 160;
-    const btnH = 50;
-    const startX = (width - btnW) / 2;
+}
 
-    game.gameOverButtons = {
-      restart: { x: startX, y: centerY, w: btnW, h: btnH },
-    };
+/**
+ * 绘制结算标题药丸：圆角 + 柔和横向渐变 + 强描边，风格与波次标题（drawWaveTitle）一致。
+ * @param {number} maxW 药丸最大宽度（超出则收敛，保证不越界）
+ */
+function drawPillTitle(ctx, cx, cy, text, top, bottom, maxW) {
+  ctx.font = 'bold 22px Arial';
+  const tw = ctx.measureText(text).width || 80;
+  const w = Math.min(maxW, tw + 44);
+  const h = 42;
+  const x = cx - w / 2;
+  const y = cy - h / 2;
 
-    // 半透明遮罩
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-    ctx.fillRect(0, 0, width, height);
+  const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+  grad.addColorStop(0, top);
+  grad.addColorStop(1, bottom);
+  ctx.fillStyle = grad;
+  ctx.strokeStyle = THEME.border.strong;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, h / 2);
+  ctx.fill();
+  ctx.stroke();
 
-    // 胜利文字
-    ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 48px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('胜利！', width / 2, height / 2 - 30);
+  ctx.fillStyle = THEME.text.primary;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, cx, cy);
+}
 
-    // 坚持波数
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '24px Arial';
-    ctx.fillText(`坚持波数: ${game.currentWave}`, width / 2, height / 2 + 20);
+/**
+ * 绘制统一风格按钮：圆角 + 柔和纵向渐变 + 主题描边（风格与商店槽位 / 刷新按钮一致）。
+ * 支持可选副文案（subLabel），主副文案垂直居中排布。
+ */
+function drawButton(ctx, o) {
+  const { x, y, w, h } = o;
+  const grad = ctx.createLinearGradient(x, y, x, y + h);
+  grad.addColorStop(0, o.top);
+  grad.addColorStop(1, o.bottom);
+  ctx.fillStyle = grad;
+  ctx.strokeStyle = o.stroke;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, THEME.radius.medium);
+  ctx.fill();
+  ctx.stroke();
 
-    // 重新开始按钮
-    ctx.fillStyle = '#4CAF50';
-    ctx.fillRect(game.gameOverButtons.restart.x, game.gameOverButtons.restart.y, btnW, btnH);
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(game.gameOverButtons.restart.x, game.gameOverButtons.restart.y, btnW, btnH);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 20px Arial';
-    ctx.fillText('重新开始', width / 2, centerY + btnH / 2);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (o.subLabel) {
+    ctx.fillStyle = o.labelColor;
+    ctx.font = `bold ${o.fontSize || 16}px Arial`;
+    ctx.fillText(o.label, x + w / 2, y + h / 2 - 9);
+    ctx.fillStyle = o.subColor || THEME.text.secondary;
+    ctx.font = '12px Arial';
+    ctx.fillText(o.subLabel, x + w / 2, y + h / 2 + 11);
+  } else {
+    ctx.fillStyle = o.labelColor;
+    ctx.font = `bold ${o.fontSize || 18}px Arial`;
+    ctx.fillText(o.label, x + w / 2, y + h / 2);
   }
 }
 
@@ -1055,7 +1092,7 @@ function drawProjectiles(game) {
       ctx.globalAlpha = 0.9;
       
       const size = 6; // 弹道大小
-      ctx.strokeStyle = '#FFFFFF';
+      ctx.strokeStyle = THEME.text.primary;
       ctx.lineWidth = 1;
 
       // 根据角度旋转
@@ -1080,7 +1117,7 @@ function drawProjectiles(game) {
           ctx.arc(0, 0, size + 2, 0, Math.PI * 2);
           ctx.fillStyle = proj.color;
           ctx.fill();
-          ctx.strokeStyle = '#FFFFFF';
+          ctx.strokeStyle = THEME.text.primary;
           ctx.lineWidth = 1.5;
           ctx.stroke();
           
@@ -1102,7 +1139,7 @@ function drawProjectiles(game) {
           ctx.arc(0, 0, size * 1.5, proj.angle - Math.PI / 4, proj.angle + Math.PI / 4);
           ctx.closePath();
           ctx.fill();
-          ctx.strokeStyle = '#FFFFFF';
+          ctx.strokeStyle = THEME.text.primary;
           ctx.lineWidth = 1;
           ctx.stroke();
           ctx.globalAlpha = 1;
@@ -1175,11 +1212,11 @@ function drawProjectiles(game) {
     }
   }
 
-  // 绘制已放置塔的攻击范围（选中时显示）
+  // 绘制已放置塔的攻击范围（选中时显示，我方红）
   if (game.selectedTower) {
     const tower = game.selectedTower;
     ctx.save();
-    ctx.strokeStyle = 'rgba(100, 200, 255, 0.4)';
+    ctx.strokeStyle = THEME.accent.highlight;
     ctx.lineWidth = 1;
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
