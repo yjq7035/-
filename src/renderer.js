@@ -49,6 +49,17 @@ const THEME = {
   },
 };
 
+// BOSS 阵营色族（怪物本体色 → 所属阵营）。
+// 游戏里"BOSS"= tier>=4（drawEnemy 里画王冠的级别）：
+//   红方 BOSS = boss（#FF0000 红）；
+//   蓝方 BOSS = finalBoss（#9900FF 紫）。
+// （elite 金色 #FFD700 属"精英"tier 3，不算 BOSS，不画大血条。）
+// 用于把场上 BOSS 归类到红/蓝两方，分别画对应的大血条。
+const BOSS_TEAM_COLORS = {
+  red:  new Set(['#FF0000']),
+  blue: new Set(['#9900FF']),
+};
+
 /**
  * 阵营横向渐变：我方红(左) → 中性 → 对方蓝(右)，统一所有"对阵"背景。
  * @param {number} alpha 整体透明度缩放（1=满，0.3=柔和底栏）
@@ -381,22 +392,116 @@ function drawEnemyHpBar(game, enemy) {
   ctx.roundRect(barX, barY, barW, barH, barH / 2);
   ctx.stroke();
 
-  // 血量数字（按 tier 着色，沿用原配色）
-  let textColor = '#ffffff';
-  if (enemy.tier === 1) textColor = THEME.accent.gold;
-  else if (enemy.tier === 2) textColor = THEME.accent.pink;
-  else if (enemy.tier === 3) textColor = THEME.accent.danger;
-  else if (enemy.tier === 4) textColor = '#CC66FF';
-  ctx.fillStyle = textColor;
-  ctx.font = `bold ${Math.max(8, s * 0.4)}px Arial`;
+  // 血条与血量数字现已分离：血条保留；血量数值文本已移除（BOSS 大血条 + 怪物小血条已足够表达血量）。
+  ctx.restore();
+}
+
+/**
+ * 取场上某一方的 BOSS（tier>=4，即 boss/finalBoss，血量最高）。
+ * @param {object} game 游戏实例
+ * @param {string} team 'red' | 'blue'
+ * @returns {object|null} BOSS 单位或 null
+ */
+function getTeamBoss(game, team) {
+  if (!game.enemies) return null;
+  const colorSet = BOSS_TEAM_COLORS[team];
+  let best = null;
+  for (const e of game.enemies) {
+    if (!e.alive || (e.tier || 0) < 4) continue;
+    if (!colorSet.has(e.color)) continue;
+    if (!best || e.maxHp > best.maxHp) best = e;
+  }
+  return best;
+}
+
+/**
+ * 绘制 BOSS 大血条（宽条 + 数值文本 + 阵营色，带 BOSS 呼吸光晕）。
+ * 红方 BOSS 画在波次标题下方，蓝方 BOSS 画在波次标题上方（调用方传 y）。
+ * @param {object} ctx 画布
+ * @param {object} boss BOSS 单位
+ * @param {number} cx 血条中心x（通常屏幕中心）
+ * @param {number} cy 血条中心y
+ * @param {string} team 'red' | 'blue'（决定配色）
+ * @param {number} maxW 血条最大宽度
+ */
+function drawBossHealthBar(ctx, boss, cx, cy, team, maxW) {
+  const w = Math.min(maxW, 320);
+  const h = 14;
+  const x = cx - w / 2;
+  const y = cy - h / 2;
+  const pct = Math.max(0, Math.min(1, boss.hp / boss.maxHp));
+  const main = team === 'red' ? THEME.team.red.solid : THEME.team.blue.solid;
+  const light = team === 'red' ? THEME.team.red.light : THEME.team.blue.light;
+
+  ctx.save();
+
+  // 呼吸光晕（BOSS 专属，强调"大血条"存在感）
+  const t = Date.now() / 1000;
+  const pulse = 0.5 + 0.5 * Math.sin(t * 2.0);
+  const glowR = h * (2.2 + 0.8 * pulse);
+  const glow = ctx.createRadialGradient(cx, cy, h * 0.5, cx, cy, Math.max(w / 2, glowR * 2));
+  glow.addColorStop(0, shade(main, 0.1, 0.35 + 0.2 * pulse));
+  glow.addColorStop(1, shade(main, 0.1, 0));
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, w / 2 + 12, glowR, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 轨道
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, h / 2);
+  ctx.fill();
+
+  // 填充（阵营色渐变，按剩余比例）
+  if (pct > 0) {
+    const fw = Math.max(h, w * pct);
+    const grad = ctx.createLinearGradient(x, 0, x + fw, 0);
+    grad.addColorStop(0, light);
+    grad.addColorStop(1, main);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(x, y, fw, h, h / 2);
+    ctx.fill();
+  }
+
+  // 描边
+  ctx.strokeStyle = THEME.border.strong;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, h / 2);
+  ctx.stroke();
+
+  // 数值文本（BOSS 大血条保留数值，便于精确读血）
+  ctx.fillStyle = THEME.text.primary;
+  ctx.font = 'bold 12px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0,0,0,0.6)';
+  ctx.shadowColor = 'rgba(0,0,0,0.7)';
   ctx.shadowBlur = 2;
-  ctx.fillText(`${enemy.hp}`, enemy.x, enemy.y);
+  const hpText = `${Math.ceil(boss.hp)} / ${boss.maxHp}`;
+  ctx.fillText(hpText, cx, cy + 0.5);
   ctx.shadowBlur = 0;
 
   ctx.restore();
+}
+
+/**
+ * 绘制场上所有 BOSS 大血条（红方在波次标题下方、蓝方在上方）。
+ * 仅在对应阵营有存活 BOSS 时绘制该条。
+ * @param {object} game 游戏实例
+ * @param {number} titleCY 波次标题中心y
+ * @param {number} titleH  波次标题高
+ */
+function drawBossBars(game, titleCY, titleH) {
+  const ctx = game.ctx;
+  const cx = game.canvas.width / 2;
+  const maxW = game.canvas.width * 0.7;
+  const gap = 8;
+  const redBoss = getTeamBoss(game, 'red');
+  const blueBoss = getTeamBoss(game, 'blue');
+  if (blueBoss) drawBossHealthBar(ctx, blueBoss, cx, titleCY - titleH / 2 - gap - 10, 'blue', maxW);
+  if (redBoss)  drawBossHealthBar(ctx, redBoss,  cx, titleCY + titleH / 2 + gap + 10, 'red', maxW);
 }
 
 /**
@@ -1163,6 +1268,9 @@ function drawUI(game) {
   // 标题：药丸形 + 红→蓝柔和渐变，风格与左右生存条统一
   drawWaveTitle(ctx, width / 2, centerLineY, bgWidth, bgHeight, waveText);
 
+  // BOSS 大血条：红方 BOSS 在波次标题下方，蓝方 BOSS 在波次标题上方
+  drawBossBars(game, centerLineY, bgHeight);
+
   // 顶部状态栏 - 移除金币，只保留生命
   ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
   ctx.fillRect(0, 0, width, 30);
@@ -1772,6 +1880,9 @@ module.exports = {
   drawSlots,
   drawEnemy,
   drawEnemyHpBar,
+  drawBossHealthBar,
+  drawBossBars,
+  getTeamBoss,
   drawTowerIcon,
   drawTower,
   drawDragPreview,
