@@ -47,7 +47,7 @@ const SHOP_TOWERS = ['triangle', 'circle', 'hexagon', 'square', 'semicircle'];
 
 // 敌人类型表
 // elite/boss/finalBoss 的 hp 是相对普通怪基础 HP(100) 的倍率
-// elite = 15倍, boss = 50倍, finalBoss = 200倍
+// elite = 15倍, boss = 50倍, finalBoss = boss的5倍 = 250倍
 // rewardPerWave: 击杀奖励随波次增长的额外金币（每波 +N），未配置则为固定奖励
 const ENEMY_TYPES = {
   normal:    { hp: 100,      speed: 6.0, color: '#808080', tier: 0, reward: 10,  rewardPerWave: 1, size: 16 },
@@ -55,7 +55,7 @@ const ENEMY_TYPES = {
   heavy:     { hp: 500,      speed: 4.0, color: '#555555', tier: 2, reward: 50,  rewardPerWave: 3, size: 20 },
   elite:     { hp: 1500,     speed: 6.0, color: '#FFD700', tier: 3, reward: 500,  size: 22 },
   boss:      { hp: 5000,     speed: 5.0, color: '#FF0000', tier: 4, reward: 1000, size: 28 },
-  finalBoss: { hp: 20000,    speed: 3.0, color: '#9900FF', tier: 5, reward: 5000, size: 36 },
+  finalBoss: { hp: 25000,    speed: 3.0, color: '#9900FF', tier: 5, reward: 5000, size: 36 },
 };
 
 // 布局参数

@@ -18,14 +18,14 @@ function spawnEnemy(type, pathPoints, waveNumber) {
   let speedBonus = isBossPhase ? 1.15 : 1;
   
   // 精英/Boss/最终Boss 使用独立的生命值计算
-  // elite = 普通*15, boss = 普通*50, finalBoss = 普通*200
+  // elite = 普通*15, boss = 普通*50, finalBoss = boss*5 = 普通*250
   let scaledHp;
   if (type === 'elite') {
     scaledHp = Math.floor(100 * 15 * hpMultiplier * hpBonus);
   } else if (type === 'boss') {
     scaledHp = Math.floor(100 * 50 * hpMultiplier * hpBonus);
   } else if (type === 'finalBoss') {
-    scaledHp = Math.floor(100 * 200 * hpMultiplier * hpBonus);
+    scaledHp = Math.floor(100 * 50 * hpMultiplier * hpBonus);
   } else {
     scaledHp = Math.floor(config.hp * hpMultiplier * hpBonus);
   }
