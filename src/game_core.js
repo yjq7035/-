@@ -11,7 +11,7 @@ const units = require('./units');
 const EventBus = require('./eventBus');
 const AuraManager = require('./auraManager');
 
-const { LAYOUT, BALANCE, TOWER_DEFS, PLAYER, ATTACK_SPEED_BASE } = config;
+const { LAYOUT, BALANCE, TOWER_DEFS, PLAYER, ATTACK_SPEED_BASE, MAX_STAGE, AURA_DURATION } = config;
 
 class Game {
   constructor(canvas, ctx, windowInfo) {
@@ -97,6 +97,10 @@ class Game {
     this.pendingDrag = false;    // 触摸开始时是否在商店塔上
     this.draggingFromSlot = null; // 从哪个放置槽开始拖放
     this.dragFromShop = false;   // 是否从商店拖放（用于区分拖放来源，避免商店槽误亮）
+
+    // 按钮交互反馈（按压态 + 点击波纹动画）
+    this.btnPress = null;   // { id, t0 } 当前按住的按钮
+    this.buttonFx = null;   // { x, y, w, h, t0, duration, color } 点击波纹
 
     // 光环管理器
     this.auraManager = new AuraManager();
@@ -367,6 +371,10 @@ class Game {
     this.showPanel = false;
     this.panelTowerType = null;
 
+    // 重置按钮交互状态
+    this.btnPress = null;
+    this.buttonFx = null;
+
     // 重置商店槽状态
     this.shopSlotState = [];
     for (let i = 0; i < this.refreshTowerTypes.length; i++) {
@@ -376,8 +384,7 @@ class Game {
       });
     }
 
-    // 重新开始游戏循环
-    this.loop();
+    // 主循环常驻运行，这里只需恢复 isRunning 标志
   }
 
   /**
@@ -502,20 +509,9 @@ class Game {
       this.gameOver = true;
       this.isRunning = false;
     }
-
-    // 视频倒计时
-    if (this.watchingVideo) {
-      this.videoTimer -= deltaTime;
-      if (this.videoTimer <= 0) {
-        this.onVideoComplete();
-      }
-    }
   }
 
   updateTowers(dt) {
-    // 每帧开始时重置光环管理器的重置列表
-    this.auraManager.resetFrame();
-
     for (const tower of this.towers) {
       // 辅助塔（梯塔）不攻击
       if (tower.isSupport) {
@@ -657,7 +653,10 @@ class Game {
 
   /**
    * 应用梯塔光环效果：遍历所有梯塔，给周围我方塔增加攻击速度
-   * 使用光环管理器控制持续时间（3秒）
+   * 光环规则（2026-09 重构）：
+   *  - 光环强度随梯塔自身阶段提升：基础25 × (1 + 阶段) → 25 / 50 / 75 / 100
+   *  - 每个目标塔只保留一个生效光环，高阶来源覆盖低阶来源
+   *  - 在范围内每帧刷新持续时间；离开范围/塔死亡后 AURA_DURATION 秒自动失效
    */
   applyTrapezoidAuras() {
     for (const tower of this.towers) {
@@ -665,8 +664,11 @@ class Game {
 
       const stats = renderer.getTowerStats(tower.type);
       const range = stats.range || 150;
-      const buff = stats.supportBuff || { attackSpeedMultiplier: 25 };
-      
+      const baseBuff = stats.supportBuff || { attackSpeedMultiplier: 25 };
+      // 光环强度随自身阶段提升（1星+50、2星+75、3星+100），3星封顶
+      const stage = Math.max(0, Math.min(tower.stage || 0, MAX_STAGE));
+      const buff = { attackSpeedMultiplier: baseBuff.attackSpeedMultiplier * (1 + stage) };
+
       // 遍历所有我方塔，检查是否在光环范围内
       for (const other of this.towers) {
         // 跳过梯塔自身，只对我方非辅助塔生效
@@ -679,9 +681,8 @@ class Game {
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist <= range) {
-          // 在光环范围内，通过光环管理器应用加成
-          // 首次赋予才施加实质属性，后续只更新持续时间
-          this.auraManager.applyAura(tower.uniqueId, buff, other.uniqueId, ATTACK_SPEED_BASE);
+          // 高阶覆盖低阶；在范围内每帧刷新持续时间
+          this.auraManager.applyAura(tower.uniqueId, buff, stage, other.uniqueId, AURA_DURATION);
         }
       }
     }
@@ -1195,15 +1196,24 @@ class Game {
   }
 
   loop() {
-    if (!this.isRunning) return;
-
     const now = Date.now();
     const deltaTime = (now - this.lastTime) / 1000;
     this.lastTime = now;
 
     const dt = Math.min(deltaTime, 0.1);
 
-    this.update(dt);
+    // 游戏进行中 → 正常逻辑更新
+    if (this.isRunning) {
+      this.update(dt);
+    } else if (this.watchingVideo) {
+      // 结算界面观看视频：世界冻结，仅推进视频倒计时
+      this.videoTimer -= dt;
+      if (this.videoTimer <= 0) {
+        this.onVideoComplete();
+      }
+    }
+
+    // 始终渲染：结算界面按钮按压/点击动画、拖拽预览等都需要持续帧
     this.draw();
 
     requestAnimationFrame(() => this.loop());

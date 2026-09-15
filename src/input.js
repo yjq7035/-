@@ -87,6 +87,21 @@ function handleTouchStart(game, e) {
   // 正在拖放中不应再触发新的 start
   if (game.dragging || game.pendingDrag) return;
 
+  // ========== 结算界面：吞掉全部触摸，只处理按钮按压 ==========
+  if (game.gameOver) {
+    const btns = game.gameOverButtons;
+    if (btns && isPointInRect(pos, btns.restart)) {
+      pressButton(game, 'restart');
+      return;
+    }
+    if (btns && btns.watchContinue && isPointInRect(pos, btns.watchContinue)) {
+      pressButton(game, 'watchContinue');
+      return;
+    }
+    game.touchStartPos = null;
+    return;
+  }
+
   // 记录起点（用于点击/拖放区分）
   game.touchStartPos = { x: pos.x, y: pos.y };
 
@@ -133,7 +148,14 @@ function handleTouchStart(game, e) {
 
   if (pos.x >= refreshBtn.x && pos.x <= refreshBtn.x + refreshBtn.w &&
       pos.y >= refreshBtn.y && pos.y <= refreshBtn.y + refreshBtn.h) {
-    game.refreshTowers();
+    pressButton(game, 'refresh');
+    if (game.gold >= game.refreshCost) {
+      game.refreshTowers();
+      flashButton(game, refreshBtn, '146,197,255');
+    } else {
+      // 金币不足：红色反馈
+      flashButton(game, refreshBtn, '255,68,68');
+    }
     game.touchStartPos = null;
     return;
   }
@@ -196,16 +218,20 @@ function handleTouchMove(game, e) {
 function handleTouchEnd(game, e) {
   const pos = getTouchPos(e);
 
-  // ========== 游戏结束界面按钮点击 ==========
+  // ========== 游戏结束界面按钮点击 ==========\
   if (game.gameOver && !game.watchingVideo) {
     const btns = game.gameOverButtons;
     if (btns && isPointInRect(pos, btns.restart)) {
+      flashButton(game, btns.restart, '165,214,167');
       game.restart();
+      releaseButton(game);
       game.touchStartPos = null;
       return;
     }
-    if (btns && isPointInRect(pos, btns.watchContinue)) {
+    if (btns && btns.watchContinue && isPointInRect(pos, btns.watchContinue)) {
+      flashButton(game, btns.watchContinue, '146,197,255');
       game.watchContinue();
+      releaseButton(game);
       game.touchStartPos = null;
       return;
     }
@@ -238,11 +264,11 @@ function handleTouchEnd(game, e) {
   if (game.pendingDrag) {
     // 检查是否点击的是放置槽中的塔
     if (game.draggingFromSlot && game.draggingFromSlot.occupied && game.draggingFromSlot.tower) {
-      // 点击已有塔 → 弹出该塔属性面板（已注释）
-      // game.showPanel = true;
-      // game.panelTowerType = game.draggingFromSlot.tower.type;
-      // game.selectedTower = game.draggingFromSlot.tower;
-      // game.touchStartPos = null;
+      // 点击已有塔 → 弹出该塔属性面板（阶段星星/攻击增幅一目了然）
+      game.showPanel = true;
+      game.panelTowerType = game.draggingFromSlot.tower.type;
+      game.selectedTower = game.draggingFromSlot.tower;
+      game.touchStartPos = null;
     } else {
       // 点击商店塔 → 弹出塔属性面板（类型预览）
       game.showPanel = true;
@@ -255,6 +281,7 @@ function handleTouchEnd(game, e) {
   }
 
   // 其他情况：nothing to do
+  releaseButton(game);
   game.touchStartPos = null;
 }
 
@@ -264,6 +291,38 @@ function handleTouchEnd(game, e) {
 function isPointInRect(pos, rect) {
   return pos.x >= rect.x && pos.x <= rect.x + rect.w &&
          pos.y >= rect.y && pos.y <= rect.y + rect.h;
+}
+
+// ==================== 按钮按压 / 点击波纹 ====================
+
+/**
+ * 记录按钮按压态（手指按下期间 renderer 绘制按压样式）
+ */
+function pressButton(game, id) {
+  game.btnPress = { id, t0: Date.now() };
+}
+
+/**
+ * 清除按钮按压态
+ */
+function releaseButton(game) {
+  game.btnPress = null;
+}
+
+/**
+ * 触发按钮点击波纹动画（renderer 每帧绘制，450ms 后自动清除）
+ * @param {string} rgb - "R,G,B" 颜色分量，如 "146,197,255"
+ */
+function flashButton(game, rect, rgb) {
+  game.buttonFx = {
+    x: rect.x,
+    y: rect.y,
+    w: rect.w,
+    h: rect.h,
+    t0: Date.now(),
+    duration: 450,
+    color: rgb || '255,255,255',
+  };
 }
 
 /**

@@ -237,10 +237,11 @@ function drawSlots(game) {
 }
 
 /**
- * 绘制敌人（怪物）：立体渐变本体 + 朝向鼻锥 + 等级点缀 + 血条。
- * 替代原先的"纯色方块 + 黑边"，使其更有体积感与方向感。
+ * 绘制敌人（怪物）：立体渐变本体 + 朝向鼻锥 + 等级点缀。
+ * 血条已拆分为独立图层（drawEnemyHpBar），在所有怪物之后统一绘制，
+ * 避免被后绘制的怪物本体遮挡（withHpBar 默认 true 保留兼容）。
  */
-function drawEnemy(game, enemy) {
+function drawEnemy(game, enemy, withHpBar = true) {
   if (!enemy.alive) return;
 
   const ctx = game.ctx;
@@ -329,51 +330,71 @@ function drawEnemy(game, enemy) {
   }
 
   // ---- 血条 + 血量（低于100%才显示）----
-  if (enemy.hp < enemy.maxHp) {
-    const pct = Math.max(0, enemy.hp / enemy.maxHp);
-    const barW = Math.max(20, s);
-    const barH = 4;
-    const barX = enemy.x - barW / 2;
-    const barY = enemy.y - half - (enemy.tier >= 4 ? 16 : 10);
-
-    // 轨道
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-    ctx.beginPath();
-    ctx.roundRect(barX, barY, barW, barH, barH / 2);
-    ctx.fill();
-    // 填充（绿→黄→红，按剩余比例）
-    let hpColor;
-    if (pct > 0.5) hpColor = '#6EE86E';
-    else if (pct > 0.25) hpColor = THEME.accent.gold;
-    else hpColor = THEME.accent.danger;
-    if (pct > 0) {
-      ctx.fillStyle = hpColor;
-      ctx.beginPath();
-      ctx.roundRect(barX, barY, Math.max(barH, barW * pct), barH, barH / 2);
-      ctx.fill();
-    }
-    // 描边
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(barX, barY, barW, barH, barH / 2);
-    ctx.stroke();
-
-    // 血量数字（按 tier 着色，沿用原配色）
-    let textColor = '#ffffff';
-    if (enemy.tier === 1) textColor = THEME.accent.gold;
-    else if (enemy.tier === 2) textColor = THEME.accent.pink;
-    else if (enemy.tier === 3) textColor = THEME.accent.danger;
-    else if (enemy.tier === 4) textColor = '#CC66FF';
-    ctx.fillStyle = textColor;
-    ctx.font = `bold ${Math.max(8, s * 0.4)}px Arial`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.shadowColor = 'rgba(0,0,0,0.6)';
-    ctx.shadowBlur = 2;
-    ctx.fillText(`${enemy.hp}`, enemy.x, enemy.y);
-    ctx.shadowBlur = 0;
+  // 正常流程下血条由 render() 的独立图层统一绘制（withHpBar=false）
+  if (withHpBar && enemy.hp < enemy.maxHp) {
+    drawEnemyHpBar(game, enemy);
   }
+
+  ctx.restore();
+}
+
+/**
+ * 绘制怪物血条（独立图层）。
+ * 在所有怪物本体绘制完成后统一调用，保证血条压在所有怪物之上，
+ * 不会被同层其他怪物（本体/鼻锥/王冠）挡住。
+ */
+function drawEnemyHpBar(game, enemy) {
+  if (!enemy.alive || enemy.hp >= enemy.maxHp) return;
+
+  const ctx = game.ctx;
+  const s = enemy.size;
+  const half = s / 2;
+
+  ctx.save();
+
+  const pct = Math.max(0, enemy.hp / enemy.maxHp);
+  const barW = Math.max(20, s);
+  const barH = 4;
+  const barX = enemy.x - barW / 2;
+  const barY = enemy.y - half - (enemy.tier >= 4 ? 16 : 10);
+
+  // 轨道
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+  ctx.beginPath();
+  ctx.roundRect(barX, barY, barW, barH, barH / 2);
+  ctx.fill();
+  // 填充（绿→黄→红，按剩余比例）
+  let hpColor;
+  if (pct > 0.5) hpColor = '#6EE86E';
+  else if (pct > 0.25) hpColor = THEME.accent.gold;
+  else hpColor = THEME.accent.danger;
+  if (pct > 0) {
+    ctx.fillStyle = hpColor;
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, Math.max(barH, barW * pct), barH, barH / 2);
+    ctx.fill();
+  }
+  // 描边
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(barX, barY, barW, barH, barH / 2);
+  ctx.stroke();
+
+  // 血量数字（按 tier 着色，沿用原配色）
+  let textColor = '#ffffff';
+  if (enemy.tier === 1) textColor = THEME.accent.gold;
+  else if (enemy.tier === 2) textColor = THEME.accent.pink;
+  else if (enemy.tier === 3) textColor = THEME.accent.danger;
+  else if (enemy.tier === 4) textColor = '#CC66FF';
+  ctx.fillStyle = textColor;
+  ctx.font = `bold ${Math.max(8, s * 0.4)}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.6)';
+  ctx.shadowBlur = 2;
+  ctx.fillText(`${enemy.hp}`, enemy.x, enemy.y);
+  ctx.shadowBlur = 0;
 
   ctx.restore();
 }
@@ -1612,15 +1633,18 @@ function drawProjectiles(game) {
     drawTower(ctx, game, tower);
   }
 
-  // 绘制怪物（生命值低于100%的优先显示）
-  const damagedEnemies = game.enemies.filter(e => e.alive && e.hp < e.maxHp);
-  const fullHpEnemies = game.enemies.filter(e => e.alive && e.hp >= e.maxHp);
-  
-  for (const enemy of fullHpEnemies) {
-    drawEnemy(game, enemy);
+  // 绘制怪物（按出生顺序正常绘制，不再把受伤怪物置顶——该设定会让后画怪物遮住前画怪物的血条）
+  for (const enemy of game.enemies) {
+    if (enemy.alive) {
+      drawEnemy(game, enemy, false);
+    }
   }
-  for (const enemy of damagedEnemies) {
-    drawEnemy(game, enemy);
+
+  // 血条独立图层：全部怪物本体绘制完成后统一绘制，确保血条在所有怪物之上
+  for (const enemy of game.enemies) {
+    if (enemy.alive && enemy.hp < enemy.maxHp) {
+      drawEnemyHpBar(game, enemy);
+    }
   }
 
   // 绘制弹道
@@ -1661,6 +1685,7 @@ module.exports = {
   drawPath,
   drawSlots,
   drawEnemy,
+  drawEnemyHpBar,
   drawTowerIcon,
   drawTower,
   drawDragPreview,

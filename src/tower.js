@@ -1,5 +1,5 @@
 // 塔：工厂 + 造价（从原 Game.createTower / getTowerCost 抽离）
-const { TOWER_DEFS, TOWER_STATS, PLAYER, ATTACK_SPEED_BASE } = require('./config');
+const { TOWER_DEFS, TOWER_STATS, PLAYER, ATTACK_SPEED_BASE, MAX_STAGE, STAGE_BOOSTS } = require('./config');
 const { createUnit } = require('./units');
 
 function createTower(type, x, y) {
@@ -60,19 +60,21 @@ function getLevelAttackBonus(level) {
 /**
  * 获取阶段星星显示
  * 0阶段 = 无显示
- * 1+阶段 = 1+个🌟
+ * 1-3阶段 = 对应数量的🌟（3星封顶）
  */
 function getStageStars(stage) {
   if (stage <= 0) return '';
-  return '🌟'.repeat(stage);
+  return '🌟'.repeat(Math.min(stage, MAX_STAGE));
 }
 
 /**
- * 获取攻击增幅百分比
- * 每个阶段 +100% 攻击力增幅
+ * 获取攻击增幅百分比（阶段奖励表）
+ * 1星 = +100%，2星 = +200%，3星 = +400%（3星封顶）
  */
 function getAttackPowerBoost(stage) {
-  return stage * 100; // 阶段0=0%, 阶段1=100%, 阶段2=200% ...
+  if (!stage || stage <= 0) return 0;
+  if (stage > MAX_STAGE) stage = MAX_STAGE;
+  return STAGE_BOOSTS[stage] || 0;
 }
 
 /**
@@ -93,6 +95,8 @@ function calculateFinalDamage(baseDamage, level, attackPowerBoost) {
 function canMergeUpgrade(tower1, tower2) {
   if (tower1.type !== tower2.type) return false;
   if (tower1.stage !== tower2.stage) return false;
+  // 3星封顶：已达最高阶段不可再合成
+  if (tower1.stage >= MAX_STAGE) return false;
   // tower2.uniqueId 可能为 null（拖放中的塔），此时跳过自身检查
   if (tower2.uniqueId !== null && tower1.uniqueId === tower2.uniqueId) return false;
   if (tower1.owner !== tower2.owner) return false;
