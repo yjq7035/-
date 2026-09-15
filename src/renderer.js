@@ -62,6 +62,25 @@ function teamBandGradient(ctx, x0, x1, alpha) {
   return grad;
 }
 
+/**
+ * 颜色明暗工具：把 #RRGGBB 按比例变亮/变暗（amount: -1~1，正=变亮，负=变暗）。
+ * 用于给纯色生成渐变两端 / 高光 / 阴影，让"纯色"变成有体积感的渐变。
+ * @param {string} hex 十六进制颜色（支持 #rgb / #rrggbb）
+ * @param {number} amount -1~1
+ * @param {number} [alpha] 可选输出 alpha
+ * @returns rgba() 字符串
+ */
+function shade(hex, amount, alpha) {
+  let h = (hex || '#000000').replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const num = parseInt(h, 16);
+  let r = (num >> 16) & 255, g = (num >> 8) & 255, b = num & 255;
+  if (amount >= 0) { r = r + (255 - r) * amount; g = g + (255 - g) * amount; b = b + (255 - b) * amount; }
+  else { const t = 1 + amount; r = r * t; g = g * t; b = b * t; }
+  const a = (alpha === undefined) ? 1 : alpha;
+  return `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${a})`;
+}
+
 function drawPath(game) {
   const ctx = game.ctx;
   ctx.save();
@@ -78,16 +97,72 @@ function drawPath(game) {
   }
   ctx.stroke();
 
-  // 起点文字（敌方出生 = 对方蓝）
-  ctx.fillStyle = THEME.team.blue.solid;
-  ctx.font = 'bold 14px Arial';
+  // 起点 / 终点：用"绘制方法"画成地图坐标标记（徽标 + 文字），而非裸文本
+  // 起点 = 敌方出生（对方蓝），终点 = 我方基地（我方红）
+  drawEndpointMarker(ctx, game.pathStart.x, game.pathStart.y, THEME.team.blue.solid, '起');
+  drawEndpointMarker(ctx, game.pathEnd.x, game.pathEnd.y, THEME.team.red.solid, '终');
+
+  ctx.restore();
+}
+
+/**
+ * 绘制路径端点标记（地图坐标风格）：圆环 + 渐变徽标 + 文字，带柔和呼吸光晕。
+ * 替代原先直接 fillText('起'/'终') 的裸文本，使其像"地图坐标点"一样有体积与层次。
+ * @param {object} ctx 画布
+ * @param {number} x 中心x
+ * @param {number} y 中心y
+ * @param {string} color 主色（阵营色）
+ * @param {string} label 文字（'起'/'终'）
+ */
+function drawEndpointMarker(ctx, x, y, color, label) {
+  const time = Date.now() / 1000;
+  const r = 13;                       // 徽标半径
+  const pulse = 0.5 + 0.5 * Math.sin(time * 2.2); // 0~1 呼吸
+
+  ctx.save();
+
+  // 呼吸光晕（外圈柔光）
+  const glowR = r + 8 + pulse * 4;
+  const glow = ctx.createRadialGradient(x, y, r * 0.5, x, y, glowR);
+  glow.addColorStop(0, shade(color, 0.2, 0.35 + 0.2 * pulse));
+  glow.addColorStop(1, shade(color, 0.2, 0));
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(x, y, glowR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 徽标主体：径向渐变（上亮下暗，立体感）
+  const body = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.2, x, y, r * 1.05);
+  body.addColorStop(0, shade(color, 0.45));
+  body.addColorStop(1, shade(color, -0.25));
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 内圈高光（顶部弧形亮边）
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, r - 1.5, Math.PI * 1.05, Math.PI * 1.95);
+  ctx.stroke();
+
+  // 外描边
+  ctx.strokeStyle = shade(color, -0.4, 0.9);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 中心文字（白 + 阴影，清晰可读）
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 15px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('起', game.pathStart.x, game.pathStart.y);
-
-  // 终点文字（我方基地 = 我方红）
-  ctx.fillStyle = THEME.team.red.solid;
-  ctx.fillText('终', game.pathEnd.x, game.pathEnd.y);
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 2;
+  ctx.fillText(label, x, y + 0.5);
+  ctx.shadowBlur = 0;
 
   ctx.restore();
 }
@@ -161,70 +236,221 @@ function drawSlots(game) {
   }
 }
 
+/**
+ * 绘制敌人（怪物）：立体渐变本体 + 朝向鼻锥 + 等级点缀 + 血条。
+ * 替代原先的"纯色方块 + 黑边"，使其更有体积感与方向感。
+ */
 function drawEnemy(game, enemy) {
   if (!enemy.alive) return;
 
   const ctx = game.ctx;
+  const s = enemy.size;
+  const half = s / 2;
+  const color = enemy.color;
+  const facing = (enemy.facing !== undefined) ? enemy.facing : 0;
+
   ctx.save();
-  const halfSize = enemy.size / 2;
-  ctx.fillStyle = enemy.color;
-  ctx.fillRect(enemy.x - halfSize, enemy.y - halfSize, enemy.size, enemy.size);
 
-  ctx.strokeStyle = '#000000';
+  // ---- 地面投影（椭圆，随尺寸缩放）----
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+  ctx.beginPath();
+  ctx.ellipse(enemy.x, enemy.y + half * 0.7, half * 1.05, half * 0.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ---- 朝向鼻锥（行进方向的小楔形，让"朝哪走"一眼可见）----
+  const noseLen = s * 0.5;
+  const nx = Math.cos(facing), ny = Math.sin(facing);
+  const perpX = -ny, perpY = nx;
+  const tipX = enemy.x + nx * (half + noseLen);
+  const tipY = enemy.y + ny * (half + noseLen);
+  const baseL = { x: enemy.x + nx * half * 0.6 + perpX * half * 0.5, y: enemy.y + ny * half * 0.6 + perpY * half * 0.5 };
+  const baseR = { x: enemy.x + nx * half * 0.6 - perpX * half * 0.5, y: enemy.y + ny * half * 0.6 - perpY * half * 0.5 };
+  ctx.fillStyle = shade(color, -0.15);
+  ctx.beginPath();
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(baseL.x, baseL.y);
+  ctx.lineTo(baseR.x, baseR.y);
+  ctx.closePath();
+  ctx.fill();
+
+  // ---- 本体：圆角方块 + 径向渐变（左上亮 → 右下暗，立体）----
+  const bodyGrad = ctx.createRadialGradient(
+    enemy.x - half * 0.4, enemy.y - half * 0.45, half * 0.2,
+    enemy.x, enemy.y, half * 1.4
+  );
+  bodyGrad.addColorStop(0, shade(color, 0.5));
+  bodyGrad.addColorStop(0.7, color);
+  bodyGrad.addColorStop(1, shade(color, -0.3));
+  ctx.fillStyle = bodyGrad;
+  const rr = Math.max(3, s * 0.22);
+  ctx.beginPath();
+  ctx.roundRect(enemy.x - half, enemy.y - half, s, s, rr);
+  ctx.fill();
+
+  // ---- 顶部高光弧 ----
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
   ctx.lineWidth = 1.5;
-  ctx.strokeRect(enemy.x - halfSize, enemy.y - halfSize, enemy.size, enemy.size);
+  ctx.beginPath();
+  ctx.arc(enemy.x, enemy.y, half * 0.7, Math.PI * 1.15, Math.PI * 1.85);
+  ctx.stroke();
 
-  // 满血不显示生命值，被攻击低于100%时才显示
+  // ---- 外描边（暗色，勾轮廓）----
+  ctx.strokeStyle = shade(color, -0.45);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(enemy.x - half, enemy.y - half, s, s, rr);
+  ctx.stroke();
+
+  // ---- 等级点缀：精英金环 / BOSS 王冠 ----
+  if (enemy.tier >= 3) {
+    // 精英及以上：金色光环
+    ctx.strokeStyle = THEME.accent.gold;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(enemy.x, enemy.y, half + 3, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  if (enemy.tier >= 4) {
+    // BOSS / 最终BOSS：头顶王冠
+    const cy = enemy.y - half - 4;
+    const cw = half * 0.9, chh = 8;
+    ctx.fillStyle = THEME.accent.gold;
+    ctx.beginPath();
+    ctx.moveTo(enemy.x - cw, cy);
+    ctx.lineTo(enemy.x - cw * 0.5, cy - chh);
+    ctx.lineTo(enemy.x, cy);
+    ctx.lineTo(enemy.x + cw * 0.5, cy - chh);
+    ctx.lineTo(enemy.x + cw, cy);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = shade(THEME.accent.gold, -0.3);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // ---- 血条 + 血量（低于100%才显示）----
   if (enemy.hp < enemy.maxHp) {
-    const hpText = `${enemy.hp}`;
-    let textColor = '#ffffff';
+    const pct = Math.max(0, enemy.hp / enemy.maxHp);
+    const barW = Math.max(20, s);
+    const barH = 4;
+    const barX = enemy.x - barW / 2;
+    const barY = enemy.y - half - (enemy.tier >= 4 ? 16 : 10);
 
+    // 轨道
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, barW, barH, barH / 2);
+    ctx.fill();
+    // 填充（绿→黄→红，按剩余比例）
+    let hpColor;
+    if (pct > 0.5) hpColor = '#6EE86E';
+    else if (pct > 0.25) hpColor = THEME.accent.gold;
+    else hpColor = THEME.accent.danger;
+    if (pct > 0) {
+      ctx.fillStyle = hpColor;
+      ctx.beginPath();
+      ctx.roundRect(barX, barY, Math.max(barH, barW * pct), barH, barH / 2);
+      ctx.fill();
+    }
+    // 描边
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, barW, barH, barH / 2);
+    ctx.stroke();
+
+    // 血量数字（按 tier 着色，沿用原配色）
+    let textColor = '#ffffff';
     if (enemy.tier === 1) textColor = THEME.accent.gold;
     else if (enemy.tier === 2) textColor = THEME.accent.pink;
     else if (enemy.tier === 3) textColor = THEME.accent.danger;
     else if (enemy.tier === 4) textColor = '#CC66FF';
-
     ctx.fillStyle = textColor;
-    ctx.font = `bold ${Math.max(8, enemy.size * 0.45)}px Arial`;
+    ctx.font = `bold ${Math.max(8, s * 0.4)}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(hpText, enemy.x, enemy.y);
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 2;
+    ctx.fillText(`${enemy.hp}`, enemy.x, enemy.y);
+    ctx.shadowBlur = 0;
   }
 
   ctx.restore();
 }
 
 /**
- * 绘制无填充的塔图标（仅边框），纯函数。
+ * 给已构建好的塔轮廓应用统一的"立体样式"：径向渐变填充 + 顶部光泽（裁剪到形状内）+ 深色描边。
+ * 让原本"仅边框"的图形塔变成有体积感的填充图形。
+ * @param {object} ctx 画布
+ * @param {number} x 中心x
+ * @param {number} y 中心y
+ * @param {string} color 塔主色
+ * @param {number} approxR 形状的近似半径（用于渐变/光泽范围）
+ */
+function applyTowerStyle(ctx, x, y, color, approxR) {
+  // 径向渐变填充（左上亮 → 右下暗，立体）
+  const g = ctx.createRadialGradient(
+    x - approxR * 0.3, y - approxR * 0.35, approxR * 0.15,
+    x, y, approxR * 1.25
+  );
+  g.addColorStop(0, shade(color, 0.5));
+  g.addColorStop(0.7, color);
+  g.addColorStop(1, shade(color, -0.3));
+  ctx.fillStyle = g;
+  ctx.fill();
+
+  // 顶部光泽（裁剪到形状内，避免溢出）
+  ctx.save();
+  ctx.clip();
+  const sheen = ctx.createLinearGradient(x, y - approxR, x, y + approxR);
+  sheen.addColorStop(0,   'rgba(255, 255, 255, 0.32)');
+  sheen.addColorStop(0.5, 'rgba(255, 255, 255, 0.04)');
+  sheen.addColorStop(1,   'rgba(0, 0, 0, 0.12)');
+  ctx.fillStyle = sheen;
+  ctx.fillRect(x - approxR * 1.6, y - approxR * 1.6, approxR * 3.2, approxR * 3.2);
+  ctx.restore();
+
+  // 深色描边，勾轮廓
+  ctx.strokeStyle = shade(color, -0.45);
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+}
+
+/**
+ * 绘制塔图标（纯函数）：按类型构建轮廓，再套用统一立体样式。
+ * 轮廓几何保持原样（方向语义不变：三角/扇/半圆仍按攻击朝向绘制）。
  */
 function drawTowerIcon(ctx, x, y, color, type) {
   ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2.5;
   ctx.lineJoin = 'round';
 
+  let approxR = 12; // 形状近似半径（默认）
+
   switch (type) {
-    case 'triangle':
+    case 'triangle': {
       // 三角形 - 默认朝向右侧（与攻击方向一致）
       const triSize = 12;
+      approxR = triSize * 1.15;
       ctx.beginPath();
       ctx.moveTo(x + triSize, y);
       ctx.lineTo(x - triSize * 0.5, y - triSize);
       ctx.lineTo(x - triSize * 0.5, y + triSize);
       ctx.closePath();
-      ctx.stroke();
       break;
+    }
 
-    case 'circle':
-      // 圆形 - 仅边框
+    case 'circle': {
+      approxR = 11;
       ctx.beginPath();
       ctx.arc(x, y, 11, 0, Math.PI * 2);
-      ctx.stroke();
       break;
+    }
 
-    case 'hexagon':
-      // 六边形 - 仅边框
+    case 'hexagon': {
+      // 六边形
       const hexR = 11;
+      approxR = hexR;
       ctx.beginPath();
       for (let i = 0; i < 6; i++) {
         const angle = (Math.PI / 3) * i - Math.PI / 6;
@@ -234,55 +460,65 @@ function drawTowerIcon(ctx, x, y, color, type) {
         else ctx.lineTo(hx, hy);
       }
       ctx.closePath();
-      ctx.stroke();
       break;
+    }
 
-    case 'square':
-      // 正方塔 - 正方形
+    case 'square': {
+      // 正方塔 - 圆角正方形（更精致）
       const sqSize = 20;
-      ctx.strokeRect(x - sqSize / 2, y - sqSize / 2, sqSize, sqSize);
+      approxR = sqSize / 2;
+      ctx.beginPath();
+      ctx.roundRect(x - sqSize / 2, y - sqSize / 2, sqSize, sqSize, 4);
       break;
+    }
 
-    case 'trapezoid':
+    case 'trapezoid': {
       // 梯塔 - 梯形
       const tw = 20, bw = 26, th = 16;
+      approxR = bw / 2;
       ctx.beginPath();
       ctx.moveTo(x - tw / 2, y - th / 2);
       ctx.lineTo(x + tw / 2, y - th / 2);
       ctx.lineTo(x + bw / 2, y + th / 2);
       ctx.lineTo(x - bw / 2, y + th / 2);
       ctx.closePath();
-      ctx.stroke();
       break;
+    }
 
-    case 'semicircle':
+    case 'semicircle': {
       // 半圆塔 - 半圆形（开口朝向攻击方向）
       const sr = 11;
+      approxR = sr;
       ctx.beginPath();
-      // 绘制下半圆（开口朝上），旋转后开口会朝向攻击方向
-      // 需要减去90度偏移来修正朝向
       ctx.arc(x, y, sr, -Math.PI / 2, Math.PI / 2);
       ctx.closePath();
-      ctx.stroke();
       break;
+    }
 
-    case 'sector':
+    case 'sector': {
       // 扇塔 - 扇形
       const secR = 11;
+      approxR = secR;
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.arc(x, y, secR, -Math.PI / 4, Math.PI / 4);
       ctx.closePath();
-      ctx.stroke();
       break;
+    }
 
-    case 'long_rectangle':
-      // 长方形 - 仅边框
+    case 'long_rectangle': {
+      // 长方形 - 圆角长方形
       const rectW = 22;
       const rectH = 14;
-      ctx.strokeRect(x - rectW / 2, y - rectH / 2, rectW, rectH);
+      approxR = rectW / 2;
+      ctx.beginPath();
+      ctx.roundRect(x - rectW / 2, y - rectH / 2, rectW, rectH, 3);
       break;
+    }
   }
+
+  // 套用统一立体样式（渐变填充 + 光泽 + 描边）
+  applyTowerStyle(ctx, x, y, color, approxR);
 
   ctx.restore();
 }
@@ -692,6 +928,149 @@ function drawWaveTitle(ctx, cx, cy, w, h, text) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, cx, cy);
+}
+
+// ========== 波次标题动态动画（倒计时滚轮 + 进攻开始 + 标题滑入） ==========
+
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeOutBack(t) { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); }
+
+/**
+ * 绘制"滚轮数字"（odometer 风格）：数字 5→4→3→2→1 在窗口内连续滚动。
+ * reelIndex 为浮点（0=显示5，4=显示1），随倒计时连续变化即产生滚动感。
+ * @param {object} ctx 画布
+ * @param {number} cx 窗口中心x
+ * @param {number} cy 窗口中心y
+ * @param {number} reelIndex 0..4（浮点）
+ */
+function drawReel(ctx, cx, cy, reelIndex) {
+  const digits = ['5', '4', '3', '2', '1'];
+  const H = 56;            // 每个数字格高
+  const winW = 74;         // 窗口宽
+  const winH = H;          // 窗口高
+  const x = cx - winW / 2;
+  const yTop = cy - winH / 2;
+
+  // 面板底
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+  ctx.beginPath();
+  ctx.roundRect(x - 4, yTop - 4, winW + 8, winH + 8, 10);
+  ctx.fill();
+
+  // 裁剪到窗口，画滚动数字
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, yTop, winW, winH);
+  ctx.clip();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 46px Arial';
+  const offY = -reelIndex * H;
+  for (let i = 0; i < digits.length; i++) {
+    const cellCy = yTop + i * H + offY + H / 2;
+    const dist = Math.abs(cellCy - cy);
+    ctx.globalAlpha = Math.max(0, 1 - dist / (H * 1.1));
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 3;
+    ctx.fillText(digits[i], cx, cellCy);
+  }
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+
+  // 上下渐隐（滚轮纵深）
+  const fade = ctx.createLinearGradient(0, yTop, 0, yTop + winH);
+  fade.addColorStop(0,    'rgba(26,26,46,0.85)');
+  fade.addColorStop(0.3,  'rgba(26,26,46,0)');
+  fade.addColorStop(0.7,  'rgba(26,26,46,0)');
+  fade.addColorStop(1,    'rgba(26,26,46,0.85)');
+  ctx.fillStyle = fade;
+  ctx.fillRect(x, yTop, winW, winH);
+  ctx.restore();
+
+  // 窗口描边
+  ctx.strokeStyle = THEME.border.strong;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(x - 4, yTop - 4, winW + 8, winH + 8, 10);
+  ctx.stroke();
+}
+
+/**
+ * 波次倒计时动画舞台（在波次之间播放）：
+ *   第一秒：旧"第 N 波"标题从西面被顶上去并淡出，同时滚轮从 5 开始滚；
+ *   中间：  滚轮 5→4→3→2→1 连续滚动；
+ *   最后一秒："进攻开始"放大冲入。
+ * 完全由 remaining(=waitTimer) 驱动，纯函数，跨重启稳健。
+ * @param {object} game 游戏实例
+ * @param {number} cx 中心x
+ * @param {number} cy 中心y
+ * @param {number} remaining 剩余倒计时（秒）
+ * @param {number} waitDuration 总倒计时（秒）
+ */
+function drawWaveCountdown(game, cx, cy, remaining, waitDuration) {
+  const ctx = game.ctx;
+  ctx.save();
+
+  // ---- 旧波次标题：从西面被往上顶 + 淡出（第一窗口内完成）----
+  const introP = (remaining > waitDuration - 1)
+    ? Math.min(1, Math.max(0, (waitDuration - remaining) / 1))
+    : 1;
+  if (game.currentWave > 0) {
+    const eased = easeOutCubic(Math.min(1, introP));
+    if (eased < 1) {
+      const waveText = `第 ${game.currentWave} 波`;
+      ctx.globalAlpha = 1 - eased;
+      drawWaveTitle(ctx, cx - 60 * eased, cy - 70 * eased, 140, 40, waveText);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  if (remaining <= 1) {
+    // ---- 进攻开始：放大冲入 + 金色发光 ----
+    const goP = Math.min(1, Math.max(0, (1 - remaining) / 1));
+    const scale = 0.55 + 0.45 * easeOutBack(goP);
+    const alpha = Math.min(1, goP * 2.5);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(cx, cy);
+    ctx.scale(scale, scale);
+    ctx.shadowColor = THEME.accent.gold;
+    ctx.shadowBlur = 22;
+    ctx.fillStyle = THEME.accent.gold;
+    ctx.font = 'bold 40px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('进攻开始', 0, 0);
+    ctx.restore();
+  } else {
+    // ---- 滚轮数字：5→4→3→2→1 连续滚动 ----
+    const reelIndex = Math.max(0, Math.min(4, waitDuration - remaining));
+    drawReel(ctx, cx, cy, reelIndex);
+  }
+
+  ctx.restore();
+}
+
+/**
+ * 波次标题（波次进行中显示），带"滑入"动画：波次刚开始时从上方滑落到位。
+ * @param {object} game 游戏实例
+ */
+function drawWaveTitleAnimated(game, cx, cy, w, h, text) {
+  const ctx = game.ctx;
+  const now = Date.now();
+  const elapsed = (game.waveStartStamp > 0) ? (now - game.waveStartStamp) / 1000 : 1;
+  if (elapsed >= 0.6) {
+    drawWaveTitle(ctx, cx, cy, w, h, text);
+    return;
+  }
+  const p = Math.max(0, Math.min(1, elapsed / 0.6));
+  const eased = easeOutCubic(p);
+  ctx.save();
+  ctx.globalAlpha = eased;
+  drawWaveTitle(ctx, cx, cy - 40 * (1 - eased), w, h, text);
+  ctx.restore();
 }
 
 /**

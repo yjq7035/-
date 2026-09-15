@@ -50,6 +50,12 @@ function spawnEnemy(type, pathPoints, waveNumber) {
   enemy.reward = config.reward + (config.rewardPerWave || 0) * (waveNumber || 1);
   enemy.size = config.size;
   enemy.progress = 0;
+  // 初始朝向：取路径第一段切线方向（首帧即有正确朝向，供渲染朝向指示器）
+  if (pathPoints.length >= 2) {
+    enemy.facing = Math.atan2(pathPoints[1].y - pathPoints[0].y, pathPoints[1].x - pathPoints[0].x);
+  } else {
+    enemy.facing = 0;
+  }
 
   return enemy;
 }
@@ -70,6 +76,23 @@ function updateEnemy(enemy, deltaTime, pathPoints) {
   const pos = getPathPosition(pathPoints, enemy.progress);
   enemy.x = pos.x;
   enemy.y = pos.y;
+
+  // 记录行进朝向（供渲染朝向指示器使用）：取当前位置所在路径段的切线方向
+  if (pathPoints.length >= 2) {
+    const targetDistance = enemy.progress * pathLength;
+    let acc = 0;
+    for (let i = 1; i < pathPoints.length; i++) {
+      const segLen = Math.sqrt(
+        (pathPoints[i].x - pathPoints[i-1].x) ** 2 + (pathPoints[i].y - pathPoints[i-1].y) ** 2
+      );
+      if (acc + segLen >= targetDistance) {
+        enemy.facing = Math.atan2(pathPoints[i].y - pathPoints[i-1].y, pathPoints[i].x - pathPoints[i-1].x);
+        break;
+      }
+      acc += segLen;
+    }
+  }
+
   return false;
 }
 

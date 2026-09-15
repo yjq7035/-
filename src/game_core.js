@@ -67,6 +67,9 @@ class Game {
     // 倒计时显示
     this.countdownText = '';
 
+    // 波次标题滑入动画起点（用于"进攻开始"后新波次标题滑入的缓动）
+    this.waveStartStamp = 0;
+
     // 时间管理
     this.lastTime = Date.now();
     this.isRunning = true;
@@ -304,6 +307,7 @@ class Game {
     this.enemiesToSpawn = waveMod.generateWave(this.currentWave);
     this.spawnTimer = 0;
     this.waveInProgress = true;
+    this.waveStartStamp = Date.now(); // 记录波次开始时间，驱动标题滑入动画
   }
 
   /**
@@ -339,6 +343,7 @@ class Game {
     this.waveInProgress = false;
     this.waitTimer = this.waitDuration;
     this.countdownText = '';
+    this.waveStartStamp = 0;
 
     // 重置槽位
     this.slots = this.calculateSlots();
@@ -400,6 +405,7 @@ class Game {
     this.enemiesToSpawn = waveMod.generateWave(this.currentWave);
     this.spawnTimer = 0;
     this.waveInProgress = true;
+    this.waveStartStamp = Date.now();
 
     // 获得当前波次 * 500 金币
     this.gold += this.currentWave * 500;

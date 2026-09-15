@@ -85,7 +85,7 @@ const BALANCE = {
   refreshCost: 10,
   refreshCostStep: 5,
   spawnInterval: 1.0,
-  waitDuration: 5,
+  waitDuration: 6, // 波间歇倒计时：给动态标题（5→4→3→2→1→进攻开始）留 6 秒舞台
   totalWaves: 20,
 };
 
