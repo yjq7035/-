@@ -35,10 +35,10 @@ const TOWER_STATS = {
   triangle:      { hp: 100, damage: 20, range: 200, attackSpeedMultiplier: 100, attackInterval: 0.5, isSupport: false, description: '快速射击，对单个目标造成持续伤害。适合应对大量敌人。' },
   circle:        { hp: 150, damage: 25, range: 200, attackSpeedMultiplier: 100, attackInterval: 0.8, isSupport: false, description: '攻击命中时触发二次爆炸，对周围敌人造成25%溅射伤害。适合对付聚集的敌人。' },
   hexagon:       { hp: 200, damage: 50, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.2, isSupport: false, description: '强力狙击射击，对单一目标造成高额伤害。对精英及以上等级怪物特攻，伤害翻倍。' },
-  square:        { hp: 220, damage: 55, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.0, isSupport: false, description: '旋转冲锋攻击，直线穿透多个敌人。均衡的单体输出，适合应对各类敌人。' },
+  square:        { hp: 220, damage: 30, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.5, isSupport: false, description: '旋转冲锋攻击，直线穿透多个敌人。均衡的单体输出，适合应对各类敌人。' },
   trapezoid:     { hp: 230, damage: 0, range: 150, attackSpeedMultiplier: 0, isSupport: true, supportBuff: { attackSpeedMultiplier: 25 }, description: '辅助塔，不提供攻击。给周围我方图形塔增加25%攻击速度光环；自身每进阶一星光环强度+100%，高阶光环覆盖低阶光环。' },
   semicircle:    { hp: 130, damage: 2, range: 200, attackSpeedMultiplier: 100, attackInterval: 0.15, isSupport: false, description: '持续激光连接目标，对连接的敌人造成持续伤害。适合对付高血量单体目标。' },
-  sector:        { hp: 180, damage: 40, range: 250, attackSpeedMultiplier: 100, attackInterval: 2.0, isSupport: false, description: '扇形范围攻击，AOE伤害覆盖大面积区域。适合对付密集敌人群。' },
+  sector:        { hp: 180, damage: 25, range: 250, attackSpeedMultiplier: 100, attackInterval: 3.0, isSupport: false, description: '扇形范围攻击，AOE伤害覆盖大面积区域。适合对付密集敌人群。' },
   long_rectangle:{ hp: 250, damage: 2, range: 200, attackSpeedMultiplier: 100, attackInterval: 0.25, isSupport: false, description: '堆叠火炮系统，对重复单位攻击时叠加伤害，累积层数后造成巨额爆发。适合对付BOSS级别敌人。' },
 };
 

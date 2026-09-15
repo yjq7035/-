@@ -248,7 +248,7 @@ function drawSlots(game) {
 }
 
 /**
- * 绘制敌人（怪物）：立体渐变本体 + 朝向鼻锥 + 等级点缀。
+ * 绘制敌人（怪物）：立体渐变本体 + 等级点缀。
  * 血条已拆分为独立图层（drawEnemyHpBar），在所有怪物之后统一绘制，
  * 避免被后绘制的怪物本体遮挡（withHpBar 默认 true 保留兼容）。
  */
@@ -259,7 +259,6 @@ function drawEnemy(game, enemy, withHpBar = true) {
   const s = enemy.size;
   const half = s / 2;
   const color = enemy.color;
-  const facing = (enemy.facing !== undefined) ? enemy.facing : 0;
 
   ctx.save();
 
@@ -267,22 +266,6 @@ function drawEnemy(game, enemy, withHpBar = true) {
   ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
   ctx.beginPath();
   ctx.ellipse(enemy.x, enemy.y + half * 0.7, half * 1.05, half * 0.4, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // ---- 朝向鼻锥（行进方向的小楔形，让"朝哪走"一眼可见）----
-  const noseLen = s * 0.5;
-  const nx = Math.cos(facing), ny = Math.sin(facing);
-  const perpX = -ny, perpY = nx;
-  const tipX = enemy.x + nx * (half + noseLen);
-  const tipY = enemy.y + ny * (half + noseLen);
-  const baseL = { x: enemy.x + nx * half * 0.6 + perpX * half * 0.5, y: enemy.y + ny * half * 0.6 + perpY * half * 0.5 };
-  const baseR = { x: enemy.x + nx * half * 0.6 - perpX * half * 0.5, y: enemy.y + ny * half * 0.6 - perpY * half * 0.5 };
-  ctx.fillStyle = shade(color, -0.15);
-  ctx.beginPath();
-  ctx.moveTo(tipX, tipY);
-  ctx.lineTo(baseL.x, baseL.y);
-  ctx.lineTo(baseR.x, baseR.y);
-  ctx.closePath();
   ctx.fill();
 
   // ---- 本体：圆角方块 + 径向渐变（左上亮 → 右下暗，立体）----
@@ -352,7 +335,7 @@ function drawEnemy(game, enemy, withHpBar = true) {
 /**
  * 绘制怪物血条（独立图层）。
  * 在所有怪物本体绘制完成后统一调用，保证血条压在所有怪物之上，
- * 不会被同层其他怪物（本体/鼻锥/王冠）挡住。
+ * 不会被同层其他怪物（本体/王冠）挡住。
  */
 function drawEnemyHpBar(game, enemy) {
   if (!enemy.alive || enemy.hp >= enemy.maxHp) return;
@@ -947,28 +930,98 @@ function getTowerStats(type) {
   return TOWER_STATS[type] || TOWER_STATS.triangle;
 }
 
+/**
+ * 计算拖放落点槽位（手指下的放置槽），返回 slot 或 null
+ */
+function findDropTargetSlot(game, pos) {
+  for (const slot of game.slots) {
+    if (pos.x >= slot.x && pos.x <= slot.x + slot.size &&
+        pos.y >= slot.y && pos.y <= slot.y + slot.size) {
+      return slot;
+    }
+  }
+  return null;
+}
+
+/**
+ * 拖放合法性：place=可放置(空槽) / merge=可合成(同类型塔) / invalid=不可(类型不符或自身) / none=无落点
+ */
+function dropValidity(game, slot, dragType) {
+  if (!slot) return 'none';
+  if (slot === game.draggingFromSlot) return 'invalid';
+  if (slot.occupied && slot.tower) {
+    return slot.tower.type === dragType ? 'merge' : 'invalid';
+  }
+  return 'place';
+}
+
 function drawDragPreview(game) {
   if (!game.dragging || !game.dragType) return;
 
   const ctx = game.ctx;
   const towerConfig = TOWER_DEFS[game.dragType];
   const cost = towerConfig.cost;
-  const canAfford = game.gold >= cost;
+  const canAfford = game.gold >= cost || !game.dragFromShop;
 
-  // 绘制拖拽的塔预览
-  ctx.save();
-  ctx.globalAlpha = canAfford ? 0.7 : 0.5;
+  const pos = { x: game.dragX, y: game.dragY };
+  const targetSlot = findDropTargetSlot(game, pos);
+  const validity = dropValidity(game, targetSlot, game.dragType);
 
-  if (!canAfford) {
-    ctx.fillStyle = THEME.accent.danger;
-  } else {
-    ctx.fillStyle = towerConfig.color;
+  // ---- 1. 落点槽高亮（金色=可放置/合成，红色=不可）----
+  if (targetSlot && validity !== 'none') {
+    const good = validity === 'place' || validity === 'merge';
+    const rgb = good ? '255, 215, 0' : '255, 68, 68';
+    ctx.save();
+    ctx.fillStyle = `rgba(${rgb}, 0.18)`;
+    ctx.strokeStyle = `rgba(${rgb}, 0.9)`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(targetSlot.x - 2, targetSlot.y - 2, targetSlot.size + 4, targetSlot.size + 4, THEME.radius.small);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
   }
-  ctx.strokeStyle = THEME.text.primary;
-  ctx.lineWidth = 2;
-  // 绘制对应类型的塔图标（使用 drawTowerIcon 显示具体形状）
-  drawTowerIcon(ctx, game.dragX, game.dragY, THEME.text.primary, game.dragType);
 
+  // ---- 2. 来源槽变暗（拖走后"腾空"的视觉暗示，与放置槽拖拽一致）----
+  let sourceSlot = null;
+  if (game.dragFromShop && game.dragShopIdx !== undefined) {
+    // 商店槽位置与 getShopSlots 一致
+    const towerTypes = game.refreshTowerTypes;
+    const slotWidth = LAYOUT.shopSlotWidth;
+    const gap = LAYOUT.shopGap;
+    const totalWidth = towerTypes.length * slotWidth + (towerTypes.length - 1) * gap;
+    const startX = (game.canvas.width - totalWidth) / 2;
+    const shopY = game.canvas.height - LAYOUT.shopBarYOffset;
+    sourceSlot = { x: startX + game.dragShopIdx * (slotWidth + gap), y: shopY, size: slotWidth, slotW: slotWidth, slotH: LAYOUT.shopSlotHeight };
+  } else if (game.draggingFromSlot) {
+    sourceSlot = game.draggingFromSlot;
+  }
+  if (sourceSlot) {
+    const w = sourceSlot.slotW || sourceSlot.size;
+    const h = sourceSlot.slotH || sourceSlot.size;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.beginPath();
+    ctx.roundRect(sourceSlot.x, sourceSlot.y, w, h, THEME.radius.medium);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ---- 3. 拖拽幽灵塔（抬起感：阴影 + 放大 + 半透明，金币不足时偏红）----
+  ctx.save();
+  ctx.globalAlpha = 0.85;
+
+  // 地面阴影（椭圆，制造"离地"感）
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.30)';
+  ctx.beginPath();
+  ctx.ellipse(pos.x, pos.y + 14, 16, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 放大 1.15 倍绘制图标（围绕手指中心）
+  ctx.translate(pos.x, pos.y);
+  ctx.scale(1.15, 1.15);
+  ctx.translate(-pos.x, -pos.y);
+  drawTowerIcon(ctx, pos.x, pos.y, canAfford ? towerConfig.color : THEME.accent.danger, game.dragType);
   ctx.restore();
 }
 
@@ -1318,11 +1371,13 @@ function drawUI(game) {
     const type = towerTypes[i];
     const t = TOWER_DEFS[type];
     const x = startX + i * (slotWidth + gap);
-    const isSelected = game.dragging && game.dragFromShop && game.dragType === type;
+    const isSelected = game.dragFromShop && game.dragType === type && (game.dragging || game.pendingDrag);
+    const isPressed = isButtonPressed(game, 'shop:' + i);
+    const highlighted = isSelected || isPressed;
     const isEmpty = game.shopSlotState[i] && game.shopSlotState[i].empty;
 
     // 槽位 - 方形 + 柔和渐变，与生存条风格统一
-    if (isSelected) {
+    if (highlighted) {
       // 选中：柔和金色高亮
       const selGrad = ctx.createLinearGradient(x, 0, x + slotWidth, 0);
       selGrad.addColorStop(0, 'rgba(255, 215, 155, 0.45)');

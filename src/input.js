@@ -6,7 +6,7 @@
 const { TOWER_DEFS, LAYOUT, PLAYER } = require('./config');
 const towerMod = require('./tower');
 
-const DRAG_THRESHOLD = 10; // 移动阈值（像素），超过则认定为拖放
+const DRAG_THRESHOLD = 8; // 移动阈值（像素），超过则认定为拖放（放低门槛让商店槽更容易"动起来"，跟放置槽手感一致）
 
 /**
  * 取触摸坐标
@@ -167,16 +167,8 @@ function handleTouchStart(game, e) {
 
     if (pos.x >= s.x && pos.x <= s.x + s.w &&
         pos.y >= s.y && pos.y <= s.y + s.h) {
-      // 金币足够才能拖放/选中
-      const t = TOWER_DEFS[s.type];
-      if (game.gold < t.cost) {
-        // 金币不足 → 也弹出属性面板让玩家看（只读）
-        game.showPanel = true;
-        game.panelTowerType = s.type;
-        game.selectedTower = null;
-        game.touchStartPos = null;
-        return;
-      }
+      // 金币足够才能"购买放置"，但允许拖拽预览（金币不足时放置会被 tryPlaceTower 拦下并红色闪烁，
+      // 与放置槽一致：按下→拖拽 永远能"动起来"，不会因为穷而点不动/拖不动）
 
       // 设置 pendingDrag：此时还不确定用户是想点击还是拖放
       game.pendingDrag = true;
@@ -186,6 +178,8 @@ function handleTouchStart(game, e) {
       game.dragFromShop = true; // 从商店拖放
       game.dragX = pos.x;
       game.dragY = pos.y;
+      // 按压态反馈：按住商店槽期间渲染"被按下"的样式（与刷新按钮一致，弥补放置槽"按下即亮"的顺滑感）
+      pressButton(game, 'shop:' + s.idx);
       return;
     }
   }
@@ -240,7 +234,7 @@ function handleTouchEnd(game, e) {
   // ========== 场景 A：真正的拖放结束 ==========
   if (game.dragging) {
     const placed = tryPlaceTowerAtPos(game, game.dragType, pos);
-    
+
     if (placed) {
       // 放置成功：清除原槽位。
       // 移动场景下（从槽拖到另一空槽）原槽位的塔已在 tryPlaceTower 中移到目标槽，
@@ -253,9 +247,12 @@ function handleTouchEnd(game, e) {
       if (game.dragShopIdx !== undefined) {
         game.shopSlotState[game.dragShopIdx].empty = true;
       }
+    } else if (game.dragFromShop) {
+      // 从商店拖放失败（最可能是金币不足）：红色闪烁提示，而不是"没反应"
+      flashButton(game, getShopSlots(game).slots[game.dragShopIdx], '255,68,68');
     }
-    // 放置失败：不做任何动作，保留原槽位
-    
+    // 放置失败（移动场景）：不做任何动作，保留原槽位
+
     _resetDragState(game);
     return;
   }
@@ -346,6 +343,7 @@ function _resetDragState(game) {
   game.draggingFromSlot = null;
   game.dragFromShop = false;
   game.touchStartPos = null;
+  releaseButton(game); // 拖放结束，清除商店槽按压态
 }
 
 // ==================== 拖放底层函数 ====================

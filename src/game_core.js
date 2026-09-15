@@ -577,8 +577,8 @@ class Game {
         }
         
         if (nearestTarget && this.findSectorTarget(tower)) {
-          // 基础攻击间隔 2.0秒，应用攻击速度乘数（使用光环管理器计算）
-          const effectiveInterval = 2.0 / (effectiveAttackSpeed / 100);
+          // 基础攻击间隔 3.0秒，应用攻击速度乘数（使用光环管理器计算）
+          const effectiveInterval = 3.0 / (effectiveAttackSpeed / 100);
           tower.attackTimer = effectiveInterval;
           this.fireSectorAOE(tower);
         }
@@ -598,7 +598,7 @@ class Game {
       // 正方塔：旋转弹道直线冲锋
       if (tower.type === 'square') {
         if (nearestTarget) {
-          const effectiveInterval = 1.0 / (effectiveAttackSpeed / 100);
+          const effectiveInterval = 1.5 / (effectiveAttackSpeed / 100);
           tower.attackTimer = effectiveInterval;
           this.fireSquareProjectile(tower, nearestTarget);
         }
