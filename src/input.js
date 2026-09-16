@@ -1,12 +1,30 @@
-// 输入层：触摸事件处理
-// 点击 vs 拖放识别：touchstart 记录起点，touchmove 超过阈值(~10px)认定为拖放。
-// - 点击商店槽 → 弹出塔属性面板
-// - 点击已有塔槽 → 弹出该塔属性面板
-// - 拖放商店塔到空槽 → 放置 / 融合进阶
+// ============================================================================
+// 输入层：触摸事件处理 + 全局路由
+// ----------------------------------------------------------------------------
+// 路由优先级（自上而下，先命中先返回）：
+//   ① 拖放进行中 → 只更新拖拽坐标
+//   ② 结算界面   → 吞掉全部触摸，只处理重新开始 / 重新挑战
+//   ③ 关卡选择浮层（模态）
+//   ④ 底部导航栏（导航永远可点，除非结算界面遮住）
+//   ⑤ 图签 / 天赋场景的界面交互
+//   ⑥ 战斗场景：塔属性面板 → 顶部状态栏(关卡徽标) → 放置槽 → 商店（刷新/塔卡）
+//
+// 坐标一律来自各模块导出的纯布局函数（shop.getShopLayout / nav.getNavLayout /
+// codex.getCodexLayout / talents.getTalentLayout / levels.getLevelLayout），
+// 渲染层与输入层共用同一份真源，不存在"画在一处、点在另一处"。
+// ============================================================================
 const { TOWER_DEFS, LAYOUT, PLAYER } = require('./config');
+const theme = require('./theme');
 const towerMod = require('./tower');
+const shop = require('./shop');
+const nav = require('./nav');
+const codex = require('./codex');
+const talents = require('./talents');
+const levels = require('./levels');
 
 const DRAG_THRESHOLD = 8; // 移动阈值（像素），超过则认定为拖放（放低门槛让商店槽更容易"动起来"，跟放置槽手感一致）
+
+const { THEME } = theme;
 
 /**
  * 取触摸坐标
@@ -22,62 +40,17 @@ function getTouchPos(e) {
 }
 
 /**
- * 根据 refreshTowerTypes 计算商店槽矩形区域
- * 返回 { slots: [{type, x, y, w, h, idx}], refreshBtn: {x, y, w, h} }
- */
-function getShopLayout(canvas) {
-  const height = canvas.height;
-  const towerTypes = canvas._game_refresh || []; // 由外部 game.refreshTowerTypes 决定，
-                                                  // 实际调用者传入 game，见下方 getShopSlots
-  return { towerTypes, height };
-}
-
-/**
- * 计算每个商店槽的位置和尺寸，返回数组
- */
-function getShopSlots(game) {
-  const canvas = game.canvas;
-  const towerTypes = game.refreshTowerTypes;
-  const slotWidth = LAYOUT.shopSlotWidth;
-  const slotHeight = LAYOUT.shopSlotHeight;
-  const gap = LAYOUT.shopGap;
-  const totalWidth = towerTypes.length * slotWidth + (towerTypes.length - 1) * gap;
-  const startX = (canvas.width - totalWidth) / 2;
-  const shopY = canvas.height - LAYOUT.shopBarYOffset;
-
-  const slots = [];
-  for (let i = 0; i < towerTypes.length; i++) {
-    slots.push({
-      type: towerTypes[i],
-      idx: i,
-      x: startX + i * (slotWidth + gap),
-      y: shopY,
-      w: slotWidth,
-      h: slotHeight,
-    });
-  }
-
-  const btnX = startX + towerTypes.length * (slotWidth + gap) - 5;
-  const btnY = canvas.height - LAYOUT.refreshBtnClick.yOffset;
-
-  return {
-    slots,
-    refreshBtn: {
-      x: btnX,
-      y: btnY,
-      w: LAYOUT.refreshBtnClick.w,
-      h: LAYOUT.refreshBtnClick.h,
-    },
-  };
-}
-
-/**
  * 计算起点到当前位置的欧几里得距离
  */
 function dist(p1, p2) {
   const dx = p1.x - p2.x;
   const dy = p1.y - p2.y;
   return Math.sqrt(dx * dx + dy * dy);
+}
+
+/** 给一条轻提示（统一入口，避免各处自己拼 game.toast） */
+function toast(game, text, color) {
+  game.toast = { text: text, color: color || THEME.text.secondary, t0: Date.now() };
 }
 
 function handleTouchStart(game, e) {
@@ -87,7 +60,7 @@ function handleTouchStart(game, e) {
   // 正在拖放中不应再触发新的 start
   if (game.dragging || game.pendingDrag) return;
 
-  // ========== 结算界面：吞掉全部触摸，只处理按钮按压 ==========
+  // ========== ① 结算界面：吞掉全部触摸，只处理按钮按压 ==========
   if (game.gameOver) {
     const btns = game.gameOverButtons;
     if (btns && isPointInRect(pos, btns.restart)) {
@@ -102,10 +75,77 @@ function handleTouchStart(game, e) {
     return;
   }
 
+  // ========== ② 关卡选择浮层（模态）==========
+  if (game.showLevels) {
+    const hit = levels.hitLevelSelect(game, pos);
+    game.touchStartPos = null;
+
+    if (hit.kind === 'level') {
+      pressButton(game, 'levels:play');
+      const ok = game.startLevel(hit.id);
+      if (ok) toast(game, `进入关卡 ${hit.id}`, THEME.accent.gold);
+      return;
+    }
+    if (hit.kind === 'locked') {
+      pressButton(game, 'levels:locked');
+      toast(game, '该关卡待扩展', THEME.text.dim);
+      return;
+    }
+    pressButton(game, 'levels:close');
+    game.showLevels = false;
+    return;
+  }
+
+  // ========== ③ 底部导航栏 ==========
+  if (pos.y >= canvas.height - LAYOUT.navHeight) {
+    const id = nav.hitNav(game, pos);
+    const item = id ? nav.NAV_ITEMS.filter((x) => x.id === id)[0] : null;
+    if (item && !item.disabled) {
+      pressButton(game, 'nav:' + id);
+    } else if (item) {
+      toast(game, `「${item.label}」待扩展`, THEME.text.dim);
+    }
+    game.touchStartPos = null;
+    return;
+  }
+
+  // ========== ④ 图签场景 ==========
+  if (game.scene === 'codex') {
+    const hit = codex.hitCodex(game, pos);
+    game.touchStartPos = null;
+
+    if (hit.kind === 'card') {
+      // 再点同一张卡 → 收起详情面板
+      game.codexSelected = (game.codexSelected === hit.type) ? null : hit.type;
+      pressButton(game, 'codex:card');
+    } else if (hit.kind === 'upgrade') {
+      pressButton(game, 'codex:up:' + hit.type);
+      codex.actCodex(game, 'upgrade', hit.type);
+    } else if (hit.kind === 'lineup') {
+      pressButton(game, 'codex:lineup:' + hit.type);
+      codex.actCodex(game, 'lineup', hit.type);
+    } else if (hit.kind === 'close') {
+      game.codexSelected = null;
+    }
+    return;
+  }
+
+  // ========== ⑤ 天赋场景 ==========
+  if (game.scene === 'talents') {
+    const hit = talents.hitTalents(game, pos);
+    game.touchStartPos = null;
+    if (hit && hit.kind === 'learn') {
+      pressButton(game, 'talent:' + hit.id);
+      talents.learn(game, hit.id);
+    }
+    return;
+  }
+
+  // ========== ⑥ 战斗场景 ==========
   // 记录起点（用于点击/拖放区分）
   game.touchStartPos = { x: pos.x, y: pos.y };
 
-  // 如果正在显示属性面板，点击面板内外都会关闭
+  // 正在显示塔属性面板 → 点任意处关闭（点面板内也是关闭，与原行为一致）
   if (game.showPanel) {
     game.showPanel = false;
     game.panelTowerType = null;
@@ -114,22 +154,21 @@ function handleTouchStart(game, e) {
     return;
   }
 
-  // ========== 1. 放置槽（已有塔）==========
+  // ---- 顶部状态栏：关卡徽标 → 打开关卡选择 ----
+  if (pos.y <= LAYOUT.topBarHeight) {
+    if (isPointInRect(pos, levels.getLevelBadgeRect(game))) {
+      pressButton(game, 'levelBadge');
+      game.showLevels = true;
+    }
+    game.touchStartPos = null;
+    return;
+  }
+
+  // ---- 1. 放置槽（已有塔）----
   for (const slot of game.slots) {
     if (slot.occupied && slot.tower &&
         pos.x >= slot.x && pos.x <= slot.x + slot.size &&
         pos.y >= slot.y && pos.y <= slot.y + slot.size) {
-      // 金币足够才能拖放/选中
-      const t = TOWER_DEFS[slot.tower.type];
-      // 金币不足 → 也弹出属性面板让玩家看（只读）（已注释，点击不再弹出）
-      // if (game.gold < t.cost) {
-      //   game.showPanel = true;
-      //   game.panelTowerType = slot.tower.type;
-      //   game.selectedTower = slot.tower;
-      //   game.touchStartPos = null;
-      //   return;
-      // }
-
       // 设置 pendingDrag：此时还不确定用户是想点击还是拖放
       game.pendingDrag = true;
       game.dragType = slot.tower.type;
@@ -142,44 +181,33 @@ function handleTouchStart(game, e) {
     }
   }
 
-  // ========== 2. 刷新按钮 ==========
-  const shopLayout = getShopSlots(game);
-  const { refreshBtn, slots: shopSlots } = shopLayout;
-
-  if (pos.x >= refreshBtn.x && pos.x <= refreshBtn.x + refreshBtn.w &&
-      pos.y >= refreshBtn.y && pos.y <= refreshBtn.y + refreshBtn.h) {
-    pressButton(game, 'refresh');
-    if (game.gold >= game.refreshCost) {
-      game.refreshTowers();
-      flashButton(game, refreshBtn, '146,197,255');
-    } else {
-      // 金币不足：红色反馈
-      flashButton(game, refreshBtn, '255,68,68');
+  // ---- 2. 商店（重做版）：刷新按钮 / 塔卡 ----
+  const shopHit = shop.hitShop(game, pos);
+  if (shopHit) {
+    if (shopHit.kind === 'refresh') {
+      pressButton(game, 'refresh');
+      if (game.gold >= game.refreshCost) {
+        game.refreshTowers();
+        flashButton(game, shopHit.rect, '146,197,255');
+      } else {
+        // 金币不足：红色反馈
+        flashButton(game, shopHit.rect, '255,68,68');
+        toast(game, '金币不足，无法刷新', THEME.accent.danger);
+      }
+      game.touchStartPos = null;
+      return;
     }
-    game.touchStartPos = null;
-    return;
-  }
 
-  // ========== 3. 商店塔槽 ==========
-  for (const s of shopSlots) {
-    // 跳过已空的槽
-    if (game.shopSlotState[s.idx] && game.shopSlotState[s.idx].empty) continue;
-
-    if (pos.x >= s.x && pos.x <= s.x + s.w &&
-        pos.y >= s.y && pos.y <= s.y + s.h) {
-      // 金币足够才能"购买放置"，但允许拖拽预览（金币不足时放置会被 tryPlaceTower 拦下并红色闪烁，
-      // 与放置槽一致：按下→拖拽 永远能"动起来"，不会因为穷而点不动/拖不动）
-
-      // 设置 pendingDrag：此时还不确定用户是想点击还是拖放
+    if (shopHit.kind === 'card') {
+      // 金币不足也能按住拖动（放置失败时才红色闪烁），保证"永远拖得动"
       game.pendingDrag = true;
-      game.dragType = s.type;
-      game.dragShopIdx = s.idx;
+      game.dragType = shopHit.type;
+      game.dragShopIdx = shopHit.idx;
       game.draggingFromSlot = null;
       game.dragFromShop = true; // 从商店拖放
       game.dragX = pos.x;
       game.dragY = pos.y;
-      // 按压态反馈：按住商店槽期间渲染"被按下"的样式（与刷新按钮一致，弥补放置槽"按下即亮"的顺滑感）
-      pressButton(game, 'shop:' + s.idx);
+      pressButton(game, 'shop:' + shopHit.idx);
       return;
     }
   }
@@ -212,7 +240,7 @@ function handleTouchMove(game, e) {
 function handleTouchEnd(game, e) {
   const pos = getTouchPos(e);
 
-  // ========== 游戏结束界面按钮点击 ==========\
+  // ========== 结算界面按钮点击 ==========
   if (game.gameOver && !game.watchingVideo) {
     const btns = game.gameOverButtons;
     if (btns && isPointInRect(pos, btns.restart)) {
@@ -229,6 +257,8 @@ function handleTouchEnd(game, e) {
       game.touchStartPos = null;
       return;
     }
+    releaseButton(game);
+    return;
   }
 
   // ========== 场景 A：真正的拖放结束 ==========
@@ -243,13 +273,16 @@ function handleTouchEnd(game, e) {
       if (fromSlot) {
         removeSlotTower(game, fromSlot);
       }
-      // 如果是从商店槽拖放，标记商店槽为空
-      if (game.dragShopIdx !== undefined) {
+      // 如果是从商店槽拖放，标记商店卡为空
+      if (game.dragShopIdx !== undefined && game.shopSlotState[game.dragShopIdx]) {
         game.shopSlotState[game.dragShopIdx].empty = true;
       }
     } else if (game.dragFromShop) {
       // 从商店拖放失败（最可能是金币不足）：红色闪烁提示，而不是"没反应"
-      flashButton(game, getShopSlots(game).slots[game.dragShopIdx], '255,68,68');
+      const card = shop.getShopLayout(game).cards[game.dragShopIdx];
+      if (card) flashButton(game, card, '255,68,68');
+      const cost = game.towerCost(game.dragType);
+      if (game.gold < cost) toast(game, `金币不足（需要 ${cost}）`, THEME.accent.danger);
     }
     // 放置失败（移动场景）：不做任何动作，保留原槽位
 
@@ -265,15 +298,29 @@ function handleTouchEnd(game, e) {
       game.showPanel = true;
       game.panelTowerType = game.draggingFromSlot.tower.type;
       game.selectedTower = game.draggingFromSlot.tower;
-      game.touchStartPos = null;
-    } else {
+    } else if (game.dragType) {
       // 点击商店塔 → 弹出塔属性面板（类型预览）
       game.showPanel = true;
       game.panelTowerType = game.dragType;
       game.selectedTower = null;
-      game.touchStartPos = null;
     }
     _resetDragState(game);
+    return;
+  }
+
+  // ========== 场景 C：底部导航栏点按 ==========
+  if (pos.y >= game.canvas.height - LAYOUT.navHeight) {
+    const id = nav.hitNav(game, pos);
+    const item = id ? nav.NAV_ITEMS.filter((x) => x.id === id)[0] : null;
+    const bp = game.btnPress;
+    if (item && !item.disabled && bp && bp.id === 'nav:' + id) {
+      game.switchScene(item.scene);
+      const L = nav.getNavLayout(game);
+      const rect = L.items.filter((x) => x.id === id)[0];
+      if (rect) flashButton(game, rect, '255,215,0');
+    }
+    releaseButton(game);
+    game.touchStartPos = null;
     return;
   }
 
@@ -286,6 +333,7 @@ function handleTouchEnd(game, e) {
  * 检查坐标是否在矩形内
  */
 function isPointInRect(pos, rect) {
+  if (!rect) return false;
   return pos.x >= rect.x && pos.x <= rect.x + rect.w &&
          pos.y >= rect.y && pos.y <= rect.y + rect.h;
 }
@@ -311,25 +359,16 @@ function releaseButton(game) {
  * @param {string} rgb - "R,G,B" 颜色分量，如 "146,197,255"
  */
 function flashButton(game, rect, rgb) {
+  if (!rect) return;
   game.buttonFx = {
     x: rect.x,
     y: rect.y,
-    w: rect.w,
-    h: rect.h,
+    w: rect.w !== undefined ? rect.w : rect.size,
+    h: rect.h !== undefined ? rect.h : rect.size,
     t0: Date.now(),
     duration: 450,
     color: rgb || '255,255,255',
   };
-}
-
-/**
- * 检查坐标是否在商店刷新按钮内
- */
-function isPointInRefreshBtn(game, pos) {
-  const shopLayout = getShopSlots(game);
-  const btn = shopLayout.refreshBtn;
-  return pos.x >= btn.x && pos.x <= btn.x + btn.w &&
-         pos.y >= btn.y && pos.y <= btn.y + btn.h;
 }
 
 /**
@@ -418,38 +457,6 @@ function setSlotTower(slot, tower) {
 }
 
 /**
- * 移动图形塔到指定槽位
- */
-function moveTowerToSlot(game, tower, slot) {
-  setSlotTower(slot, tower);
-  if (!game.towers.includes(tower)) {
-    game.towers.push(tower);
-  }
-}
-
-/**
- * 检查槽位是否为商店
- */
-function isShopSlot(slot, game) {
-  if (!slot || slot.idx === undefined) return false;
-  return game.shopSlotState[slot.idx] !== undefined;
-}
-
-/**
- * 检查槽位是否为放置
- */
-function isPlacementSlot(slot) {
-  return slot && slot.size !== undefined;
-}
-
-/**
- * 检查槽位是否为空置
- */
-function isEmptySlot(slot) {
-  return slot && !slot.occupied;
-}
-
-/**
  * 创建单位到槽位
  */
 function createUnitToSlot(game, type, slot) {
@@ -465,10 +472,10 @@ function createUnitToSlot(game, type, slot) {
 function tryPlaceTowerAtPos(game, dragType, pos) {
   const targetSlot = getTargetSlot(game, pos);
   if (!targetSlot) return false;
-  
+
   // 不能放回原槽位
   if (game.draggingFromSlot && targetSlot === game.draggingFromSlot) return false;
-  
+
   // 目标槽位是否为空由 tryPlaceTower 决定：
   // 已占用 → 尝试合成升级/融合进阶；为空 → 创建新塔
   return tryPlaceTower(game, dragType, targetSlot, game.dragShopIdx !== undefined);
@@ -484,10 +491,11 @@ function tryPlaceTowerAtPos(game, dragType, pos) {
  */
 function tryPlaceTower(game, dragType, slot, fromShop) {
   let cost = 0;
-  
+
   // 只有从商店拖放时才检查并消耗金币
   if (fromShop) {
-    cost = towerMod.getTowerCost(dragType);
+    // 造价走 game.towerCost：内含"精打细算"天赋折扣，与商店卡上显示的价一致
+    cost = game.towerCost(dragType);
     if (game.gold < cost) return false;
   }
 
@@ -541,24 +549,16 @@ function tryPlaceTower(game, dragType, slot, fromShop) {
 
   // 4. 创建新塔到该空槽（仅从商店拖放时走此分支）
   if (!slot.occupied) {
-    const tower = createUnitToSlot(game, dragType, slot);
-  
+    createUnitToSlot(game, dragType, slot);
+
     if (fromShop) {
       game.gold -= cost;
     }
     return true;
   }
-  
+
   // 目标槽位已占用且无法融合 → 放置失败
   return false;
-}
-
-/**
- * 检查坐标是否在面板内
- */
-function isPointInPanel(pos, panelX, panelY, panelW, panelH) {
-  return pos.x >= panelX && pos.x <= panelX + panelW &&
-         pos.y >= panelY && pos.y <= panelY + panelH;
 }
 
 module.exports = {

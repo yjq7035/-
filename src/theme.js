@@ -1,0 +1,662 @@
+// ============================================================================
+// 视觉主题 + 通用绘制原子 —— src/theme.js
+// ----------------------------------------------------------------------------
+// 本文件【零依赖】（不 require 任何其它模块），因此可以被 renderer / shop /
+// nav / codex / talents / levels 任意引用，不会产生循环依赖。
+//
+// 收敛目标：所有 UI 模块共享同一套色板与同一批绘制原子，避免"每个界面各自
+// 一套圆角/描边/按钮样式"导致视觉分裂（重构前商店槽与结算按钮各画各的）。
+// ============================================================================
+
+// ========== 视觉风格 Token（design tokens，全 UI 唯一真源） ==========
+// 所有 UI 元素（进度条 / 槽位 / 商店 / 面板 / 按钮 / 导航 / 胜负界面）都从这里取色，
+// 改一处即全局生效。战场身份色（塔色 / 怪物色）在 config.js 定义，不在此列。
+// 阵营语义：我方 = 红，对方 = 蓝（左右生存条、底部栏渐变皆基于此）。
+const THEME = {
+  // 阵营色（solid=实色，light=亮色，用于渐变两端）
+  team: {
+    red:  { solid: '#E57373', light: '#FF9E9E' },
+    blue: { solid: '#64B5F6', light: '#92C5F6' },
+  },
+  // 强调色
+  accent: {
+    gold:     '#FFD700',  // 金币 / 等级星 / 选中高亮
+    pink:     '#FF69B4',  // 阶段星
+    green:    '#4CAF50',  // 增益（攻击增幅 / 路径起点 / 确认按钮）
+    danger:   '#FF4444',  // 危险 / 金币不足
+    violet:   '#B388FF',  // 特殊积分 / 图签（第三种货币，区别于金币与天赋点）
+    cyan:     '#4DD0E1',  // 天赋点
+    highlight: 'rgba(229, 115, 115, 0.45)',  // 我方交互高亮（选中范围圈 / 槽位高亮）
+  },
+  // 统一细白描边
+  border: {
+    subtle: 'rgba(255, 255, 255, 0.15)',  // 弱：空槽 / 禁用
+    normal: 'rgba(255, 255, 255, 0.30)',  // 常规：槽位 / 按钮
+    strong: 'rgba(255, 255, 255, 0.45)',  // 强调：标题药丸 / 分隔线
+  },
+  // 轨道 / 面板底色
+  track: {
+    faint: 'rgba(255, 255, 255, 0.05)',
+    soft:  'rgba(255, 255, 255, 0.10)',
+    bar:   'rgba(255, 255, 255, 0.12)',   // 进度条轨道
+  },
+  // 页面/面板底色（暗色主题：底深、字亮）
+  surface: {
+    page:    '#1a1a2e',                    // 全屏背景（与战场同色，切场景不闪）
+    panel:   'rgba(0, 0, 0, 0.55)',        // 面板底
+    panelHi: 'rgba(255, 255, 255, 0.06)',  // 卡片底（比面板提亮一档）
+    nav:     'rgba(12, 12, 24, 0.94)',     // 底部导航栏
+    lock:    'rgba(0, 0, 0, 0.62)',        // 未解锁遮罩
+  },
+  // 文字灰阶
+  text: {
+    primary:   '#ffffff',
+    secondary: '#AAAAAA',
+    dim:       '#888888',
+    off:       '#666666',
+  },
+  // 圆角
+  radius: {
+    small:  8,
+    medium: 10,   // 槽位 / 按钮
+    large:  14,   // 面板 / 卡片
+  },
+};
+
+/**
+ * 颜色明暗工具：把 #RRGGBB 按比例变亮/变暗（amount: -1~1，正=变亮，负=变暗）。
+ * 用于给纯色生成渐变两端 / 高光 / 阴影，让"纯色"变成有体积感的渐变。
+ * @param {string} hex 十六进制颜色（支持 #rgb / #rrggbb）
+ * @param {number} amount -1~1
+ * @param {number} [alpha] 可选输出 alpha
+ * @returns {string} rgba() 字符串
+ */
+function shade(hex, amount, alpha) {
+  let h = (hex || '#000000').replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const num = parseInt(h, 16);
+  let r = (num >> 16) & 255, g = (num >> 8) & 255, b = num & 255;
+  if (amount >= 0) { r = r + (255 - r) * amount; g = g + (255 - g) * amount; b = b + (255 - b) * amount; }
+  else { const t = 1 + amount; r = r * t; g = g * t; b = b * t; }
+  const a = (alpha === undefined) ? 1 : alpha;
+  return `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${a})`;
+}
+
+/**
+ * 阵营横向渐变：我方红(左) → 中性 → 对方蓝(右)，统一所有"对阵"背景。
+ * @param {number} alpha 整体透明度缩放（1=满，0.3=柔和底栏）
+ * @returns 可直接赋给 ctx.fillStyle 的 CanvasGradient
+ */
+function teamBandGradient(ctx, x0, x1, alpha) {
+  const grad = ctx.createLinearGradient(x0, 0, x1, 0);
+  grad.addColorStop(0,   `rgba(229, 115, 115, ${0.8 * alpha})`);
+  grad.addColorStop(0.5, `rgba(255, 255, 255, ${0.3 * alpha})`);
+  grad.addColorStop(1,   `rgba(100, 181, 246, ${0.8 * alpha})`);
+  return grad;
+}
+
+// ========== 缓动 ==========
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeOutBack(t) { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); }
+
+// ========== 基础形状 ==========
+
+/** 圆角矩形路径（不填充不描边，仅建路径，调用方自行 fill/stroke） */
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, w, h, r);
+  } else {
+    // 兜底：手动建路径（极老基础库）
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.moveTo(x + rr, y);
+    ctx.lineTo(x + w - rr, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+    ctx.lineTo(x + w, y + h - rr);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+    ctx.lineTo(x + rr, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+    ctx.lineTo(x, y + rr);
+    ctx.quadraticCurveTo(x, y, x + rr, y);
+    ctx.closePath();
+  }
+}
+
+/** 文本是否在矩形内（含 padding 收缩） */
+function pointInRect(pos, rect, pad) {
+  if (!rect) return false;
+  const p = pad || 0;
+  const w = (rect.w !== undefined) ? rect.w : rect.size;
+  const h = (rect.h !== undefined) ? rect.h : rect.size;
+  return pos.x >= rect.x - p && pos.x <= rect.x + w + p &&
+         pos.y >= rect.y - p && pos.y <= rect.y + h + p;
+}
+
+/**
+ * 绘制五角星图案（等级/阶段/稀有度显示，替代文本字符 ⭐）
+ */
+function drawStar(ctx, cx, cy, outerR, color) {
+  const innerR = outerR * 0.38;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const radius = i % 2 === 0 ? outerR : innerR;
+    const angle = (Math.PI * i) / 5 - Math.PI / 2;
+    const x = cx + Math.cos(angle) * radius;
+    const y = cy + Math.sin(angle) * radius;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+/**
+ * 给已构建好的形状轮廓应用统一的"立体样式"：径向渐变填充 + 顶部光泽（裁剪到形状内）+ 深色描边。
+ * 让"仅边框"的图形塔变成有体积感的填充图形。
+ * @param {number} approxR 形状的近似半径（用于渐变/光泽范围）
+ */
+function applyTowerStyle(ctx, x, y, color, approxR) {
+  const g = ctx.createRadialGradient(
+    x - approxR * 0.3, y - approxR * 0.35, approxR * 0.15,
+    x, y, approxR * 1.25
+  );
+  g.addColorStop(0, shade(color, 0.5));
+  g.addColorStop(0.7, color);
+  g.addColorStop(1, shade(color, -0.3));
+  ctx.fillStyle = g;
+  ctx.fill();
+
+  // 顶部光泽（裁剪到形状内，避免溢出）
+  ctx.save();
+  ctx.clip();
+  const sheen = ctx.createLinearGradient(x, y - approxR, x, y + approxR);
+  sheen.addColorStop(0,   'rgba(255, 255, 255, 0.32)');
+  sheen.addColorStop(0.5, 'rgba(255, 255, 255, 0.04)');
+  sheen.addColorStop(1,   'rgba(0, 0, 0, 0.12)');
+  ctx.fillStyle = sheen;
+  ctx.fillRect(x - approxR * 1.6, y - approxR * 1.6, approxR * 3.2, approxR * 3.2);
+  ctx.restore();
+
+  // 深色描边，勾轮廓
+  ctx.strokeStyle = shade(color, -0.45);
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+}
+
+// ========== 图形塔图标（12 种轮廓，全项目统一绘制入口）==========
+// 方向语义保持原样：三角 / 扇 / 半圆 仍按攻击朝向绘制（正右方为 0 度）。
+const TOWER_SHAPES = [
+  'triangle', 'circle', 'hexagon', 'square', 'trapezoid', 'semicircle',
+  'sector', 'long_rectangle', 'diamond', 'pentagon', 'oval', 'star',
+];
+
+/**
+ * 绘制塔图标（纯函数）：按类型构建轮廓，再套用统一立体样式。
+ * @param {object} ctx 画布
+ * @param {number} x 中心x
+ * @param {number} y 中心y
+ * @param {string} color 塔主色（未解锁时可传灰色）
+ * @param {string} type 塔类型
+ * @param {number} [scale] 整体缩放（默认 1；图签卡片/导航可放大）
+ */
+function drawTowerIcon(ctx, x, y, color, type, scale) {
+  const s = scale === undefined ? 1 : scale;
+  ctx.save();
+  if (s !== 1) {
+    ctx.translate(x, y);
+    ctx.scale(s, s);
+    ctx.translate(-x, -y);
+  }
+  ctx.lineJoin = 'round';
+
+  let approxR = 12; // 形状近似半径（默认）
+
+  switch (type) {
+    case 'triangle': {
+      // 三角形 - 默认朝向右侧（与攻击方向一致）
+      const triSize = 12;
+      approxR = triSize * 1.15;
+      ctx.beginPath();
+      ctx.moveTo(x + triSize, y);
+      ctx.lineTo(x - triSize * 0.5, y - triSize);
+      ctx.lineTo(x - triSize * 0.5, y + triSize);
+      ctx.closePath();
+      break;
+    }
+
+    case 'circle': {
+      approxR = 11;
+      ctx.beginPath();
+      ctx.arc(x, y, 11, 0, Math.PI * 2);
+      break;
+    }
+
+    case 'hexagon': {
+      const hexR = 11;
+      approxR = hexR;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = (Math.PI / 3) * i - Math.PI / 6;
+        const hx = x + hexR * Math.cos(angle);
+        const hy = y + hexR * Math.sin(angle);
+        if (i === 0) ctx.moveTo(hx, hy);
+        else ctx.lineTo(hx, hy);
+      }
+      ctx.closePath();
+      break;
+    }
+
+    case 'square': {
+      const sqSize = 20;
+      approxR = sqSize / 2;
+      roundRectPath(ctx, x - sqSize / 2, y - sqSize / 2, sqSize, sqSize, 4);
+      break;
+    }
+
+    case 'trapezoid': {
+      const tw = 20, bw = 26, th = 16;
+      approxR = bw / 2;
+      ctx.beginPath();
+      ctx.moveTo(x - tw / 2, y - th / 2);
+      ctx.lineTo(x + tw / 2, y - th / 2);
+      ctx.lineTo(x + bw / 2, y + th / 2);
+      ctx.lineTo(x - bw / 2, y + th / 2);
+      ctx.closePath();
+      break;
+    }
+
+    case 'semicircle': {
+      // 半圆塔 - 半圆形（开口朝向攻击方向）
+      const sr = 11;
+      approxR = sr;
+      ctx.beginPath();
+      ctx.arc(x, y, sr, -Math.PI / 2, Math.PI / 2);
+      ctx.closePath();
+      break;
+    }
+
+    case 'sector': {
+      const secR = 11;
+      approxR = secR;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.arc(x, y, secR, -Math.PI / 4, Math.PI / 4);
+      ctx.closePath();
+      break;
+    }
+
+    case 'long_rectangle': {
+      const rectW = 22;
+      const rectH = 14;
+      approxR = rectW / 2;
+      roundRectPath(ctx, x - rectW / 2, y - rectH / 2, rectW, rectH, 3);
+      break;
+    }
+
+    case 'diamond': {
+      // 菱形塔 - 竖长菱形（4 顶点）
+      const dw = 10, dh = 13;
+      approxR = dh;
+      ctx.beginPath();
+      ctx.moveTo(x, y - dh);
+      ctx.lineTo(x + dw, y);
+      ctx.lineTo(x, y + dh);
+      ctx.lineTo(x - dw, y);
+      ctx.closePath();
+      break;
+    }
+
+    case 'pentagon': {
+      // 五边塔 - 正五边形（顶点朝上）
+      const pr = 12;
+      approxR = pr;
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const angle = (Math.PI * 2 / 5) * i - Math.PI / 2;
+        const px = x + pr * Math.cos(angle);
+        const py = y + pr * Math.sin(angle);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      break;
+    }
+
+    case 'oval': {
+      // 椭圆塔 - 横向椭圆
+      approxR = 12;
+      ctx.beginPath();
+      ctx.ellipse(x, y, 13, 8.5, 0, 0, Math.PI * 2);
+      break;
+    }
+
+    case 'star': {
+      // 星形塔 - 六角星（与等级星区分：六芒轮廓 + 六边形基底）
+      const r1 = 13, r2 = 6;
+      approxR = r1;
+      ctx.beginPath();
+      for (let i = 0; i < 12; i++) {
+        const radius = i % 2 === 0 ? r1 : r2;
+        const angle = (Math.PI / 6) * i - Math.PI / 2;
+        const sx = x + radius * Math.cos(angle);
+        const sy = y + radius * Math.sin(angle);
+        if (i === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+      }
+      ctx.closePath();
+      break;
+    }
+
+    default: {
+      // 未知类型：兜底画圆，避免静默不画
+      approxR = 11;
+      ctx.beginPath();
+      ctx.arc(x, y, 11, 0, Math.PI * 2);
+      break;
+    }
+  }
+
+  applyTowerStyle(ctx, x, y, color, approxR);
+  ctx.restore();
+}
+
+// ========== 文字排版 ==========
+
+/**
+ * 文本自动换行（只测量、不绘制）→ 返回行数组。
+ * 面板需要"先算高度再画"，所以换行必须与绘制解耦。
+ * @param {string} font 测量用字体
+ * @returns {string[]} 行数组
+ */
+function wrapTextLines(ctx, text, maxWidth, font) {
+  const lines = [];
+  if (!text) return lines;
+
+  ctx.save();
+  if (font) ctx.font = font;
+
+  const chars = String(text).split('');
+  let line = '';
+  for (let i = 0; i < chars.length; i++) {
+    const test = line + chars[i];
+    if (ctx.measureText(test).width > maxWidth && line !== '') {
+      lines.push(line);
+      line = chars[i];
+    } else {
+      line = test;
+    }
+  }
+  if (line !== '') lines.push(line);
+  ctx.restore();
+  return lines;
+}
+
+/** 兼容旧接口：直接绘制换行文本 */
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  const lines = wrapTextLines(ctx, text, maxWidth, ctx.font);
+  ctx.save();
+  ctx.textBaseline = 'middle';
+  lines.forEach((line, i) => ctx.fillText(line, x, y + i * lineHeight));
+  ctx.restore();
+}
+
+/** 截断文本到指定宽度，超出补省略号（单行竞技场/卡片名称用） */
+function ellipsize(ctx, text, maxWidth) {
+  const t = String(text || '');
+  if (ctx.measureText(t).width <= maxWidth) return t;
+  let out = t;
+  while (out.length > 1 && ctx.measureText(out + '…').width > maxWidth) {
+    out = out.slice(0, -1);
+  }
+  return out + '…';
+}
+
+// ========== 通用控件 ==========
+
+/**
+ * 绘制"切割"式分隔线：中间厚、两端渐隐收细（柳叶/透镜形）。
+ * 用两段二次贝塞尔闭合：上缘由左端拱到中心最厚处再落到右端，下缘镜像；
+ * 横向再叠一层透明度渐变，让两端"切"进背景。
+ */
+function drawTaperedDivider(ctx, cx, y, width, thickness) {
+  const t = (thickness === undefined ? 5 : thickness) / 2;
+  const x1 = cx - width / 2;
+  const x2 = cx + width / 2;
+
+  ctx.save();
+  const grad = ctx.createLinearGradient(x1, 0, x2, 0);
+  grad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+  grad.addColorStop(0.18, THEME.border.strong);
+  grad.addColorStop(0.5, THEME.border.strong);
+  grad.addColorStop(0.82, THEME.border.strong);
+  grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(x1, y);
+  ctx.quadraticCurveTo(cx, y - t, x2, y);
+  ctx.quadraticCurveTo(cx, y + t, x1, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * 绘制统一风格按钮：圆角 + 柔和纵向渐变 + 主题描边。
+ * 支持可选副文案（subLabel），主副文案垂直居中排布。
+ * pressed=true 时呈按压态：整体轻微缩小 + 压暗。
+ */
+function drawButton(ctx, o) {
+  const { x, y, w, h } = o;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+
+  if (o.pressed) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(0.96, 0.94);
+    ctx.translate(-cx, -cy);
+  }
+
+  if (o.flat) {
+    // 扁平态（卡片/列表行）：只填纯色，不画渐变
+    ctx.fillStyle = o.top;
+  } else {
+    const grad = ctx.createLinearGradient(x, y, x, y + h);
+    grad.addColorStop(0, o.top);
+    grad.addColorStop(1, o.bottom);
+    ctx.fillStyle = grad;
+  }
+  ctx.strokeStyle = o.stroke;
+  ctx.lineWidth = o.lineWidth || 1.5;
+  roundRectPath(ctx, x, y, w, h, o.radius === undefined ? THEME.radius.medium : o.radius);
+  ctx.fill();
+  ctx.stroke();
+
+  if (o.pressed) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    roundRectPath(ctx, x, y, w, h, o.radius === undefined ? THEME.radius.medium : o.radius);
+    ctx.fill();
+  }
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (o.disabled) {
+    ctx.fillStyle = o.disabledColor || THEME.text.off;
+    ctx.font = `bold ${o.fontSize || 16}px Arial`;
+    ctx.fillText(o.label, cx, cy);
+  } else if (o.subLabel) {
+    ctx.fillStyle = o.labelColor;
+    ctx.font = `bold ${o.fontSize || 16}px Arial`;
+    ctx.fillText(o.label, cx, cy - 9);
+    ctx.fillStyle = o.subColor || THEME.text.secondary;
+    ctx.font = '12px Arial';
+    ctx.fillText(o.subLabel, cx, cy + 11);
+  } else {
+    ctx.fillStyle = o.labelColor;
+    ctx.font = `bold ${o.fontSize || 18}px Arial`;
+    ctx.fillText(o.label, cx, cy);
+  }
+
+  if (o.pressed) ctx.restore();
+}
+
+/**
+ * 绘制按钮点击波纹（释放瞬间）：从按钮中心扩散的圆角矩形光环，短时间内透明度衰减。
+ * game.buttonFx = { x, y, w, h, t0, duration, color }。
+ */
+function drawButtonFx(game, ctx) {
+  const fx = game.buttonFx;
+  if (!fx) return;
+
+  const now = Date.now();
+  const p = (now - fx.t0) / (fx.duration * 1000);
+  if (p >= 1) {
+    game.buttonFx = null;
+    return;
+  }
+
+  const cx = fx.x + fx.w / 2;
+  const cy = fx.y + fx.h / 2;
+  const alpha = 1 - p;
+  const grow = 1 + p * 0.25;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(grow, grow);
+  ctx.translate(-cx, -cy);
+
+  ctx.strokeStyle = `rgba(${fx.color || '255,255,255'}, ${(alpha * 0.8).toFixed(3)})`;
+  ctx.lineWidth = 2 + (1 - p) * 2;
+  roundRectPath(ctx, fx.x, fx.y, fx.w, fx.h, THEME.radius.medium);
+  ctx.stroke();
+
+  ctx.fillStyle = `rgba(${fx.color || '255,255,255'}, ${(alpha * 0.15).toFixed(3)})`;
+  roundRectPath(ctx, fx.x, fx.y, fx.w, fx.h, THEME.radius.medium);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/** 按钮按压态查询：game.btnPress = { id, t0 }，按住超过 1.2s 视为误触自动松开。 */
+function isButtonPressed(game, id) {
+  if (!game.btnPress || game.btnPress.id !== id) return false;
+  if (Date.now() - game.btnPress.t0 > 1200) return false;
+  return true;
+}
+
+/**
+ * 绘制小药丸标签（chip）：圆角底 + 可选描边 + 图标字符 + 文本。
+ * 导航徽标 / 货币显示 / 状态标记统一用它，避免各界面自造"小圆角块"。
+ * @param {object} o { x, y, w, h, text, icon, color, bg, stroke, fontSize, align }
+ */
+function drawChip(ctx, o) {
+  const { x, y, w, h } = o;
+  const r = h / 2;
+
+  if (o.bg) {
+    ctx.fillStyle = o.bg;
+    roundRectPath(ctx, x, y, w, h, r);
+    ctx.fill();
+  }
+  if (o.stroke) {
+    ctx.strokeStyle = o.stroke;
+    ctx.lineWidth = o.lineWidth || 1;
+    roundRectPath(ctx, x, y, w, h, r);
+    ctx.stroke();
+  }
+
+  const cy = y + h / 2;
+  const fs = o.fontSize || 11;
+  ctx.textBaseline = 'middle';
+  ctx.font = `bold ${fs}px Arial`;
+
+  const label = o.icon ? `${o.icon} ${o.text}` : String(o.text);
+  ctx.textAlign = o.align || 'center';
+  ctx.fillStyle = o.color || THEME.text.secondary;
+  ctx.fillText(label, o.align === 'left' ? x + 8 : (o.align === 'right' ? x + w - 8 : x + w / 2), cy);
+}
+
+/**
+ * 绘制结算/界面标题药丸：圆角 + 柔和横向渐变 + 强描边，风格与波次标题一致。
+ * @param {number} maxW 药丸最大宽度（超出则收敛，保证不越界）
+ * @param {number} [fontSize]
+ */
+function drawPillTitle(ctx, cx, cy, text, top, bottom, maxW, fontSize) {
+  const fz = fontSize || 22;
+  ctx.font = `bold ${fz}px Arial`;
+  const tw = ctx.measureText(text).width || 80;
+  const w = Math.min(maxW, tw + 44);
+  const h = fz + 20;
+  const x = cx - w / 2;
+  const y = cy - h / 2;
+
+  const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+  grad.addColorStop(0, top);
+  grad.addColorStop(1, bottom);
+  ctx.fillStyle = grad;
+  ctx.strokeStyle = THEME.border.strong;
+  ctx.lineWidth = 1;
+  roundRectPath(ctx, x, y, w, h, h / 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = THEME.text.primary;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, cx, cy);
+}
+
+/** 绘制一枚"锁"图标（未解锁卡片/关卡用） */
+function drawLockIcon(ctx, cx, cy, size, color) {
+  const w = size, h = size * 0.78;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = Math.max(1.5, size * 0.14);
+  // 锁梁
+  ctx.beginPath();
+  ctx.arc(cx, cy - h * 0.32, w * 0.34, Math.PI, 0);
+  ctx.stroke();
+  // 锁体
+  roundRectPath(ctx, cx - w / 2, cy - h * 0.28, w, h * 0.86, size * 0.14);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** 绘制虚线占位框（"待扩展"用） */
+function drawDashedBox(ctx, x, y, w, h, r, color) {
+  ctx.save();
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = color || THEME.border.subtle;
+  ctx.lineWidth = 1;
+  roundRectPath(ctx, x, y, w, h, r);
+  ctx.stroke();
+  ctx.restore();
+}
+
+module.exports = {
+  THEME,
+  TOWER_SHAPES,
+  shade,
+  teamBandGradient,
+  easeOutCubic,
+  easeOutBack,
+  roundRectPath,
+  pointInRect,
+  drawStar,
+  applyTowerStyle,
+  drawTowerIcon,
+  wrapTextLines,
+  wrapText,
+  ellipsize,
+  drawTaperedDivider,
+  drawButton,
+  drawButtonFx,
+  isButtonPressed,
+  drawChip,
+  drawPillTitle,
+  drawLockIcon,
+  drawDashedBox,
+};

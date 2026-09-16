@@ -10,8 +10,12 @@ const towerMod = require('./tower');
 const units = require('./units');
 const EventBus = require('./eventBus');
 const AuraManager = require('./auraManager');
+const meta = require('./meta');
 
-const { LAYOUT, BALANCE, TOWER_DEFS, PLAYER, ATTACK_SPEED_BASE, MAX_STAGE, AURA_DURATION } = config;
+const {
+  LAYOUT, BALANCE, TOWER_DEFS, PLAYER, ATTACK_SPEED_BASE, MAX_STAGE, AURA_DURATION,
+  POINTS, TALENT_POINTS, LEVELS, SHOP,
+} = config;
 
 class Game {
   constructor(canvas, ctx, windowInfo) {
@@ -25,12 +29,27 @@ class Game {
     this.mapX = w * 0.15;
     this.mapY = h * 0.12 + 25;
     this.mapWidth = w * 0.7;
-    this.mapHeight = h * 0.58;
+    // 战场高度：优先取 0.58h，但必须给"商店面板 + 底部导航栏"让出空间，
+    // 否则短屏手机上怪物路径会压到商店面板上（面板高度见 config.SHOP.panelHeight）。
+    const reservedBottom = LAYOUT.navHeight + SHOP.panelHeight + 28;
+    this.mapHeight = Math.max(
+      180,
+      Math.min(h * 0.58, (h - reservedBottom) - this.mapY - 12)
+    );
 
-    // 游戏状态
-    this.gold = BALANCE.startGold;
-    this.lives = BALANCE.startLives;
-    this.maxLives = BALANCE.startLives; // 生存积分上限（进度条分母）
+    // 场景：battle / codex / talents（底部导航切换；战斗状态常驻，切走只是冻结不销毁）
+    this.scene = 'battle';
+    this.showLevels = false;      // 关卡选择浮层开关
+    this.codexSelected = null;    // 图签界面当前选中的塔类型
+    this.toast = null;            // 操作轻提示 { text, color, t0 }
+
+    // 当前关卡（默认取存档里选中的关卡，初始 = 关卡 1）
+    this.currentLevel = meta.getSelectedLevel();
+
+    // 游戏状态（起始金币 / 生存积分上限受天赋影响）
+    this.gold = BALANCE.startGold + meta.talentValue('gold_start');
+    this.lives = BALANCE.startLives + meta.talentValue('lives_max');
+    this.maxLives = this.lives; // 生存积分上限（进度条分母）
     this.selectedTowerType = null;
     this.selectedTower = null;
 
@@ -110,15 +129,8 @@ class Game {
     this.showPanel = false;
     this.panelTowerType = null;
 
-    // 商店槽状态（记录哪些槽被拖走了，需要显示为空）
-    // 初始化为与 refreshTowerTypes 对应的状态
-    this.shopSlotState = [];
-    for (let i = 0; i < this.refreshTowerTypes.length; i++) {
-      this.shopSlotState.push({
-        type: this.refreshTowerTypes[i],
-        empty: false,
-      });
-    }
+    // 商店槽状态（记录哪些槽被拖走了，需要显示为空），与 shopOffers 一一对应
+    this.shopSlotState = this.shopOffers.map((type) => ({ type: type, empty: false }));
 
     // 开始游戏循环
     this.loop();
@@ -234,27 +246,32 @@ class Game {
     this.pathEnd = this.pathPoints[this.pathPoints.length - 1];
   }
 
+  /**
+   * 从"图签登场池"抽货：这是商店与图签的联动点。
+   * 图签里怎么排登场，商店就出什么货；未解锁的塔永远不会出货（解锁由图签界面负责）。
+   * 出货池至少 1 个（meta 保证），不足 cardCount 时货架按实际数量出，其余显示为空槽。
+   */
+  rollShopOffers() {
+    const pool = meta.getLineup();
+    const shuffled = pool.slice().sort(() => Math.random() - 0.5);
+    const count = Math.min(SHOP.cardCount, shuffled.length);
+    return shuffled.slice(0, count);
+  }
+
   initRefresh() {
-    // 初始刷新 3 个不重复的塔
-    const towerTypes = Object.keys(TOWER_DEFS);
-    const shuffled = towerTypes.sort(() => Math.random() - 0.5);
-    this.refreshTowerTypes = shuffled.slice(0, 3);
+    this.shopOffers = this.rollShopOffers();
+    this.shopSlotState = this.shopOffers.map((type) => ({ type: type, empty: false }));
   }
 
   refreshTowers() {
-    if (this.gold < this.refreshCost) return;
+    if (this.gold < this.refreshCost) return false;
     this.gold -= this.refreshCost;
-    // 从可用塔池随机挑选3种不重复的塔
-    const towerTypes = Object.keys(TOWER_DEFS);
-    const shuffled = towerTypes.sort(() => Math.random() - 0.5);
-    this.refreshTowerTypes = shuffled.slice(0, 3);
-    // 重置商店槽状态（与当前展示的 refreshTowerTypes 一一对应，避免索引错位）
-    this.shopSlotState = this.refreshTowerTypes.map((type) => ({
-      type: type,
-      empty: false,
-    }));
+    this.shopOffers = this.rollShopOffers();
+    // 重置商店槽状态（与 shopOffers 一一对应，避免索引错位）
+    this.shopSlotState = this.shopOffers.map((type) => ({ type: type, empty: false }));
     // 增加下次刷新所需金币
     this.refreshCost += BALANCE.refreshCostStep;
+    return true;
   }
 
   calculateSlots() {
@@ -326,10 +343,10 @@ class Game {
     this.watchingVideo = false;
     this.videoTimer = 30;
 
-    // 恢复游戏状态
-    this.gold = BALANCE.startGold;
-    this.lives = BALANCE.startLives;
-    this.maxLives = BALANCE.startLives;
+    // 恢复游戏状态（起始金币 / 生存上限含天赋加成）
+    this.gold = BALANCE.startGold + meta.talentValue('gold_start');
+    this.lives = BALANCE.startLives + meta.talentValue('lives_max');
+    this.maxLives = this.lives;
 
     // 清空游戏对象
     this.enemies = [];
@@ -354,9 +371,9 @@ class Game {
     // 重置槽位
     this.slots = this.calculateSlots();
 
-    // 重置商店
+    // 重置商店（出货池重新从图签登场配置抽取）
     this.refreshCost = BALANCE.refreshCost;
-    this.refreshTowerTypes = [];
+    this.shopOffers = [];
     this.initRefresh();
 
     // 重置拖放状态
@@ -378,13 +395,12 @@ class Game {
     this.buttonFx = null;
 
     // 重置商店槽状态
-    this.shopSlotState = [];
-    for (let i = 0; i < this.refreshTowerTypes.length; i++) {
-      this.shopSlotState.push({
-        type: this.refreshTowerTypes[i],
-        empty: false,
-      });
-    }
+    this.shopSlotState = this.shopOffers.map((type) => ({ type: type, empty: false }));
+
+    // 重置元进度相关 UI 状态
+    this.toast = null;
+    this.codexSelected = null;
+    this.showLevels = false;
 
     // 主循环常驻运行，这里只需恢复 isRunning 标志
   }
@@ -417,12 +433,89 @@ class Game {
     this.waveStartStamp = Date.now();
 
     // 获得当前波次 * 500 金币
-    this.gold += this.currentWave * 500;
+    this.gainGold(this.currentWave * 500);
 
     // 重置倒计时
     this.waitTimer = this.waitDuration;
   }
 
+
+  // ========== 元进度 / 天赋 / 图签 取值口 ==========
+  // 战斗侧的数值一律从这里取，保证"面板显示的"与"真正结算的"同口径。
+
+  /** 图形塔实际造价（含"精打细算"天赋折扣） */
+  towerCost(type) {
+    return towerMod.getDiscountedCost(type, meta.talentValue('build_cost'));
+  }
+
+  /** 击杀金币收益（含"点石成金"天赋） */
+  gainGold(amount) {
+    const mult = 1 + meta.talentValue('gold_gain') / 100;
+    this.gold += Math.max(0, Math.round((amount || 0) * mult));
+  }
+
+  /** 击杀结算：金币 + 特殊积分 +（BOSS 及以上）天赋点 */
+  grantKillReward(enemy) {
+    if (!enemy) return;
+    this.gainGold(enemy.reward);
+    const tier = enemy.tier || 0;
+    let pts = 0;
+    if (tier >= 5) pts = POINTS.tier5;
+    else if (tier >= 4) pts = POINTS.tier4;
+    else if (tier >= 3) pts = POINTS.tier3;
+    if (pts > 0) meta.grantPoints(pts);
+    if (tier >= 4) meta.grantTalentPoints(TALENT_POINTS.bossKill);
+  }
+
+  /** 图签加成后的最终攻击力（战斗与属性面板同口径） */
+  towerDamage(tower, baseDamage) {
+    const dmg = towerMod.calculateFinalDamage(baseDamage, tower.level, tower.attackPowerBoost);
+    return Math.floor(dmg * meta.codexDamageMultiplier(tower.type));
+  }
+
+  /** 清空一波：入账特殊积分；每 N 波给天赋点；记录最高波次 */
+  onWaveCleared() {
+    meta.grantPoints(POINTS.perWave);
+    meta.recordWave(this.currentLevel, this.currentWave);
+    const every = TALENT_POINTS.perWaveGroup.every;
+    if (every > 0 && this.currentWave % every === 0) {
+      meta.grantTalentPoints(TALENT_POINTS.perWaveGroup.amount);
+    }
+  }
+
+  /** 通关关卡：首通额外奖励 + 天赋点 */
+  onLevelCleared() {
+    const first = meta.markLevelCleared(this.currentLevel, this.currentWave);
+    meta.grantPoints(POINTS.clearLevel + (first ? POINTS.firstClearBonus : 0));
+    meta.grantTalentPoints(TALENT_POINTS.clearLevel);
+    meta.save(true);
+  }
+
+  /** 场景切换（底部导航入口）。战斗状态常驻，切走只是冻结。 */
+  switchScene(scene) {
+    if (scene === this.scene) return;
+    this.scene = scene;
+    this.codexSelected = null;
+    this.showLevels = false;
+    if (scene !== 'battle') {
+      this.selectedTower = null;
+      this.showPanel = false;
+      this.panelTowerType = null;
+    }
+    meta.save(true);
+  }
+
+  /** 进入指定关卡（重新开始该关卡）。当前只有关卡 1 可玩。 */
+  startLevel(levelId) {
+    const lv = LEVELS.filter((l) => l.id === levelId)[0];
+    if (!lv || !lv.playable) return false;
+    meta.setSelectedLevel(levelId);
+    this.currentLevel = levelId;
+    this.restart();
+    this.scene = 'battle';
+    this.showLevels = false;
+    return true;
+  }
 
   update(deltaTime) {
     // 更新倒计时 / 波次
@@ -447,6 +540,7 @@ class Game {
         this.waveInProgress = false;
         this.waitTimer = this.waitDuration;
         this.countdownText = '';
+        this.onWaveCleared();
       }
     }
 
@@ -470,6 +564,7 @@ class Game {
           this.gameOver = true;
           this.isRunning = false;
           this.gameWon = true; // 标记胜利
+          this.onLevelCleared();
         }
       }
     }
@@ -510,6 +605,8 @@ class Game {
     if (this.lives <= 0 && !this.gameOver) {
       this.gameOver = true;
       this.isRunning = false;
+      meta.recordWave(this.currentLevel, this.currentWave);
+      meta.save(true);
     }
   }
 
@@ -622,7 +719,7 @@ class Game {
           tower.stackCount = Math.min(tower.stackCount + 1, 10);
           
           // 堆叠伤害计算：配置基础攻击力 + 层数加成，应用攻击增幅
-          const baseDamage = towerMod.calculateFinalDamage(towerStats.damage, tower.level, tower.attackPowerBoost);
+          const baseDamage = this.towerDamage(tower, towerStats.damage);
           const stackBonus = tower.stackCount * 2;
           const totalDamage = baseDamage + stackBonus;
           
@@ -636,7 +733,7 @@ class Game {
         // 六边塔：对精英级以上怪物伤害×5，应用攻击增幅
         if (tower.type === 'hexagon' && nearestTarget.tier >= 3) {
           const towerStats = renderer.getTowerStats(tower.type);
-          const totalDamage = towerMod.calculateFinalDamage(towerStats.damage, tower.level, tower.attackPowerBoost) * 5;
+          const totalDamage = this.towerDamage(tower, towerStats.damage) * 5;
           
           const effectiveInterval = 1.2 / (effectiveAttackSpeed / 100);
           tower.attackTimer = effectiveInterval;
@@ -669,7 +766,9 @@ class Game {
       const baseBuff = stats.supportBuff || { attackSpeedMultiplier: 25 };
       // 光环强度随自身阶段提升（1星+50、2星+75、3星+100），3星封顶
       const stage = Math.max(0, Math.min(tower.stage || 0, MAX_STAGE));
-      const buff = { attackSpeedMultiplier: baseBuff.attackSpeedMultiplier * (1 + stage) };
+      // 图签等级同样放大光环强度（与属性面板 bonusStats 的口径一致）
+      const codexMult = meta.codexDamageMultiplier(tower.type);
+      const buff = { attackSpeedMultiplier: baseBuff.attackSpeedMultiplier * (1 + stage) * codexMult };
 
       // 遍历所有我方塔，检查是否在光环范围内
       for (const other of this.towers) {
@@ -684,7 +783,11 @@ class Game {
 
         if (dist <= range) {
           // 高阶覆盖低阶；在范围内每帧刷新持续时间
-          this.auraManager.applyAura(tower.uniqueId, buff, stage, other.uniqueId, AURA_DURATION);
+          // meta.name：来源塔显示名（属性面板"生效效果"里展示光环出处）
+          const srcDef = TOWER_DEFS[tower.type];
+          this.auraManager.applyAura(tower.uniqueId, buff, stage, other.uniqueId, AURA_DURATION, {
+            name: srcDef ? srcDef.name : '光环',
+          });
         }
       }
     }
@@ -700,7 +803,7 @@ class Game {
       // 自定义伤害（如长方塔堆叠）
       damage = customDamage;
     } else {
-      damage = towerMod.calculateFinalDamage(towerStats.damage, tower.level, tower.attackPowerBoost);
+      damage = this.towerDamage(tower, towerStats.damage);
     }
     
     // 计算从塔到目标的角度
@@ -733,7 +836,7 @@ class Game {
   fireSquareProjectile(tower, target) {
     const towerDef = TOWER_DEFS[tower.type];
     const towerStats = renderer.getTowerStats(tower.type);
-    const damage = towerMod.calculateFinalDamage(towerStats.damage, tower.level, tower.attackPowerBoost);
+    const damage = this.towerDamage(tower, towerStats.damage);
     
     // 计算从塔到目标的方向
     const dx = target.x - tower.x;
@@ -749,7 +852,7 @@ class Game {
       damage: damage,
       type: 'square',
       color: towerDef.color,
-      size: 20, // 弹道大小
+      size: 10, // 弹道大小（原20，减小50%）
       alive: true,
       hitEnemies: new Set(), // 已造成伤害的敌人，避免重复伤害
     });
@@ -762,7 +865,7 @@ class Game {
    */
   fireLaser(tower, target, dt) {
     const towerStats = renderer.getTowerStats(tower.type);
-    const towerDamage = towerMod.calculateFinalDamage(towerStats.damage, tower.level, tower.attackPowerBoost);
+    const towerDamage = this.towerDamage(tower, towerStats.damage);
     
     // 每秒伤害 = 塔攻击力，按时间比例计算单帧伤害
     const damage = Math.max(1, Math.floor(towerDamage * dt));
@@ -777,7 +880,7 @@ class Game {
       target.hp -= damage;
       if (target.hp <= 0) {
           target.alive = false;
-          this.gold += target.reward;
+          this.grantKillReward(target);
           // 从单位注册表移除
           units.removeUnit(target.uniqueId);
           // 触发死亡事件
@@ -842,7 +945,7 @@ class Game {
    */
   fireSectorAOE(tower) {
     const towerStats = renderer.getTowerStats(tower.type);
-    const damage = towerMod.calculateFinalDamage(towerStats.damage, tower.level, tower.attackPowerBoost);
+    const damage = this.towerDamage(tower, towerStats.damage);
     
     const range = towerStats.range;
     const angle = tower.attackAngle || 0;
@@ -871,7 +974,7 @@ class Game {
         enemy.hp -= damage;
         if (enemy.hp <= 0) {
           enemy.alive = false;
-          this.gold += enemy.reward;
+          this.grantKillReward(enemy);
           // 从单位注册表移除
           units.removeUnit(enemy.uniqueId);
           // 触发死亡事件
@@ -902,7 +1005,7 @@ class Game {
   fireExplosiveProjectile(tower, target) {
     const towerDef = TOWER_DEFS[tower.type];
     const towerStats = renderer.getTowerStats(tower.type);
-    const damage = towerMod.calculateFinalDamage(towerStats.damage, tower.level, tower.attackPowerBoost);
+    const damage = this.towerDamage(tower, towerStats.damage);
     
     const dx = target.x - tower.x;
     const dy = target.y - tower.y;
@@ -974,7 +1077,7 @@ class Game {
         
         if (enemy.hp <= 0) {
           enemy.alive = false;
-          this.gold += enemy.reward;
+          this.grantKillReward(enemy);
           // 从单位注册表移除
           units.removeUnit(enemy.uniqueId);
           // 触发死亡事件（爆炸作为击杀者）
@@ -1014,7 +1117,7 @@ class Game {
             target.hp -= proj.damage;
             if (target.hp <= 0) {
               target.alive = false;
-              this.gold += target.reward;
+              this.grantKillReward(target);
               // 从单位注册表移除
               units.removeUnit(target.uniqueId);
               // 触发死亡事件
@@ -1096,7 +1199,7 @@ class Game {
             
             if (enemy.hp <= 0) {
               enemy.alive = false;
-              this.gold += enemy.reward;
+              this.grantKillReward(enemy);
               // 从单位注册表移除
               units.removeUnit(enemy.uniqueId);
               // 触发死亡事件
@@ -1128,7 +1231,7 @@ class Game {
           target.hp -= proj.damage;
           if (target.hp <= 0) {
             target.alive = false;
-            this.gold += target.reward; // 获得金币奖励
+            this.grantKillReward(target); // 获得金币与积分奖励
             // 从单位注册表移除
             units.removeUnit(target.uniqueId);
             // 触发死亡事件
@@ -1204,8 +1307,9 @@ class Game {
 
     const dt = Math.min(deltaTime, 0.1);
 
-    // 游戏进行中 → 正常逻辑更新
-    if (this.isRunning) {
+    // 游戏进行中且停留在战斗场景 → 正常逻辑更新
+    // （切到图签/天赋时世界冻结，回来接着打）
+    if (this.isRunning && this.scene === 'battle') {
       this.update(dt);
     } else if (this.watchingVideo) {
       // 结算界面观看视频：世界冻结，仅推进视频倒计时

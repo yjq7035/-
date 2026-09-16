@@ -36,6 +36,25 @@ function getTowerCost(type) {
 }
 
 /**
+ * 获取塔的详细属性（纯函数）
+ * 从配置中读取，与 TOWER_STATS 同步；找不到时兜底三角塔。
+ */
+function getTowerStats(type) {
+  return TOWER_STATS[type] || TOWER_STATS.triangle;
+}
+
+/**
+ * 图签加成后的实际造价（"精打细算"天赋折扣由调用方传 discountPercent）。
+ * @param {string} type 塔类型
+ * @param {number} [discountPercent] 折扣百分比（0~90），默认 0
+ */
+function getDiscountedCost(type, discountPercent) {
+  const base = getTowerCost(type);
+  const d = Math.max(0, Math.min(90, discountPercent || 0));
+  return Math.max(1, Math.round(base * (1 - d / 100)));
+}
+
+/**
  * 获取塔的等级星星显示
  * 0级 = 无星星
  * 1-5级 = 1-5个⭐
@@ -103,4 +122,15 @@ function canMergeUpgrade(tower1, tower2) {
   return true;
 }
 
-module.exports = { createTower, getTowerCost, getTowerStars, getLevelAttackBonus, canMergeUpgrade, getStageStars, getAttackPowerBoost, calculateFinalDamage };
+module.exports = {
+  createTower,
+  getTowerCost,
+  getTowerStats,
+  getDiscountedCost,
+  getTowerStars,
+  getLevelAttackBonus,
+  canMergeUpgrade,
+  getStageStars,
+  getAttackPowerBoost,
+  calculateFinalDamage,
+};
