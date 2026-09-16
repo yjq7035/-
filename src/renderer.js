@@ -5,7 +5,7 @@
 //    见 game.js 渲染倍率 / game_core.applyViewScale），读它会整体放大且跑出屏幕。
 // drawTowerIcon 为纯函数，直接吃 ctx。
 const config = require('./config');
-const { TOWER_DEFS, LAYOUT, TOWER_STATS, LEVELS, BALANCE } = config;
+const { TOWER_DEFS, LAYOUT, TOWER_STATS, LEVELS, BALANCE, AD } = config;
 const theme = require('./theme');
 const towerMod = require('./tower');
 const bonusStats = require('./bonusStats');
@@ -1446,34 +1446,52 @@ function drawGameOver(game) {
     ctx.font = '14px Arial';
     ctx.fillText('观看广告后可继续游戏', cx, panelY + 226);
   } else {
-    // 失败 - 双按钮：重新开始（主 = 增益绿）/ 重新挑战（次 = 对方蓝）
-    const gap = 16;
-    const inner = panelW - 40;
-    const btnW = (inner - gap) / 2;
+    // 失败 - 按钮：广告开关决定是否显示"重新挑战"
     const btnH = 54;
-    const totalW = btnW * 2 + gap;
-    const x1 = (width - totalW) / 2;
-    const x2 = x1 + btnW + gap;
-    const btnY = panelY + panelH - 90;
-    game.gameOverButtons = {
-      restart: { x: x1, y: btnY, w: btnW, h: btnH },
-      watchContinue: { x: x2, y: btnY, w: btnW, h: btnH },
-    };
-    drawButton(ctx, {
-      x: x1, y: btnY, w: btnW, h: btnH,
-      top: 'rgba(165, 214, 167, 0.5)', bottom: 'rgba(76, 175, 80, 0.32)',
-      stroke: 'rgba(165, 214, 167, 0.8)',
-      label: '重新开始', labelColor: THEME.text.primary, fontSize: 16,
-      pressed: isButtonPressed(game, 'restart'),
-    });
-    drawButton(ctx, {
-      x: x2, y: btnY, w: btnW, h: btnH,
-      top: 'rgba(146, 197, 255, 0.5)', bottom: 'rgba(100, 181, 246, 0.32)',
-      stroke: 'rgba(146, 197, 255, 0.8)',
-      label: '重新挑战', labelColor: THEME.text.primary, fontSize: 15,
-      subLabel: `(${game.currentWave * 500} 金币)`, subColor: THEME.text.secondary,
-      pressed: isButtonPressed(game, 'watchContinue'),
-    });
+    const inner = panelW - 40;
+    const showAd = AD.enabled;
+    if (showAd) {
+      // 双按钮
+      const gap = 16;
+      const btnW = (inner - gap) / 2;
+      const totalW = btnW * 2 + gap;
+      const x1 = (width - totalW) / 2;
+      const x2 = x1 + btnW + gap;
+      const btnY = panelY + panelH - 90;
+      game.gameOverButtons = {
+        restart: { x: x1, y: btnY, w: btnW, h: btnH },
+        watchContinue: { x: x2, y: btnY, w: btnW, h: btnH },
+      };
+      drawButton(ctx, {
+        x: x1, y: btnY, w: btnW, h: btnH,
+        top: 'rgba(165, 214, 167, 0.5)', bottom: 'rgba(76, 175, 80, 0.32)',
+        stroke: 'rgba(165, 214, 167, 0.8)',
+        label: '重新开始', labelColor: THEME.text.primary, fontSize: 16,
+        pressed: isButtonPressed(game, 'restart'),
+      });
+      drawButton(ctx, {
+        x: x2, y: btnY, w: btnW, h: btnH,
+        top: 'rgba(146, 197, 255, 0.5)', bottom: 'rgba(100, 181, 246, 0.32)',
+        stroke: 'rgba(146, 197, 255, 0.8)',
+        label: '重新挑战', labelColor: THEME.text.primary, fontSize: 15,
+        subLabel: `(${game.currentWave * 500} 金币)`, subColor: THEME.text.secondary,
+        pressed: isButtonPressed(game, 'watchContinue'),
+      });
+    } else {
+      // 仅显示重新开始
+      const btnW = inner;
+      const btnY = panelY + panelH - 90;
+      game.gameOverButtons = {
+        restart: { x: (width - btnW) / 2, y: btnY, w: btnW, h: btnH },
+      };
+      drawButton(ctx, {
+        x: (width - btnW) / 2, y: btnY, w: btnW, h: btnH,
+        top: 'rgba(165, 214, 167, 0.5)', bottom: 'rgba(76, 175, 80, 0.32)',
+        stroke: 'rgba(165, 214, 167, 0.8)',
+        label: '重新开始', labelColor: THEME.text.primary, fontSize: 18,
+        pressed: isButtonPressed(game, 'restart'),
+      });
+    }
   }
 
   // 结算按钮的点击波纹（只画 gameover 层的）

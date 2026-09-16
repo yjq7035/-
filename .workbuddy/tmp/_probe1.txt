@@ -1,4 +1,0 @@
-nodeExists=True
-output=hello from node
-exit=0
-cwd=F:\图形塔防

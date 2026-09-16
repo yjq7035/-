@@ -13,6 +13,7 @@ const EventBus = require('./eventBus');
 const AuraManager = require('./auraManager');
 const meta = require('./meta');
 const levelsMod = require('./levels');
+const ads = require('./ads');
 
 const {
   LAYOUT, BALANCE, TOWER_DEFS, PLAYER, ATTACK_SPEED_BASE, MAX_STAGE, AURA_DURATION,
@@ -143,6 +144,7 @@ class Game {
     this.gameOverButtons = {}; // 游戏结束界面按钮区域
     this.watchingVideo = false;
     this.videoTimer = 30;
+    this._reviveDone = false;
 
     // 游戏对象
     this.enemies = [];
@@ -508,16 +510,34 @@ class Game {
    * 观看继续：30秒视频后恢复当前波次 + 金币奖励
    */
   watchContinue() {
+    if (!ads.isEnabled()) {
+      // 广告关闭时不允许复活
+      return;
+    }
+    this._reviveDone = false;
     this.watchingVideo = true;
-    this.videoTimer = 30;
+    this.videoTimer = 30; // 保持 UI 倒计时显示
     // 暂停游戏循环
     this.isRunning = false;
+    // 启动真实广告链，完成后触发复活
+    ads.showReviveAds((success) => {
+      if (success) {
+        this.onVideoComplete();
+      } else {
+        // 广告失败或用户跳过，恢复可操作状态
+        this.watchingVideo = false;
+        this.videoTimer = 30;
+        this.isRunning = false;
+      }
+    });
   }
 
   /**
    * 视频倒计时完成
    */
   onVideoComplete() {
+    if (this._reviveDone) return;
+    this._reviveDone = true;
     this.watchingVideo = false;
     this.videoTimer = 30;
 

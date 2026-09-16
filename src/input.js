@@ -13,7 +13,7 @@
 // 坐标一律来自各模块导出的纯布局函数（shop/nav/codex/talents/levels/gamemenu），
 // 渲染层与输入层共用同一份真源，不存在"画在一处、点在另一处"。
 // ============================================================================
-const { TOWER_DEFS, LAYOUT, PLAYER } = require('./config');
+const { TOWER_DEFS, LAYOUT, PLAYER, AD } = require('./config');
 const theme = require('./theme');
 const towerMod = require('./tower');
 const shop = require('./shop');
@@ -84,7 +84,7 @@ function handleTouchStart(game, e) {
       pressButton(game, 'restart');
       return;
     }
-    if (btns && btns.watchContinue && isPointInRect(pos, btns.watchContinue)) {
+    if (btns && btns.watchContinue && isPointInRect(pos, btns.watchContinue) && AD.enabled) {
       pressButton(game, 'watchContinue');
       return;
     }
@@ -346,7 +346,7 @@ function handleTouchEnd(game, e) {
       game.touchStartPos = null;
       return;
     }
-    if (btns && btns.watchContinue && isPointInRect(pos, btns.watchContinue)) {
+    if (btns && btns.watchContinue && isPointInRect(pos, btns.watchContinue) && AD.enabled) {
       flashButton(game, btns.watchContinue, '146,197,255', 'gameover');
       game.watchContinue();
       releaseButton(game);

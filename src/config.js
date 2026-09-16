@@ -378,6 +378,27 @@ const SHOP = {
 // 面板总高（派生值，别手改）：战场布局要靠它算出"底部被占掉多少"
 SHOP.panelHeight = SHOP.padTop + SHOP.headerH + SHOP.cardH + SHOP.padBottom;
 
+// ============================================================================
+// 广告配置
+// ============================================================================
+const AD = {
+  enabled: true, // false 时禁用所有广告相关按钮
+  // 开发测试用：没有真实广告位 ID 时，用模拟弹窗（wx.showModal）代替广告，
+  // 可完整测试"看完广告→复活"链路。上线前必须改为 false！
+  mock: true,
+  // ↓↓↓ 以下仍是占位符！必须替换为微信广告后台（mp.weixin.qq.com → 流量主 → 广告位）申请的真实 ID，
+  // 格式形如 'adunit-xxxxxxxxxxxxxxxx'（adunit- + 16 位十六进制）。
+  // 占位符状态下 ads.js 会自动跳过创建对应广告实例，只打警告，不会触发 errCode 1002 崩溃。
+  rewardedVideoAdUnitId: 'adunit-rewarded-video', // 替换为实际广告位 id
+  interstitialAdUnitId: 'adunit-interstitial',
+  bannerAdUnitId: 'adunit-banner',
+  // 30 秒复活需要看 2 个 15 秒激励视频
+  reviveAdCount: 2,
+  // 插屏广告策略
+  interstitialMinIntervalSec: 60, // 两次插屏展示的最小间隔（频控，避免连续弹窗）
+  interstitialRetrySec: 30,       // 加载失败后按官方建议间隔一段时间再重试
+};
+
 module.exports = {
   TOWER_DEFS,
   TOWER_STATS,
@@ -401,4 +422,5 @@ module.exports = {
   TALENT_POINTS,
   TALENT_EFFECT,
   LEVELS,
+  AD,
 };

@@ -364,6 +364,14 @@ function boot() {
     new Game(canvas, ctx, windowInfo);
     booted = true;
     console.log('[boot] Game 实例化完成');
+    // 初始化广告
+    try {
+      const ads = require('./src/ads');
+      ads.initAds();
+      console.log('[boot] 广告模块初始化完成');
+    } catch(e) {
+      console.warn('[boot] 广告初始化失败', e);
+    }
     console.log('[boot] ✅ 启动成功（第', bootTries, '次尝试；createCanvas 共调用', createCanvasCalls, '次，应为 1）');
     return null;
   } catch (err) {
