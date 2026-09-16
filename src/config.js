@@ -382,10 +382,10 @@ SHOP.panelHeight = SHOP.padTop + SHOP.headerH + SHOP.cardH + SHOP.padBottom;
 // 广告配置
 // ============================================================================
 const AD = {
-  enabled: true, // false 时禁用所有广告相关按钮
+  enabled: false, // false 时禁用所有广告相关按钮
   // 开发测试用：没有真实广告位 ID 时，用模拟弹窗（wx.showModal）代替广告，
   // 可完整测试"看完广告→复活"链路。上线前必须改为 false！
-  mock: true,
+  mock: false,
   // ↓↓↓ 以下仍是占位符！必须替换为微信广告后台（mp.weixin.qq.com → 流量主 → 广告位）申请的真实 ID，
   // 格式形如 'adunit-xxxxxxxxxxxxxxxx'（adunit- + 16 位十六进制）。
   // 占位符状态下 ads.js 会自动跳过创建对应广告实例，只打警告，不会触发 errCode 1002 崩溃。
