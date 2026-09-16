@@ -263,7 +263,7 @@ function collectTowerStats(game, tower, stats, towerType) {
   const stage3EnhanceLv = (tower && tower.stage >= BALANCE.enhance.minStage) ? enhanceLv : 0;
   const rawBaseDamage = st.damage || 0;
   const whiteBonusDamage = stage3EnhanceLv > 0
-    ? Math.floor(rawBaseDamage * (1 + stage3EnhanceLv * 0.05))
+    ? rawBaseDamage * (1 + stage3EnhanceLv * 0.05)
     : rawBaseDamage;
   const base = {
     damage: whiteBonusDamage,
@@ -285,7 +285,7 @@ function collectTowerStats(game, tower, stats, towerType) {
 
   // ================= 3. 最终值 =================
   const damageMult = percentMultiplier(sources, ATTR.DAMAGE);
-  const finalDamage = Math.max(0, Math.floor(base.damage * damageMult));
+  const finalDamage = Math.max(0, base.damage * damageMult);
 
   const speedPoints = pointsSum(sources, ATTR.ATTACK_SPEED);
   const finalSpeed = Math.max(1, base.attackSpeedMultiplier + speedPoints);
@@ -391,8 +391,8 @@ function buildRows(ctx) {
     rows.push({
       key: ATTR.DAMAGE,
       label: '攻击力',
-      baseText: `${round2(base.damage)}`,
-      bonusText: signed(bonus.damage, ''),
+      baseText: `${formatNum(base.damage)}`,
+      bonusText: `+${formatNum(bonus.damage)}`,
       sign: Math.sign(bonus.damage),
       parts: percentParts(sources, ATTR.DAMAGE),
     });
@@ -566,6 +566,12 @@ function round2(v) {
   return Math.round((v + Number.EPSILON) * 100) / 100;
 }
 
+/** 数值格式化：整数显示整数，小数最多保留2位 */
+function formatNum(v) {
+  const n = round2(v);
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
 module.exports = {
   ATTR,
   SOURCE,
@@ -578,4 +584,6 @@ module.exports = {
   collectAuras,
   percentParts,
   pointParts,
+  round2,
+  formatNum,
 };

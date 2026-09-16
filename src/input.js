@@ -76,7 +76,11 @@ function handleTouchStart(game, e) {
   // 输入层却把所有触摸吃光 → 屏幕看着正常、实则整块点不动（永久死锁）。
   if (game.isSettlementActive()) {
     const btns = game.gameOverButtons;
-    if (btns && isPointInRect(pos, btns.restart)) {
+    if (btns && game.gameWon && btns.returnHome && isPointInRect(pos, btns.returnHome)) {
+      pressButton(game, 'returnHome');
+      return;
+    }
+    if (btns && !game.gameWon && btns.restart && isPointInRect(pos, btns.restart)) {
       pressButton(game, 'restart');
       return;
     }
@@ -328,7 +332,14 @@ function handleTouchEnd(game, e) {
   // 不做第二套手写条件，避免再次出现"渲染不画、输入吞光"的错配态。
   if (game.isSettlementActive() && !game.watchingVideo) {
     const btns = game.gameOverButtons;
-    if (btns && isPointInRect(pos, btns.restart)) {
+    if (btns && game.gameWon && btns.returnHome && isPointInRect(pos, btns.returnHome)) {
+      flashButton(game, btns.returnHome, '165,214,167', 'gameover');
+      game.returnToHome();
+      releaseButton(game);
+      game.touchStartPos = null;
+      return;
+    }
+    if (btns && !game.gameWon && btns.restart && isPointInRect(pos, btns.restart)) {
       flashButton(game, btns.restart, '165,214,167', 'gameover');
       game.restart();
       releaseButton(game);

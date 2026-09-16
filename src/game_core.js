@@ -585,12 +585,12 @@ class Game {
     const stage = tower && tower.stage ? tower.stage : 0;
     const enhanceLv = tower && tower.enhanceLevel ? tower.enhanceLevel : 0;
     if (stage >= BALANCE.enhance.minStage && enhanceLv > 0) {
-      whiteBonus = Math.floor(baseDamage * (1 + enhanceLv * 0.05));
+      whiteBonus = baseDamage * (1 + enhanceLv * 0.05);
     }
     const dmg = towerMod.calculateFinalDamage(
       whiteBonus, tower.level, tower.attackPowerBoost
     );
-    return Math.floor(dmg * meta.codexDamageMultiplier(tower.type));
+    return dmg * meta.codexDamageMultiplier(tower.type);
   }
 
   /**
@@ -621,7 +621,7 @@ class Game {
     if (sourceTower && o.allowCrit !== false) {
       const prof = towerMod.getAttackProfile(sourceTower);
       if (prof.critChance > 0 && Math.random() * 100 < prof.critChance) {
-        dmg = Math.round(dmg * prof.critMult);
+        dmg = dmg * prof.critMult;
         crit = true;
       }
     }
@@ -632,7 +632,7 @@ class Game {
     const effectiveArmor = Math.max(0, armor - pen);
     if (effectiveArmor > 0 && dmg > 0) {
       const reduce = effectiveArmor / (effectiveArmor + BALANCE.armorK);
-      dmg = Math.max(1, Math.round(dmg * (1 - reduce)));
+      dmg = Math.max(1, dmg * (1 - reduce));
     }
 
     this.triggerHit(enemy, source, dmg);
@@ -665,8 +665,12 @@ class Game {
 
   /** 通关关卡：首通额外奖励 + 天赋点；自动把预选关卡推进到下一关（若已实现） */
   onLevelCleared() {
-    const first = meta.markLevelCleared(this.currentLevel, this.currentWave);
-    meta.grantPoints(POINTS.clearLevel + (first ? POINTS.firstClearBonus : 0));
+    const { first, clearCount } = meta.markLevelCleared(this.currentLevel, this.currentWave);
+    // 奖励递减：首通 = 100%；通关第 N 次 = (1/N)%（避免反复刷奖励），保底至少 1 点
+    const rewardMult = first ? 1 : (1 / clearCount) / 100;
+    const basePoints = POINTS.clearLevel + (first ? POINTS.firstClearBonus : 0);
+    const pointsGain = first ? basePoints : Math.max(1, Math.round(basePoints * rewardMult));
+    meta.grantPoints(pointsGain);
     meta.grantTalentPoints(TALENT_POINTS.clearLevel);
     // 首通时：自动把预选关卡指向下一关（若已实现），让玩家"冲下一关"
     if (first) {
@@ -748,6 +752,11 @@ class Game {
     this.showMenu = false;
     meta.save(true);
     return true;
+  }
+
+  /** 返回主页（通关后按钮）：与 abandonRun 同逻辑 */
+  returnToHome() {
+    return this.abandonRun();
   }
 
   /** 进入指定关卡（仅切换"待开始"的关卡，不直接开跑）。需关卡已解锁。 */
@@ -1195,7 +1204,7 @@ class Game {
     const towerDamage = this.towerDamage(tower, towerStats.damage);
     
     // 每秒伤害 = 塔攻击力，按时间比例计算单帧伤害
-    const damage = Math.max(1, Math.floor(towerDamage * dt));
+    const damage = Math.max(1, towerDamage * dt);
     
     // 直接造成伤害（激光持续命中）：每帧伤害太低，不吃暴击（避免每帧 roll 抖动），但吃护甲/穿透
     if (target && target.alive) {
@@ -1410,7 +1419,7 @@ class Game {
           // 爆炸半径与溅射比例由 tower.js 统一给出（圆塔强化"爆炸范围 / 二段爆炸伤害"在此生效）
           const boom = towerMod.getExplosionParams(proj.sourceTower || { type: 'circle' });
           this.fireExplosion(proj.targetX, proj.targetY, boom.radius, '#4444FF',
-            Math.floor(proj.damage * boom.ratio), proj.sourceTower);
+            proj.damage * boom.ratio, proj.sourceTower);
           proj.alive = false;
           continue;
         }

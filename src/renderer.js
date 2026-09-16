@@ -1423,18 +1423,18 @@ function drawGameOver(game) {
   );
 
   if (showWin) {
-    // 胜利：单个"重新开始"按钮（主操作 = 增益绿）
+    // 胜利：单个"返回主页"按钮（主操作 = 增益绿）
     const btnW = Math.min(240, panelW - 48);
     const btnH = 54;
     const btnX = (width - btnW) / 2;
     const btnY = panelY + panelH - 90;
-    game.gameOverButtons = { restart: { x: btnX, y: btnY, w: btnW, h: btnH } };
+    game.gameOverButtons = { returnHome: { x: btnX, y: btnY, w: btnW, h: btnH } };
     drawButton(ctx, {
       x: btnX, y: btnY, w: btnW, h: btnH,
       top: 'rgba(165, 214, 167, 0.5)', bottom: 'rgba(76, 175, 80, 0.32)',
       stroke: 'rgba(165, 214, 167, 0.8)',
-      label: '重新开始', labelColor: THEME.text.primary, fontSize: 18,
-      pressed: isButtonPressed(game, 'restart'),
+      label: '返回主页', labelColor: THEME.text.primary, fontSize: 18,
+      pressed: isButtonPressed(game, 'returnHome'),
     });
   } else if (game.watchingVideo) {
     // 失败 - 观看视频倒计时

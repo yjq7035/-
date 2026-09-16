@@ -116,7 +116,7 @@ function getAttackPowerBoost(stage) {
 function calculateFinalDamage(baseDamage, level, attackPowerBoost) {
   const levelBonus = getLevelAttackBonus(level);
   const boostMultiplier = 1 + (attackPowerBoost / 100);
-  return Math.floor(baseDamage * levelBonus * boostMultiplier);
+  return baseDamage * levelBonus * boostMultiplier;
 }
 
 // ============================================================================

@@ -31,7 +31,7 @@ function createDefaultMeta() {
     codex,                                 // { [towerType]: level }，level>=1 即已解锁
     lineup: SHOP_TOWERS.slice(),           // 登场池（有序）
     talents: {},                           // { [talentId]: level }
-    levels: { cleared: {}, best: {} },     // cleared[id]=true / best[id]=最高波次
+    levels: { cleared: {}, best: {} },     // cleared[id]=通关次数 / best[id]=最高波次
     selectedLevel: 1,
   };
 }
@@ -111,7 +111,11 @@ function normalize(raw) {
   const rawLevels = (raw.levels && typeof raw.levels === 'object') ? raw.levels : {};
   out.levels = { cleared: {}, best: {} };
   if (rawLevels.cleared && typeof rawLevels.cleared === 'object') {
-    for (const k of Object.keys(rawLevels.cleared)) if (rawLevels.cleared[k]) out.levels.cleared[k] = true;
+    for (const k of Object.keys(rawLevels.cleared)) {
+      const v = rawLevels.cleared[k];
+      if (v === true) out.levels.cleared[k] = 1;         // 旧存档迁移：true → 1
+      else if (typeof v === 'number' && v > 0) out.levels.cleared[k] = Math.floor(v);
+    }
   }
   if (rawLevels.best && typeof rawLevels.best === 'object') {
     for (const k of Object.keys(rawLevels.best)) {
@@ -324,16 +328,18 @@ function recordWave(levelId, wave) {
 function markLevelCleared(levelId, wave) {
   const m = get();
   const key = String(levelId);
-  const first = !m.levels.cleared[key];
-  m.levels.cleared[key] = true;
+  const prevCount = m.levels.cleared[key] || 0;
+  const first = prevCount === 0;
+  const newCount = prevCount + 1;
+  m.levels.cleared[key] = newCount;
   const prev = m.levels.best[key] || 0;
   if (wave > prev) m.levels.best[key] = wave;
   save(true);
-  return first;
+  return { first, clearCount: newCount };
 }
 
 function isLevelCleared(levelId) {
-  return !!get().levels.cleared[String(levelId)];
+  return (get().levels.cleared[String(levelId)] || 0) > 0;
 }
 
 /** 该关卡是否属于"已实现、可玩"范围（不是"待扩展"占位关卡） */

@@ -14,6 +14,7 @@ const { TOWER_ORDER, TOWER_DEFS, TOWER_STATS, LAYOUT, CODEX, RARITY } = require(
 const theme = require('./theme');
 const towerMod = require('./tower');
 const meta = require('./meta');
+const { formatNum } = require('./bonusStats');
 
 const {
   THEME, roundRectPath, drawTowerIcon, drawChip, drawButton, drawStar,
@@ -371,7 +372,7 @@ function drawSheet(game, L) {
   const points = meta.get().points;
   const onLineup = meta.isInLineup(type);
   const dmgMult = meta.codexDamageMultiplier(type);
-  const finalDamage = Math.round((stats.damage || 0) * dmgMult);
+  const finalDamage = (stats.damage || 0) * dmgMult;
   const btns = getSheetButtons(game, sheet);
 
   ctx.save();
@@ -439,9 +440,9 @@ function drawSheet(game, L) {
   if (isSupport) {
     attrText = `光环 +${(stats.supportBuff && stats.supportBuff.attackSpeedMultiplier) || 0}%`;
   } else {
-    attrText = `攻击 ${stats.damage}`;
+    attrText = `攻击 ${formatNum(stats.damage)}`;
     const bonus = finalDamage - (stats.damage || 0);
-    if (bonus > 0) attrText += ` +${bonus}`;
+    if (bonus > 0) attrText += ` +${formatNum(bonus)}`;
   }
   ctx.fillStyle = THEME.text.dim;
   ctx.fillText(attrText, sheet.x + 14, attrY);
