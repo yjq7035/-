@@ -1,0 +1,35 @@
+LAYOUT.topBarHeight=34  navHeight=58  slotSize=36
+
+== 松手落点 vs 拖拽残留（逐个分支）==
+  顶栏(y=8, 应在 topBarHeight=34 内)
+     拖拽中: dragging=true pendingDrag=true touchStartPos={"x":129,"y":499.79999999999995} scene=battle gameOver=false
+     松手后: dragging=false pendingDrag=false touchStartPos=null scene=battle gameOver=false
+  ☰按钮中心
+     拖拽中: dragging=true pendingDrag=true touchStartPos={"x":129,"y":499.79999999999995} scene=battle gameOver=false
+     松手后: dragging=false pendingDrag=false touchStartPos=null scene=battle gameOver=false
+  战场空地
+     拖拽中: dragging=true pendingDrag=true touchStartPos={"x":129,"y":499.79999999999995} scene=battle gameOver=false
+     松手后: dragging=false pendingDrag=false touchStartPos=null scene=battle gameOver=false
+  底部导航(y=H-20)
+     拖拽中: dragging=true pendingDrag=true touchStartPos={"x":129,"y":499.79999999999995} scene=battle gameOver=false
+     松手后: dragging=false pendingDrag=false touchStartPos=null scene=battle gameOver=false
+  商店卡区域
+     拖拽中: dragging=true pendingDrag=true touchStartPos={"x":129,"y":499.79999999999995} scene=battle gameOver=false
+     松手后: dragging=false pendingDrag=false touchStartPos=null scene=battle gameOver=false
+
+== 松手后能否自愈（再点一次导航）==
+  顶栏(y=8, 应在 topBarHeight=34 内)
+     松手后: dragging=false pendingDrag=false touchStartPos=null scene=battle gameOver=false
+     点导航: battle→codex 有救
+  ☰按钮中心
+     松手后: dragging=false pendingDrag=false touchStartPos=null scene=battle gameOver=false
+     点导航: battle→codex 有救
+  战场空地
+     松手后: dragging=false pendingDrag=false touchStartPos=null scene=battle gameOver=false
+     点导航: battle→codex 有救
+  底部导航(y=H-20)
+     松手后: dragging=false pendingDrag=false touchStartPos=null scene=battle gameOver=false
+     点导航: battle→codex 有救
+  商店卡区域
+     松手后: dragging=false pendingDrag=false touchStartPos=null scene=battle gameOver=false
+     点导航: battle→codex 有救

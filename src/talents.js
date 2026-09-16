@@ -37,8 +37,8 @@ const TALENT_UI = {
  * @returns {{ header, rows, viewport, maxScroll, scroll, navTop, hintY }}
  */
 function getTalentLayout(game) {
-  const W = game.canvas.width;
-  const H = game.canvas.height;
+  const W = game.W;
+  const H = game.H;
   const navTop = H - LAYOUT.navHeight;
 
   const listTop = TALENT_UI.headerTop + TALENT_UI.headerH + TALENT_UI.listTopGap;
@@ -141,8 +141,8 @@ function learn(game, id) {
 
 function drawTalents(game) {
   const ctx = game.ctx;
-  const W = game.canvas.width;
-  const H = game.canvas.height;
+  const W = game.W;
+  const H = game.H;
 
   ctx.fillStyle = THEME.surface.page;
   ctx.fillRect(0, 0, W, H);

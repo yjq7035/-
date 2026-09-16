@@ -1,0 +1,210 @@
+
+=== 真机启动还原测试  2026-09-16T04:25:19.300Z ===
+被测入口 : _entry_old.js
+判据     : 主屏 canvas 是否出现绘制指令（0 = 卡启动页）
+
+=== A. 基线：现代 ctx ===
+  模拟器 / 新版基础库
+  顶层加载             : 正常
+  createCanvas 调用    : 1 次 → [main]   首次成功于 t=100ms
+  getContext 调用      : 1 次
+  定时器泵 / rAF 帧    : 1 / 5
+  ---- 判据 ----
+  ★ 主屏 canvas 绘制指令 : 1074   ✅ 首帧画出来了
+    离屏 canvas 绘制指令 : 0
+  boot 日志：
+    [boot] === game.js 开始执行 ===
+    [boot] game_core require 完成
+    [boot] 第 1 次尝试 boot()，延迟 100 ms
+    [boot] boot() 开始
+    [boot] 调用 wx.createCanvas()...
+    [boot] canvas = [object Object]
+    [boot] ctx = true
+    [boot] windowInfo = 390 844
+    [boot] 开始 new Game()...
+    [boot] Game 实例化完成
+    [boot] ✅ 启动成功（第 1 次）
+  → 结论: 启动成功，能出画面
+
+=== B. 缺 roundRect ===
+  polyfill 应补齐
+  顶层加载             : 正常
+  createCanvas 调用    : 1 次 → [main]   首次成功于 t=100ms
+  getContext 调用      : 1 次
+  定时器泵 / rAF 帧    : 1 / 5
+  ---- 判据 ----
+  ★ 主屏 canvas 绘制指令 : 1074   ✅ 首帧画出来了
+    离屏 canvas 绘制指令 : 0
+  boot 日志：
+    [boot] === game.js 开始执行 ===
+    [boot] game_core require 完成
+    [boot] 第 1 次尝试 boot()，延迟 100 ms
+    [boot] boot() 开始
+    [boot] 调用 wx.createCanvas()...
+    [boot] canvas = [object Object]
+    [boot] ctx = true
+    [boot] windowInfo = 390 844
+    [boot] 开始 new Game()...
+    [boot] Game 实例化完成
+    [boot] ✅ 启动成功（第 1 次）
+  → 结论: 启动成功，能出画面
+
+=== C. 缺 ellipse ===
+  顶层加载             : 正常
+  createCanvas 调用    : 1 次 → [main]   首次成功于 t=100ms
+  getContext 调用      : 1 次
+  定时器泵 / rAF 帧    : 1 / 5
+  ---- 判据 ----
+  ★ 主屏 canvas 绘制指令 : 1074   ✅ 首帧画出来了
+    离屏 canvas 绘制指令 : 0
+  boot 日志：
+    [boot] === game.js 开始执行 ===
+    [boot] game_core require 完成
+    [boot] 第 1 次尝试 boot()，延迟 100 ms
+    [boot] boot() 开始
+    [boot] 调用 wx.createCanvas()...
+    [boot] canvas = [object Object]
+    [boot] ctx = true
+    [boot] windowInfo = 390 844
+    [boot] 开始 new Game()...
+    [boot] Game 实例化完成
+    [boot] ✅ 启动成功（第 1 次）
+  → 结论: 启动成功，能出画面
+
+=== D. 缺 setLineDash ===
+  顶层加载             : 正常
+  createCanvas 调用    : 1 次 → [main]   首次成功于 t=100ms
+  getContext 调用      : 1 次
+  定时器泵 / rAF 帧    : 1 / 5
+  ---- 判据 ----
+  ★ 主屏 canvas 绘制指令 : 492   ✅ 首帧画出来了
+    离屏 canvas 绘制指令 : 0
+  boot 日志：
+    [boot] === game.js 开始执行 ===
+    [boot] game_core require 完成
+    [boot] 第 1 次尝试 boot()，延迟 100 ms
+    [boot] boot() 开始
+    [boot] 调用 wx.createCanvas()...
+    [boot] canvas = [object Object]
+    [boot] ctx = true
+    [boot] windowInfo = 390 844
+    [boot] 开始 new Game()...
+    [boot] Game 实例化完成
+    [boot] ✅ 启动成功（第 1 次）
+  ★ 帧异常: [loop] 帧异常（已忽略，主循环继续）: TypeError: ctx.setLineDash is not a function |     at drawLadderRail (F:\图形塔防\src\levels.js:250:7) |     at Object.drawBattleReady (F:\图形塔防\src\levels.js:199:3)
+  → 结论: 启动成功，能出画面
+
+=== E. 3.14.0 全缺（roundRect+ellipse+setLineDash） ===
+  顶层加载             : 正常
+  createCanvas 调用    : 1 次 → [main]   首次成功于 t=100ms
+  getContext 调用      : 1 次
+  定时器泵 / rAF 帧    : 1 / 5
+  ---- 判据 ----
+  ★ 主屏 canvas 绘制指令 : 492   ✅ 首帧画出来了
+    离屏 canvas 绘制指令 : 0
+  boot 日志：
+    [boot] === game.js 开始执行 ===
+    [boot] game_core require 完成
+    [boot] 第 1 次尝试 boot()，延迟 100 ms
+    [boot] boot() 开始
+    [boot] 调用 wx.createCanvas()...
+    [boot] canvas = [object Object]
+    [boot] ctx = true
+    [boot] windowInfo = 390 844
+    [boot] 开始 new Game()...
+    [boot] Game 实例化完成
+    [boot] ✅ 启动成功（第 1 次）
+  ★ 帧异常: [loop] 帧异常（已忽略，主循环继续）: TypeError: ctx.setLineDash is not a function |     at drawLadderRail (F:\图形塔防\src\levels.js:250:7) |     at Object.drawBattleReady (F:\图形塔防\src\levels.js:199:3)
+  → 结论: 启动成功，能出画面
+
+=== F. SDK 竞态（按时间）：t<400ms 时 createCanvas/getPerformance 全抛错 ===
+  ★ 这是真机最可能的真实场景。看 createCanvas 被调了几次、拿到的是不是屏幕画布
+  顶层加载             : 正常
+  createCanvas 调用    : 3 次 → [offscreen]
+  getContext 调用      : 1 次
+  定时器泵 / rAF 帧    : 3 / 5
+  ---- 判据 ----
+  ★ 主屏 canvas 绘制指令 : 0   ❌ 一个像素都没画 → 卡在原生启动页
+    离屏 canvas 绘制指令 : 1074
+  boot 日志：
+    [boot] === game.js 开始执行 ===
+    [boot] game_core require 完成
+    [boot] 第 1 次尝试 boot()，延迟 100 ms
+    [boot] boot() 开始
+    [boot] 调用 wx.createCanvas()...
+    [boot] ❌ 第 1 次失败: TypeError: wx.getSystemNanoTime is not a function
+    [boot] 第 2 次尝试 boot()，延迟 200 ms
+    [boot] boot() 开始
+    [boot] 调用 wx.createCanvas()...
+    [boot] ❌ 第 2 次失败: TypeError: wx.getSystemNanoTime is not a function
+    [boot] 第 3 次尝试 boot()，延迟 300 ms
+    [boot] boot() 开始
+    [boot] 调用 wx.createCanvas()...
+    [boot] canvas = [object Object]
+    [boot] ctx = true
+    [boot] windowInfo = 390 844
+    [boot] 开始 new Game()...
+    [boot] Game 实例化完成
+    [boot] ✅ 启动成功（第 3 次）
+  → 结论: ★ 主屏无绘制 = 「卡在原生启动页」
+
+=== G. SDK 竞态更久：t<1200ms 才就绪 ===
+  顶层加载             : 正常
+  createCanvas 调用    : 5 次 → [offscreen]
+  getContext 调用      : 1 次
+  定时器泵 / rAF 帧    : 5 / 5
+  ---- 判据 ----
+  ★ 主屏 canvas 绘制指令 : 0   ❌ 一个像素都没画 → 卡在原生启动页
+    离屏 canvas 绘制指令 : 1074
+  boot 日志：
+    [boot] === game.js 开始执行 ===
+    [boot] game_core require 完成
+    [boot] 第 1 次尝试 boot()，延迟 100 ms
+    [boot] boot() 开始
+    [boot] 调用 wx.createCanvas()...
+    [boot] ❌ 第 1 次失败: TypeError: wx.getSystemNanoTime is not a function
+    [boot] 第 2 次尝试 boot()，延迟 200 ms
+    [boot] boot() 开始
+    [boot] 调用 wx.createCanvas()...
+    [boot] ❌ 第 2 次失败: TypeError: wx.getSystemNanoTime is not a function
+    [boot] 第 3 次尝试 boot()，延迟 300 ms
+    [boot] boot() 开始
+    [boot] 调用 wx.createCanvas()...
+    [boot] ❌ 第 3 次失败: TypeError: wx.getSystemNanoTime is not a function
+    [boot] 第 4 次尝试 boot()，延迟 400 ms
+    [boot] boot() 开始
+    [boot] 调用 wx.createCanvas()...
+    [boot] ❌ 第 4 次失败: TypeError: wx.getSystemNanoTime is not a function
+    [boot] 第 5 次尝试 boot()，延迟 500 ms
+    [boot] boot() 开始
+    [boot] 调用 wx.createCanvas()...
+    [boot] canvas = [object Object]
+    [boot] ctx = true
+    [boot] windowInfo = 390 844
+    [boot] 开始 new Game()...
+    [boot] Game 实例化完成
+    [boot] ✅ 启动成功（第 5 次）
+  → 结论: ★ 主屏无绘制 = 「卡在原生启动页」
+
+=== H. getContext 返回 null ===
+  顶层加载             : 正常
+  createCanvas 调用    : 1 次 → [main]   首次成功于 t=100ms
+  getContext 调用      : 1 次
+  定时器泵 / rAF 帧    : 1 / 5
+  ---- 判据 ----
+  ★ 主屏 canvas 绘制指令 : 0   ❌ 一个像素都没画 → 卡在原生启动页
+    离屏 canvas 绘制指令 : 0
+  boot 日志：
+    [boot] === game.js 开始执行 ===
+    [boot] game_core require 完成
+    [boot] 第 1 次尝试 boot()，延迟 100 ms
+    [boot] boot() 开始
+    [boot] 调用 wx.createCanvas()...
+    [boot] canvas = [object Object]
+    [boot] ctx = false
+    [boot] windowInfo = 390 844
+    [boot] 开始 new Game()...
+    [boot] Game 实例化完成
+    [boot] ✅ 启动成功（第 1 次）
+  ★ 帧异常: [loop] 帧异常（已忽略，主循环继续）: TypeError: Cannot set properties of null (setting 'fillStyle') |     at Object.render (F:\图形塔防\src\renderer.js:1746:17) |     at Game.draw (F:\图形塔防\src\game_core.js:1564:14)
+  → 结论: ★ 主屏无绘制 = 「卡在原生启动页」

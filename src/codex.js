@@ -53,7 +53,7 @@ function getDescLines(game, type) {
   const st = type ? TOWER_STATS[type] : null;
   const text = st && st.description ? st.description : '';
   if (!text) return [''];
-  const lines = wrapTextLines(game.ctx, text, descMaxWidth(game.canvas.width), CODEX_UI.descFont);
+  const lines = wrapTextLines(game.ctx, text, descMaxWidth(game.W), CODEX_UI.descFont);
   return lines.length ? lines : [''];
 }
 
@@ -70,8 +70,8 @@ function getDescLines(game, type) {
  *             viewport, contentH, maxScroll, scroll }}
  */
 function getCodexLayout(game) {
-  const W = game.canvas.width;
-  const H = game.canvas.height;
+  const W = game.W;
+  const H = game.H;
   const navTop = H - LAYOUT.navHeight;
 
   // 4 列固定：图形塔已扩到 16 种，3 列会变成 6 行把格网挤出屏幕
@@ -201,8 +201,8 @@ function hitCodex(game, pos) {
 
 function drawCodex(game) {
   const ctx = game.ctx;
-  const W = game.canvas.width;
-  const H = game.canvas.height;
+  const W = game.W;
+  const H = game.H;
 
   // 背景（与战场同底色，避免切场景闪白）
   ctx.fillStyle = THEME.surface.page;

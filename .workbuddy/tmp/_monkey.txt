@@ -1,0 +1,43 @@
+
+=== 1. 猴子随机手势 + 逐次尸检（真实对局，含刷怪/战斗） ===
+  随机手势 16000 次，推进 48000 帧，渲染/更新异常 0 次
+
+  【I1 孤儿拖拽态（之后所有点击被首行 return 吃掉）】命中 0 次
+  【I2 死锁结算态（无结算界面 + 吞掉一切触摸）】命中 0 次
+  【I3 广告倒计时卡死】命中 0 次
+
+=== 2. 定向复现：把 I1 / I2 / I3 逐条钉死 ===
+  I1 拖放松手位置 vs 状态残留：
+    「slot0」→「topbar」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    「slot0」→「menuBtn」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    「slot0」→「offTop」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    「slot2」→「topbar」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    「slot2」→「menuBtn」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    「slot2」→「offTop」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    「shopCard0」→「topbar」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    「shopCard0」→「menuBtn」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    「shopCard0」→「offTop」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    「shopCard1」→「topbar」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    「shopCard1」→「menuBtn」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    「shopCard1」→「offTop」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+
+  I2 结算界面各态下的按钮与输入吞没情况：
+    正常失败(lives=0): 按钮=[restart,watchContinue] 点导航 battle→battle
+    正常失败+观看视频: 按钮=[空] 点导航 battle→battle
+    正常胜利(lives>0): 按钮=[restart] 点导航 battle→battle
+    ★ 错配态(lives=20,gameOver,非胜利): 按钮=[空]  连点三个导航后 scene=battle  ★ 完全无响应 = 永久死锁
+
+  I3 「重新挑战（看广告复活）」链路：
+    点「重新挑战」→ watchingVideo=true isRunning=false videoTimer=30
+    广告结束后（30.0s）: watchingVideo=false isRunning=true gameOver=false gameWon=false lives=30
+    复活后跑 2 秒: gameOver=false lives=30 按钮=[空]
+    复活正常
+    复活链路收尾点导航 battle→codex
+
+=== 3. 定向复现：战前选关「开始游戏」被静默拒绝 ===
+  currentLevel=1 → startBattle()=true  battleStarted=true  点「开始游戏」后 toast=无
+  currentLevel=2 → startBattle()=true  battleStarted=true  点「开始游戏」后 toast=无
+  currentLevel=5 → startBattle()=true  battleStarted=true  点「开始游戏」后 toast=无
+  currentLevel=6 → startBattle()=true  battleStarted=true  点「开始游戏」后 toast=无
+  currentLevel=99 → startBattle()=true  battleStarted=true  点「开始游戏」后 toast=无
+

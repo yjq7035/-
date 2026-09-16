@@ -36,8 +36,8 @@ const SHOP_UI = SHOP;
  * }}
  */
 function getShopLayout(game) {
-  const W = game.canvas.width;
-  const H = game.canvas.height;
+  const W = game.W;
+  const H = game.H;
 
   const navTop = H - LAYOUT.navHeight;
   const panelH = SHOP_UI.padTop + SHOP_UI.headerH + SHOP_UI.cardH + SHOP_UI.padBottom;

@@ -59,17 +59,22 @@ function toast(game, text, color) {
 
 function handleTouchStart(game, e) {
   const pos = getTouchPos(e);
-  const canvas = game.canvas;
 
-  // 正在拖放中不应再触发新的 start。
-  // 兜底：pendingDrag 却丢了 touchStartPos，说明上一次手势没走到 touchend（事件丢失），
-  //       这种悬空状态会让下面这行 return 把**之后所有**点击都吃掉（表现为"界面点不动"），
-  //       所以必须先清干净。正常流程里 pendingDrag 一定伴随 touchStartPos，不会误伤。
-  if (game.pendingDrag && !game.touchStartPos) _resetDragState(game);
-  if (game.dragging || game.pendingDrag) return;
+  // 拖放态只可能在"手指按着"的时候存在。既然收到了一次新的 touchstart，
+  // 就说明上一次手势已经结束了 —— 无论是 touchend/touchcancel 丢了，还是
+  // handleTouchEnd 命中了某个提前 return 的分支忘了清。
+  // 这种悬空态会让下面那行 return 把**之后所有**点击都吃掉（典型表现就是
+  // "整个界面点不动"），所以这里无条件清干净。
+  // 单指流程下 touchstart 不可能在上一次手势未结束时到达，因此不会误伤正常拖放。
+  if (game.dragging || game.pendingDrag) _resetDragState(game);
 
   // ========== ① 结算界面：吞掉全部触摸，只处理按钮按压 ==========
-  if (game.gameOver) {
+  // 必须和渲染层用**同一个判据**：game.isSettlementActive() 同时表达了
+  //   "在战斗场景" + "gameWon 或 lives<=0"（renderer.drawGameOver 内部的两个前提）。
+  // 旧代码只判 gameOver，比渲染层宽一档 —— 一旦出现
+  // "gameOver 但 gameWon=false 且 lives>0" 的错配态，渲染层什么都不画，
+  // 输入层却把所有触摸吃光 → 屏幕看着正常、实则整块点不动（永久死锁）。
+  if (game.isSettlementActive()) {
     const btns = game.gameOverButtons;
     if (btns && isPointInRect(pos, btns.restart)) {
       pressButton(game, 'restart');
@@ -93,7 +98,8 @@ function handleTouchStart(game, e) {
   }
 
   // ========== ③ 底部导航栏 ==========
-  if (pos.y >= canvas.height - LAYOUT.navHeight) {
+  // 判据用 game.H（逻辑视口）——canvas.height 现在是物理像素，拿它算会漏掉整条底栏
+  if (pos.y >= game.H - LAYOUT.navHeight) {
     const id = nav.hitNav(game, pos);
     const item = id ? nav.NAV_ITEMS.filter((x) => x.id === id)[0] : null;
     if (item && !item.disabled) {
@@ -318,7 +324,9 @@ function handleTouchEnd(game, e) {
   const pos = getTouchPos(e);
 
   // ========== 结算界面按钮点击 ==========
-  if (game.gameOver && !game.watchingVideo) {
+  // 判据与渲染层 / handleTouchStart 完全一致（game.isSettlementActive()），
+  // 不做第二套手写条件，避免再次出现"渲染不画、输入吞光"的错配态。
+  if (game.isSettlementActive() && !game.watchingVideo) {
     const btns = game.gameOverButtons;
     if (btns && isPointInRect(pos, btns.restart)) {
       flashButton(game, btns.restart, '165,214,167', 'gameover');
@@ -334,6 +342,10 @@ function handleTouchEnd(game, e) {
       game.touchStartPos = null;
       return;
     }
+    // 没点中任何按钮：这里也要把拖放态清掉。
+    // 历史 bug：拖拽途中打输（update 里 lives 归零），松手时正是走这个分支，
+    // 旧实现只 releaseButton 就 return —— dragging 一直悬着，之后所有点击被首行吃掉。
+    if (game.dragging || game.pendingDrag) _resetDragState(game);
     releaseButton(game);
     return;
   }
@@ -356,7 +368,11 @@ function handleTouchEnd(game, e) {
   }
 
   // ========== 顶栏 ☰ 按钮 ==========
+  // 注意：这个分支没有（也不该有）"拖放中就不接管"的守卫 —— 玩家完全可能从战场
+  // 一路拖到顶栏再松手。此时手势已经结束，必须在这里把拖放态收掉，
+  // 否则 dragging 会悬空（旧实现就是漏了这一步，留下幽灵塔 + 之后点击被吞）。
   if (game.scene === 'battle' && pos.y <= LAYOUT.topBarHeight) {
+    if (game.dragging || game.pendingDrag) _resetDragState(game);
     const bp = game.btnPress;
     const rect = gamemenu.getMenuButtonRect(game);
     if (bp && bp.id === 'menu:open' && isPointInRect(pos, rect)) {
@@ -372,7 +388,7 @@ function handleTouchEnd(game, e) {
   // 表现就是"进了天赋页就再也切不出去"。导航是全局的，所以提到这里统一处理。
   // 拖放中/待定拖放时不接管（手指可能只是从战场拖到底栏）。
   if (!game.dragging && !game.pendingDrag &&
-      pos.y >= game.canvas.height - LAYOUT.navHeight) {
+      pos.y >= game.H - LAYOUT.navHeight) {
     const id = nav.hitNav(game, pos);
     const item = id ? nav.NAV_ITEMS.filter((x) => x.id === id)[0] : null;
     const bp = game.btnPress;
@@ -405,11 +421,18 @@ function handleTouchEnd(game, e) {
     if (!scrolled && tap && bp && bp.id.indexOf('ready:') === 0) {
       if (tap.kind === 'start') {
         const startBtn = levels.getReadyLayout(game).startBtn;
-        flashButton(game, startBtn, '165,214,167', 'ready');
-        game.startBattle();
-        toast(game, '开始游戏', THEME.accent.green);
+        // startBattle() 返回 false 时（例如一个可玩关卡都没有）必须如实报错。
+        // 旧实现无条件弹绿色"开始游戏"，玩家看到的是"点了完全没反应"。
+        if (game.startBattle()) {
+          flashButton(game, startBtn, '165,214,167', 'ready');
+          toast(game, '开始游戏', THEME.accent.green);
+        } else {
+          flashButton(game, startBtn, '255,68,68', 'ready');
+          toast(game, '没有可玩的关卡', THEME.accent.danger);
+        }
       } else if (tap.kind === 'level') {
         if (game.startLevel(tap.id)) toast(game, `已选择关卡 ${tap.id}`, THEME.accent.gold);
+        else toast(game, '该关卡待扩展', THEME.text.dim);
       } else if (tap.kind === 'locked') {
         toast(game, '该关卡待扩展', THEME.text.dim);
       }

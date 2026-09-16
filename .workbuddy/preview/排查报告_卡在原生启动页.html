@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>真机「一直卡在原生启动页」· 排查报告（v2 更正版）</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+    --fg:#e6e9ef; --dim:#98a2b3; --dim2:#6b7280;
+    --red:#ff5c5c; --green:#3ddc84; --amber:#ffb020; --blue:#5aa9ff; --violet:#a78bfa;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:32px 20px 64px;
+    background:radial-gradient(1200px 600px at 50% -200px,#1b2130 0%,var(--bg) 60%) no-repeat,var(--bg);
+    color:var(--fg);
+    font:15px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  .wrap{max-width:900px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 6px;letter-spacing:.2px}
+  h2{font-size:18px;margin:34px 0 12px;padding-left:11px;border-left:3px solid var(--blue)}
+  h3{font-size:15px;margin:20px 0 8px;color:var(--fg)}
+  p{margin:9px 0}
+  .meta{color:var(--dim2);font-size:13px;margin-bottom:22px}
+  .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;
+    background:rgba(255,92,92,.14);color:var(--red);border:1px solid rgba(255,92,92,.35)}
+  .badge.ok{background:rgba(61,220,132,.13);color:var(--green);border-color:rgba(61,220,132,.35)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0}
+  .card.verdict{border-color:rgba(255,92,92,.4);background:linear-gradient(180deg,rgba(255,92,92,.07),transparent 70%),var(--panel)}
+  .card.warn{border-color:rgba(255,176,32,.4);background:linear-gradient(180deg,rgba(255,176,32,.07),transparent 70%),var(--panel)}
+  code,pre{font-family:var(--mono);font-size:12.5px}
+  code{background:#0c0e12;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:#cfd6e4}
+  pre{background:#0c0e12;border:1px solid var(--line);border-radius:9px;padding:13px 15px;overflow:auto;
+    color:#c8d0e0;margin:10px 0;line-height:1.6}
+  pre .c{color:#5b6478}
+  pre .r{color:#ff8f8f}
+  pre .g{color:#7ee2a8}
+  pre .y{color:#ffcd6b}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--dim);font-weight:600;font-size:13px}
+  td code{font-size:12px}
+  ul,ol{margin:8px 0;padding-left:22px}
+  li{margin:5px 0}
+  .k{color:var(--dim)}
+  .red{color:var(--red)} .green{color:var(--green)} .amber{color:var(--amber)} .blue{color:var(--blue)}
+  a{color:var(--blue);text-decoration:none;border-bottom:1px solid rgba(90,169,255,.35)}
+  a:hover{border-bottom-color:var(--blue)}
+  .ev{display:flex;gap:12px;align-items:flex-start;margin:14px 0}
+  .ev .n{flex:0 0 auto;width:24px;height:24px;border-radius:50%;background:rgba(90,169,255,.14);
+    border:1px solid rgba(90,169,255,.35);color:var(--blue);font-size:12px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;margin-top:3px}
+  .ev .t{flex:1}
+  .ev .t b{display:block;margin-bottom:3px}
+  .steps{counter-reset:s;list-style:none;padding:0}
+  .steps li{counter-increment:s;position:relative;padding:9px 0 9px 40px;border-bottom:1px dashed var(--line)}
+  .steps li:last-child{border-bottom:0}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:9px;width:25px;height:25px;border-radius:7px;
+    background:rgba(61,220,132,.13);border:1px solid rgba(61,220,132,.35);color:var(--green);
+    font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .foot{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);color:var(--dim2);font-size:12.5px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:680px){.grid2{grid-template-columns:1fr}}
+  .pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:6px;background:var(--panel2);
+    border:1px solid var(--line);color:var(--dim);margin:0 6px 6px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>真机「一直卡在原生启动页」· 排查报告</h1>
+  <div class="meta">
+    v3 · 2026-09-16 · 工程 <code>F:\图形塔防</code><br>
+    <span class="badge">根因：微信开发者工具「真机调试」Bug</span>
+    <span class="badge ok">工程代码无此故障</span><br>
+    <span class="k">v3 新增第六节「手机测试该走哪条路」 —— 四条替代通道 + 版本门槛 + 排除配置残留。</span>
+  </div>
+
+  <div class="card warn">
+    <h3 style="margin-top:0">先读这一段：v1 的结论是错的</h3>
+    <p>v1 把根因写成了「启动重试循环拿错了画布（画到离屏画布上）」。真机日志到手后可以确定：
+    <b>那个归因不成立</b>。</p>
+    <p>日志里 <code>wx.createCanvas()</code> 第 1 次、第 2 次<b>都是直接抛异常</b>，
+    并不是「第 2 次成功返回了离屏画布」。真正的根因是<b>工具环境级故障</b>。</p>
+    <p>v1 里那条硬规则（createCanvas 全生命周期只调一次）<b>本身没错、予以保留</b>，
+    但「为什么卡住」的定性必须更正 —— 错误的注释会让下一次排查沿着错方向再爬一遍。</p>
+  </div>
+
+  <h2>一、结论</h2>
+  <div class="card verdict">
+    <p style="margin-top:0"><b>微信开发者工具「真机调试」注入的性能桩缺 <code>getSystemNanoTime</code>，
+    导致手机微信客户端基础库的 <code>WAGamePerformanceUtilsSDK</code> 一构造就 <code>TypeError</code>；
+    而 <code>wx.createCanvas()</code> 与 <code>wx.getPerformance()</code> 共用这个底层纳秒计时接口，
+    于是它们一起抛错 → 首帧画不出来 → 原生启动页永不消失。</b></p>
+    <p class="k">一句话：<span class="red">这是工具的 Bug，不是你的代码。</span>
+    同一份代码在 <b class="green">预览 / 体验版 / 正式版</b> 下都正常，只有「真机调试」挂。</p>
+    <p style="margin-bottom:0" class="k">原生启动页的消失条件只有一个：<b>主屏 canvas 画出第一帧</b>。
+    所以「卡启动页」的等价形式是「主屏 canvas 绘制指令 = 0 条」。</p>
+  </div>
+
+  <h2>二、日志里的四条决定性证据</h2>
+
+  <div class="ev"><div class="n">1</div><div class="t">
+    <b>报错栈里一帧都不是你的代码</b>
+<pre><span class="r">TypeError: Cannot read properties of undefined (reading 'getSystemNanoTime')</span>
+  at new Z  (WAGamePerformanceUtilsSDK.js:1:15209)     <span class="c">&lt;- 基础库内部</span>
+  at ge     (WAGamePerformanceUtilsSDK.js:1:26105)
+  at Object.value [as getNetworkType] (WAGamePerformanceUtilsSDK.js:1:90441)
+  at r.init (WAGamePerformanceUtilsSDK.js:1:101909)</pre>
+    <p class="k" style="margin:0">整个栈都在 <code>WAGame.js</code> / <code>WAGamePerformanceUtilsSDK.js</code> 里。
+    这是<b>最强信号</b>：该去查报错原文，而不是改自己的启动逻辑。</p>
+  </div></div>
+
+  <div class="ev"><div class="n">2</div><div class="t">
+    <b>createCanvas 每次必抛，不是「第二次拿到离屏画布」</b>
+<pre><span class="y">[boot]</span> 调用 wx.createCanvas()（第 1 次）...
+<span class="r">[boot] 第 1 次失败: Cannot read properties of undefined (reading 'getSystemNanoTime')</span>
+<span class="y">[boot]</span> 调用 wx.createCanvas()（第 2 次）...
+<span class="r">[boot] 第 2 次失败: Cannot read properties of undefined (reading 'getSystemNanoTime')</span></pre>
+    <p class="k" style="margin:0">两次同一个错。<span class="red">重试毫无意义</span> —— 环境是坏的，不是"还没准备好"。</p>
+  </div></div>
+
+  <div class="ev"><div class="n">3</div><div class="t">
+    <b>基础库是 3.17.2，不是 3.14.0</b>
+<pre>[wxapplib]] Wechat Lib:3.17.2, 2026.9.8 20:10:23</pre>
+    <p class="k" style="margin:0">所以上一轮"真机跑的是 3.14.0 老基础库"这个前提也不成立。
+    <b>关键认知</b>：<code>project.private.config.json</code> 里的 <code>libVersion</code> <b>只管模拟器</b>；
+    真机调试 / 预览用的是<b>手机微信客户端自带的基础库</b>。别再拿那个字段解释真机现象。</p>
+  </div></div>
+
+  <div class="ev"><div class="n">4</div><div class="t">
+    <b>开发者工具的性能检测注入只成功了一半</b>
+<pre>[wxapplib]] inject subPackage: WAGamePerformanceUtilsSDK.js coast: <span class="y">8</span>
+<span class="r">[DETECT EVENT] minigame detect tool inject!!</span>
+<span class="r">[DETECT EVENT] enable=true, autoStart=true</span>
+[wxapplib]] [Trace] <span class="r">TraceGlobal not found</span>
+[jsbridge] invoke getSystemInfo fail: <span class="r">jsbridge not ready</span></pre>
+    <p class="k" style="margin:0">性能事件采集器被注入了（<code>enable=true, autoStart=true</code>），
+    但它依赖的宿主对象没到位 → 初始化即炸。这就是根因现场。</p>
+  </div></div>
+
+  <h2>三、外部佐证（两条独立同源反馈）</h2>
+  <table>
+    <tr><th style="width:34%">来源</th><th>内容</th></tr>
+    <tr>
+      <td><b>微信开放社区</b><br><span class="k">小游戏 / Bug / 精选热门<br>工具 1.06.2504010 · Win11</span></td>
+      <td>《<b>相同代码在真机调试下报错，体验版和正式版正常</b>》<br>
+      <code>V.ProfileGlobal.getSystemNanoTime is not a function</code><br>
+      <code>at new te (WAGamePerformanceUtilsSDK.js:1:15877)</code><br>
+      <span class="k">现象描述：「手机上黑屏无法正常进入游戏」—— 与你完全一致</span><br>
+      <a href="https://developers.weixin.qq.com/community/minihome/doc/000a88a7598738a719932f12e66000" target="_blank" rel="noreferrer">developers.weixin.qq.com/community/minihome/doc/000a88a7598738a719932f12e66000</a></td>
+    </tr>
+    <tr>
+      <td><b>GitHub</b><br><span class="k">wechat-miniprogram /<br>minigame-tuanjie-transform-sdk#43<br>2025-08-07</span></td>
+      <td>「<b>在微信开发者工具中使用真机调试在 android 微信上启动提示</b>」<br>
+      <code>Cannot read properties of undefined (reading 'getSystemNanoTime')</code><br>
+      <span class="k">明确写明：<b>PC 和开发者工具的模拟器里可以正常运行</b></span><br>
+      <a href="https://github.com/wechat-miniprogram/minigame-tuanjie-transform-sdk/issues/43" target="_blank" rel="noreferrer">github.com/wechat-miniprogram/minigame-tuanjie-transform-sdk/issues/43</a></td>
+    </tr>
+  </table>
+  <p class="k">两条报错栈的<b>函数名略有差异</b>（<code>te/ve</code> vs <code>Z/ge</code>），说明基础库版本不同、但同一处代码。
+    结论一致：<b>真机调试环境 Bug，体验版 / 正式版正常。</b></p>
+
+  <h2>四、判据速查（三条同时成立即可定案）</h2>
+  <div class="grid2">
+    <div class="card"><b>① 栈的归属</b><p class="k" style="margin:6px 0 0">报错栈<b>全部落在</b>
+    <code>WAGamePerformanceUtilsSDK.js</code> / <code>WAGame.js</code>，<b>没有一帧</b>是本工程代码。</p></div>
+    <div class="card"><b>② 接口共病</b><p class="k" style="margin:6px 0 0">
+    <code>wx.createCanvas()</code> 与 <code>wx.getPerformance()</code> <b>一起</b>抛错
+    —— 它们共用底层纳秒计时口。</p></div>
+    <div class="card"><b>③ 环境差异</b><p class="k" style="margin:6px 0 0">
+    模拟器 / 预览 / 体验版正常，<b>只有「真机调试」</b>挂。</p></div>
+    <div class="card"><b>反面（另一类故障）</b><p class="k" style="margin:6px 0 0">
+    若 <code>createCanvas</code> 被调用 <b>&gt;1 次</b>且首帧无像素 → 那才是"画到离屏画布"。</p></div>
+  </div>
+
+  <h2>五、代码侧真正该改的（已改完）</h2>
+  <table>
+    <tr><th style="width:26%">文件</th><th>改动</th></tr>
+    <tr><td><code>game.js</code></td>
+      <td><b>① 探针换掉</b>：就绪探测从 <code>wx.getPerformance().now()</code>
+        （恰是被这个 Bug 打坏的口，永远探不通）改为
+        <code>wx.getSystemInfoSync()</code> / <code>wx.getWindowInfo()</code>。
+        <br><b>② 去掉"唯一一次补救重试"</b>：<code>createCanvas</code> 现在<b>有且仅有一次</b>调用
+        （只有一个自增点、无重试分支）。等待放在它<b>之前</b>，重试绝不放它<b>之后</b>。
+        <br><b>③ 失败必须可见</b>：新增 <code>reportFatal()</code>，用
+        <code>wx.showModal</code>（原生 UI，<b>不需要画布</b>）把原因弹到屏幕上。
+        <br><b>④ 错误分级</b>：命中工具 Bug 指纹（<code>getSystemNanoTime</code> /
+        <code>ProfileGlobal</code> / <code>WAGamePerformanceUtilsSDK</code> / <code>jsbridge not ready</code>）
+        → <b>不重试</b>，立刻喊停并给出处置办法；其余错误才走 6 次重试。
+        <br><b>⑤</b> 新增 <code>bootStep</code>，报错能精确指到是 <code>createCanvas</code> 还是
+        <code>getContext</code>（上一版把两者混报成一个）。
+        <br><b>⑥</b> 顶部注释整段重写，写上三条结论 + 两条佐证链接。</td></tr>
+    <tr><td><code>.workbuddy/tools/<br>entry3.js</code></td>
+      <td>新增场景 <b>I「工具 Bug：性能桩永久损坏」</b>（<code>sdkBroken: true</code> → createCanvas 每次必抛），
+        断言四条：不许声称「✅ 启动成功」 / <code>createCanvas &lt;= 1</code> 次 /
+        <b>必须弹出原生 showModal</b> / 不许把画面画进离屏画布充数。</td></tr>
+  </table>
+
+  <h3>改动前后（场景 I 实测）</h3>
+  <table>
+    <tr><th style="width:32%">行为</th><th>改动前</th><th>改动后</th></tr>
+    <tr><td>createCanvas 调用</td><td class="red">2 次，均抛错</td><td class="green">1 次，失败即停</td></tr>
+    <tr><td>重试</td><td class="red">第 3~6 次仍重试，纯浪费</td><td class="green">识别为环境级 → 立刻喊停</td></tr>
+    <tr><td>屏幕上的反馈</td><td class="red">纯黑屏，什么都不说</td><td class="green">原生弹窗给出原因 + 处置办法</td></tr>
+    <tr><td>能否知道原因</td><td class="red">不能</td><td class="green">能</td></tr>
+  </table>
+
+  <h2>六、手机测试该走哪条路</h2>
+  <p>旧版「真机调试」在官方修复前不可用了 —— 但手机上测试的路不止这一条。四条可用通道（版本门槛已核对官方文档）：</p>
+  <table>
+    <tr><th style="width:19%">通道</th><th style="width:37%">版本门槛</th><th>日志在哪看 / 备注</th></tr>
+    <tr>
+      <td><b class="green">预览扫码</b><br><span class="k">首选</span></td>
+      <td>无</td>
+      <td>工具点「预览」出二维码 → 手机微信扫码。要日志就点右上角
+        <code>···</code> → <code>开发调试</code> → <code>打开调试</code>（小游戏会重启），
+        之后出现 vConsole 悬浮球，点开即可看 <code>[boot]</code> 日志。<br>
+        <span class="k">不走真机调试的注入链路，不需要数据线，手机用 4G 也行。</span></td>
+    </tr>
+    <tr>
+      <td><b>真机调试 2.0</b></td>
+      <td><b>Android</b>：微信客户端 ≥ 8.0.55、基础库 ≥ 3.7.4、开发者工具需
+        <b>Nightly</b> ≥ 1.06.2412302<br>
+        <b>iOS</b>：微信 ≥ 8.0.61、基础库 ≥ 3.8.10、iOS ≥ 16.4、需开小游戏高性能模式、
+        USB 连线（Windows 需装 iTunes）</td>
+      <td>电脑端 DevTools 面板（Sources / Network / Console / Performance）。<br>
+        <span class="k">它与旧版真机调试是<b>两条不同的通道</b>（独立管线），值得一试 ——
+        别因为旧版挂了就以为整条路都没了。</span></td>
+    </tr>
+    <tr>
+      <td><b>上传体验版</b></td>
+      <td>MP 后台设为体验版，并把测试手机的微信号加为体验成员</td>
+      <td>手机从体验版入口打开，日志同样用手机端 vConsole 看。<br>
+        <span class="k">最接近正式包，且不依赖开发者工具在线；提交审核前该跑这个。</span></td>
+    </tr>
+    <tr>
+      <td><b>手机端 Audits</b><br><span class="k">性能诊断</span></td>
+      <td>Android 客户端 ≥ 8.0.48 / iOS ≥ 8.0.47、基础库 ≥ 3.4.4</td>
+      <td>手机 <code>···</code> → 开发调试 → 开启 Audits，可录制小游戏启动时序图；
+        报告到 MP 后台 → 研发工具箱 → 性能诊断 查看。</td>
+    </tr>
+  </table>
+
+  <div class="card warn">
+    <b>已排除「是自己配置引起的注入」</b>
+    <p class="k" style="margin:6px 0 0">核过两个文件：<code>game.json</code> 里没有 Audits /
+    检测相关残留配置，<code>project.private.config.json</code> 的 <code>autoAudits</code> 为
+    <code>false</code>。所以日志里那句 <code>[DETECT EVENT] … autoStart=true</code>
+    是<b>旧版真机调试自带的行为</b>，改工程代码解决不了它。</p>
+  </div>
+
+  <h3>换通道跑起来之后，确认这几件事</h3>
+  <ol class="steps">
+    <li>Console 里应看到 <code>[boot] 环境就绪（探测 N 次…）</code> →
+      <code>[boot] 调用 wx.createCanvas()（第 1 次，也是唯一一次）</code> →
+      <code>[boot] ✅ 启动成功（…；createCanvas 共调用 1 次，应为 1）</code>。</li>
+    <li>形状、触摸、面板都正常 → 说明启动链路本身没问题，之前的「卡启动页」纯粹是工具环境。</li>
+    <li>顺手把工具修一修（不保证治好）：更新/重装开发者工具到最新稳定版；重启工具 + 手机微信 +
+      电脑；有 iOS 设备就换一台试；也可关掉工具里<b>性能检测 / 体验评分 / Trace</b> 相关开关。</li>
+    <li>以后再遇到「卡启动页」，先按第四节三条判据定案，<b>先定案再改代码</b>。</li>
+  </ol>
+
+  <h2>七、回归结果</h2>
+  <p>
+    <span class="pill">syntax <b class="green">22/22</b></span>
+    <span class="pill">verify <b class="green">211 / 0</b></span>
+    <span class="pill">regress-ui <b class="green">35 / 0</b></span>
+    <span class="pill">entry3 <b class="green">45 / 0</b></span>
+    <span class="pill">_error.txt <b class="green">不存在</b></span>
+  </p>
+  <p class="k">entry3 的 8 个场景：A 基线 / B 缺 roundRect / C 缺 ellipse / D 缺 setLineDash /
+    E 三项全缺 / F SDK 竞态 t&lt;400ms / G 竞态 t&lt;1200ms / H getContext 返回 null /
+    <b>I 工具 Bug 性能桩永久损坏</b>。</p>
+
+  <h2>八、方法论教训（比修复本身更值钱）</h2>
+  <ol>
+    <li><b>「报错栈里一帧都不是自己的代码」= 立刻去查报错原文</b>，别改自己的启动逻辑。
+      这次两条佐证都是直接搜错误串搜到的，五分钟定案；上一轮在自家代码里绕了整整一轮。</li>
+    <li><b>探针不能和故障源是同一个东西。</b>拿被 Bug 打坏的 <code>getPerformance</code> 去探测
+      "环境好没好"，逻辑上就是自证循环 —— 永远探不通，还掩盖真相、误报成
+      「jsbridge 探测超时」（jsbridge 其实是好的）。</li>
+    <li><b>一次性资源绝不能进重试循环。</b><code>createCanvas</code> 就是典型：等待要放在它之前，
+      重试绝不能放在它之后。</li>
+    <li><b>失败要吵。</b>静默黑屏是最贵的故障 —— 它让你多花一整轮去猜。
+      现在启动失败会弹原生 <code>showModal</code>，把原因和处置办法直接摆到屏幕上。</li>
+  </ol>
+
+  <div class="foot">
+    报告文件：<code>.workbuddy/preview/排查报告_卡在原生启动页.html</code>（v3，已覆盖 v1 / v2）<br>
+    原始回归数据：<code>.workbuddy/tmp/_entry3.txt</code> · <code>_syntax.txt</code> ·
+    <code>_verify.txt</code> · <code>_regress.txt</code><br>
+    通道门槛来源：微信官方文档「真机调试能力升级 Beta」+「性能诊断工具」<br>
+    长期结论已写入：<code>.workbuddy/memory/MEMORY.md</code>（硬规则 6 + 判据表）·
+    <code>.workbuddy/memory/2026-09-16.md</code>（大版本 7 更正）<br>
+    分诊流程已沉淀为 skill：<code>wechat-minigame-boot-triage</code>
+  </div>
+
+</div>
+</body>
+</html>

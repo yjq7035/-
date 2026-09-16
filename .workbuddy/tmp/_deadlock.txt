@@ -1,0 +1,39 @@
+
+=== A. 复现：拖拽中游戏结束（手指仍按着）→ 松手 ===
+  初始: dragging=false pendingDrag=false touchStartPos=null
+  touchstart(塔)      : dragging=false pendingDrag=true touchStartPos={"x":129,"y":499.79999999999995}
+  touchmove(超阈值)   : dragging=true pendingDrag=true touchStartPos={"x":129,"y":499.79999999999995}
+  touchmove(继续拖)   : dragging=true pendingDrag=true touchStartPos={"x":129,"y":499.79999999999995}
+  拖拽中游戏结束      : gameOver=true isRunning=false lives=-1  gameOverButtons=[空]
+  touchend(松手)      : dragging=false pendingDrag=false touchStartPos=null
+  渲染一帧后          : gameOverButtons=[restart,watchContinue]
+    点「重新开始」→ 有反应   [scene=battle gameOver=false panel=false menu=false]
+    点「重新挑战」→ ★ 被吞（界面毫无响应）   [scene=battle gameOver=false panel=false menu=false]
+    点「导航-图签」→ 有反应   [scene=codex gameOver=false panel=false menu=false]
+    点「顶栏☰」→ ★ 被吞（界面毫无响应）   [scene=codex gameOver=false panel=false menu=false]
+    点「战场空地」→ ★ 被吞（界面毫无响应）   [scene=codex gameOver=false panel=false menu=false]
+
+  结论：尝试 5 个可点目标，2 个有效应。
+  未完全死锁，需进一步分析
+
+=== B. 对照：拖拽中游戏结束，但松手落在「顶栏 / 结算按钮」之外的其他提前 return 分支 ===
+  B1 拖拽中结束 + 松手在顶栏  : dragging=false pendingDrag=false touchStartPos=null
+  B2 拖拽中结束 + 松手在底栏  : dragging=false pendingDrag=false touchStartPos=null
+  B3 无拖拽时结束 + 松手      : dragging=false pendingDrag=false touchStartPos=null   （正常，不受影响）
+
+=== C. 商店卡拖拽中游戏结束（同一条链路，来源可以是商店） ===
+  touchstart(商店卡)  : dragging=false pendingDrag=true touchStartPos={"x":79,"y":743}
+  touchmove(超阈值)   : dragging=true pendingDrag=true touchStartPos={"x":79,"y":743}
+  touchend            : dragging=false pendingDrag=false touchStartPos=null
+  再点导航 → scene=battle ★ 被吞（死锁）
+
+=== D. 自愈性核查：兜底守卫能否救回各种残留态 ===
+  pendingDrag=true  touchStartPos=null
+      点导航 → scene=battle→codex  有救（守卫生效）
+  dragging=true     touchStartPos=null
+      点导航 → scene=battle→codex  有救（守卫生效）
+  dragging=true     touchStartPos={}
+      点导航 → scene=battle→codex  有救（守卫生效）
+  dragging=true pendingDrag=FALSE pos={}
+      点导航 → scene=battle→codex  有救（守卫生效）
+

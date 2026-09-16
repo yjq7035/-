@@ -291,20 +291,20 @@
 
 === H. SVG 回放产物 ===
   battle-ready_390x844.svg  ops=179  53.5KB
-  battle-run_390x844.svg  ops=115  33.0KB
-  battle-menu_390x844.svg  ops=124  34.8KB
-  battle-panel_390x844.svg  ops=162  43.8KB
+  battle-run_390x844.svg  ops=115  32.9KB
+  battle-menu_390x844.svg  ops=124  34.9KB
+  battle-panel_390x844.svg  ops=162  43.5KB
   codex_390x844.svg  ops=164  46.5KB
   codex-sheet_390x844.svg  ops=184  50.3KB
   talents_390x844.svg  ops=144  57.4KB
-  battle-run_375x667.svg  ops=117  32.8KB
+  battle-run_375x667.svg  ops=115  32.7KB
   codex-sheet_320x568.svg  ops=124  31.6KB
   talents_320x568.svg  ops=117  44.8KB
-  battle-ready_768x1024.svg  ops=201  61.5KB
-  enhance-picker_390x844.svg  ops=176  46.1KB
-  enhance-picker_320x568.svg  ops=178  46.2KB
-  battle-panel-locked_390x844.svg  ops=155  42.5KB
-  battle-ready-scrolled_390x844.svg  ops=180  54.0KB
+  battle-ready_768x1024.svg  ops=201  61.2KB
+  enhance-picker_390x844.svg  ops=176  46.2KB
+  enhance-picker_320x568.svg  ops=176  46.1KB
+  battle-panel-locked_390x844.svg  ops=155  42.1KB
+  battle-ready-scrolled_390x844.svg  ops=180  53.9KB
   codex-scrolled_320x568.svg  ops=129  34.2KB
   codex-sheet-tall_320x568.svg  ops=123  31.4KB
   codex-sheet-tall_390x844.svg  ops=182  49.9KB

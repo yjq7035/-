@@ -1,4 +1,4 @@
-﻿Game initialized: {
+Game initialized: {
   mapX: 58.5,
   mapY: 126.28,
   mapWidth: 273,
@@ -14,3 +14,4 @@ Game initialized: {
   slots: 12,
   towers: 0
 }
+noroundrect done

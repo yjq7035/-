@@ -37,7 +37,7 @@ MENU_UI.panelH = MENU_UI.padTop + MENU_UI.titleH + MENU_UI.infoGap + MENU_UI.inf
 
 /** 顶栏 ☰ 按钮矩形（渲染/输入共用） */
 function getMenuButtonRect(game) {
-  const W = game.canvas.width;
+  const W = game.W;
   const H = LAYOUT.topBarHeight;
   return {
     x: W - MENU_UI.btnMarginRight - MENU_UI.iconW,
@@ -49,8 +49,8 @@ function getMenuButtonRect(game) {
 
 /** 菜单面板布局 */
 function getMenuLayout(game) {
-  const W = game.canvas.width;
-  const H = game.canvas.height;
+  const W = game.W;
+  const H = game.H;
 
   const panelW = Math.min(MENU_UI.panelMaxW, W - 48);
   const panelH = MENU_UI.panelH;
@@ -119,8 +119,8 @@ function drawMenuButton(game) {
 /** 游戏中菜单浮层 */
 function drawGameMenu(game) {
   const ctx = game.ctx;
-  const W = game.canvas.width;
-  const H = game.canvas.height;
+  const W = game.W;
+  const H = game.H;
   const L = getMenuLayout(game);
 
   ctx.save();

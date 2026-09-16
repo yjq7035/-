@@ -1,0 +1,53 @@
+
+=== U1 拖拽途中游戏结束 → 松手后拖放态归零 + 结算按钮可点 ===
+  ok   U1a 从放置槽拖：touchmove 后进入拖拽   [dragging=true]
+  ok   U1b 从放置槽拖：拖拽中成功判负   [gameOver=true lives=-1]
+  ok   U1c 从放置槽拖：松手后拖放态归零   [dragging=false pendingDrag=false touchStartPos=null]
+  ok   U1d 从放置槽拖：结算界面给出了重新开始按钮   [rect ok]
+  ok   U1e 从放置槽拖：点「重新开始」真的有反应   [gameOver=false]
+  ok   U1a 从商店卡拖：touchmove 后进入拖拽   [dragging=true]
+  ok   U1b 从商店卡拖：拖拽中成功判负   [gameOver=true lives=-1]
+  ok   U1c 从商店卡拖：松手后拖放态归零   [dragging=false pendingDrag=false touchStartPos=null]
+  ok   U1d 从商店卡拖：结算界面给出了重新开始按钮   [rect ok]
+  ok   U1e 从商店卡拖：点「重新开始」真的有反应   [gameOver=false]
+
+=== U2 逃生通道不变式：每个"吞触摸态"都必须点得动 ===
+  ok   U2 游戏菜单开着 存在逃生口   [逃生点=菜单:返回战斗]
+  ok   U2 属性面板开着 存在逃生口   [逃生点=导航:codex]
+  ok   U2 结算-失败 存在逃生口   [逃生点=结算:重新开始]
+  ok   U2 结算-胜利 存在逃生口   [逃生点=结算:重新开始]
+  ok   U2 强拖拽残留(旧死锁态) 存在逃生口   [逃生点=导航:codex]
+  ok   U2 残留:pendingDrag 丢了起点 存在逃生口   [逃生点=导航:codex]
+  ok   U2 残留:dragging 无 pendingDrag 存在逃生口   [逃生点=导航:codex]
+
+=== U3 看广告复活必须真的补活 ===
+  ok   U3a 失败态给出「重新挑战」按钮
+  ok   U3b 点了之后进入观看视频态   [watchingVideo=true]
+  ok   U3c 广告结束后复活：生命被补回   [lives=30]
+  ok   U3d 广告结束后复活：不再立即判负   [gameOver=false gameWon=false]
+  ok   U3e 复活后能继续打（2 秒内没有立刻又死）   [gameOver=false lives=30]
+
+=== U4 「开始游戏」不能被静默拒绝 ===
+  ok   U4 存档关卡=1 点「开始游戏」真的开打   [startBattle→battleStarted=true currentLevel=1]
+  ok   U4 存档关卡=2 点「开始游戏」真的开打   [startBattle→battleStarted=true currentLevel=1]
+  ok   U4 存档关卡=5 点「开始游戏」真的开打   [startBattle→battleStarted=true currentLevel=1]
+  ok   U4 存档关卡=99 点「开始游戏」真的开打   [startBattle→battleStarted=true currentLevel=1]
+
+=== U5 结算态自洽（gameOver ⇒ gameWon 或 lives<=0） ===
+  ok   U5 扫了 6250 个状态，没有出现"gameOver 但既没赢也没死"   [违例 0 次]
+
+=== U6 老基础库（ctx 没有 roundRect）也必须画得出来、点得动 ===
+  ok   U6a 前置：ctx 上确实没有 roundRect
+  ok   U6b 构造后 roundRect 已被补齐
+  ok   U6c 全场景渲染不抛异常（旧基础库首帧炸的就是这里）   [无异常]
+  ok   U6d 结算界面照常给出按钮
+  ok   U6e 结算按钮照常点得动   [gameOver=false]
+
+=== U7 结算判据三层一致：渲染层"画了什么" ⇔ 输入层"吞了什么" ===
+  ok   U7a 扫了 24 个状态："渲染层画了" 与 "输入层吞了" 完全等价   [完全等价]
+  ok   U7b 错配态下点导航仍能切场景（不再是永久死锁）   [全部可逃生]
+  ok   U7c 真结算态仍然挡得住底部导航（没被放宽判据漏掉）   [全部被挡住]
+
+============================================
+  通过 35   失败 0
+============================================

@@ -48,8 +48,8 @@ function getLevelBadgeRect(game) {
  * @returns {{ panel, titleCY, cards, startBtn, navTop, viewport, rail, contentH, maxScroll, scroll }}
  */
 function getReadyLayout(game) {
-  const W = game.canvas.width;
-  const H = game.canvas.height;
+  const W = game.W;
+  const H = game.H;
   const navTop = H - LAYOUT.navHeight;
 
   const panelW = Math.min(340, W - LV_UI.padX * 2);
@@ -163,8 +163,8 @@ function hitReady(game, pos) {
 /** 战前选关界面（遮罩 + 居中面板 + 天梯 + 开始游戏） */
 function drawBattleReady(game) {
   const ctx = game.ctx;
-  const W = game.canvas.width;
-  const H = game.canvas.height;
+  const W = game.W;
+  const H = game.H;
 
   const L = getReadyLayout(game);
 

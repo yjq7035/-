@@ -60,8 +60,8 @@ function battleStatus(game) {
  * @returns {{ x, y, w, h, items: Array<{id,scene,icon,label,disabled,x,y,w,h}> }}
  */
 function getNavLayout(game) {
-  const W = game.canvas.width;
-  const H = game.canvas.height;
+  const W = game.W;
+  const H = game.H;
   const y = H - NAV_UI.height;
   const itemW = W / NAV_ITEMS.length;
 

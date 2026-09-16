@@ -2,6 +2,7 @@
 // 原单文件 game.js 中的 Game 类拆出数据/几何/敌人/波次/塔/渲染/输入后，
 // 这里只保留：状态、路径与槽位计算、波次调度、主循环、事件绑定。
 const config = require('./config');
+const theme = require('./theme');
 const enemyMod = require('./enemy');
 const waveMod = require('./wave');
 const renderer = require('./renderer');
@@ -17,13 +18,72 @@ const {
   POINTS, TALENT_POINTS, LEVELS, SHOP,
 } = config;
 
+// 「重新挑战（看广告复活）」复活后回满的生命比例。
+// 口径：复活 = 回到 30% 生存积分，既救得回来又不至于让失败没有代价。
+const REVIVE_LIVES_RATIO = 0.3;
+
+// 上一次注册的全局触摸监听器。
+// ⚠️ wx.onTouchStart / document.addEventListener 都是**累积注册**：重复实例化 Game
+//    （开发者工具热重载、入口被跑两次等）会叠出多套监听 —— 一次触摸被多个 Game
+//    实例各处理一遍，状态互相错位，是"界面点不动"的高发区。所以每次绑定前先摘旧的。
+let _boundEvents = null;
+
+/** 记录本次注册的监听器（供下一次 _unbindEvents 摘除） */
+function _bindEvents(kind, handlers) {
+  _boundEvents = { kind, handlers };
+}
+
+/** 摘除上一次注册的监听器（平台不支持 offXxx 时退化为不摘，绝不会抛错） */
+function _unbindEvents(kind) {
+  if (!_boundEvents || _boundEvents.kind !== kind) return;
+  const h = _boundEvents.handlers;
+  _boundEvents = null;
+  try {
+    if (kind === 'wx') {
+      if (typeof wx === 'undefined') return;
+      if (wx.offTouchStart) wx.offTouchStart(h.start);
+      if (wx.offTouchMove) wx.offTouchMove(h.move);
+      if (wx.offTouchEnd) wx.offTouchEnd(h.end);
+      if (wx.offTouchCancel) wx.offTouchCancel(h.end);
+    } else if (typeof document !== 'undefined' && document.removeEventListener) {
+      document.removeEventListener('touchmove', h.move);
+      document.removeEventListener('touchend', h.end);
+      document.removeEventListener('touchcancel', h.end);
+    }
+  } catch (e) {
+    // 摘监听失败无所谓，不能因此中断启动
+  }
+}
+
 class Game {
   constructor(canvas, ctx, windowInfo) {
     this.canvas = canvas;
     this.ctx = ctx;
 
+    // 拿到 ctx 的第一件事：补齐基础库可能缺失的 Canvas 2D 接口。
+    // renderer.js 有几十处直接调 ctx.roundRect，老基础库（如 3.14.x）没有这个方法，
+    // 缺了就会在首帧 draw() 抛 TypeError → 主循环停摆 → 整个界面点不动。
+    // 同一批新接口还有 setLineDash（战前选关天梯虚线）与 ellipse（椭圆塔图标/敌人投影），
+    // 老基础库一样可能没有 —— 由 polyfillCanvas2D 一次补齐。
+    theme.polyfillCanvas2D(ctx);
+
     const w = windowInfo.screenWidth;
     const h = windowInfo.screenHeight;
+
+    // -----------------------------------------------------------------------
+    // 逻辑视口尺寸（= 屏幕 CSS 像素，= 触摸坐标空间）
+    //
+    // ⚠️ 全项目布局一律用 this.W / this.H，**不要再读 canvas.width / height**。
+    //    画布现在是**物理像素**（逻辑 × renderScale，见 game.js 的渲染倍率标定），
+    //    拿它做布局 = 所有 UI 被放大 renderScale 倍、底部导航直接跑出屏幕。
+    //    渲染时由 applyViewScale() 把 ctx 缩回逻辑坐标，两者口径就对齐了。
+    //
+    // 顺带说明为什么不是"把画布建小、由系统放大"：那样每个逻辑像素只有
+    // 1 个物理像素可用，字和斜边必然糊（2026-09-16 真机预览实测的症状）。
+    // -----------------------------------------------------------------------
+    this.W = w;
+    this.H = h;
+    this.renderScale = (windowInfo.renderScale > 0) ? windowInfo.renderScale : 1;
 
     // 缩小战斗区域，Y向下偏移100像素
     this.mapX = w * 0.15;
@@ -53,11 +113,21 @@ class Game {
     this._goldFraction = 0;
 
     // 当前关卡（默认取存档里选中的关卡，初始 = 关卡 1）
-    this.currentLevel = meta.getSelectedLevel();
+    // 加 try-catch 兜底：Storage 子系统未就绪时回退到默认值，避免阻塞初始化
+    let currentLevel = 1;
+    let goldBonus = 0, livesBonus = 0;
+    try {
+      currentLevel = meta.getSelectedLevel() || 1;
+      goldBonus = meta.talentValue('gold_start') || 0;
+      livesBonus = meta.talentValue('lives_max') || 0;
+    } catch (e) {
+      console.warn('[Game] meta 初始化异常，使用默认值:', e.message);
+    }
+    this.currentLevel = currentLevel;
 
     // 游戏状态（起始金币 / 生存积分上限受天赋影响）
-    this.gold = BALANCE.startGold + meta.talentValue('gold_start');
-    this.lives = BALANCE.startLives + meta.talentValue('lives_max');
+    this.gold = BALANCE.startGold + goldBonus;
+    this.lives = BALANCE.startLives + livesBonus;
     this.maxLives = this.lives; // 生存积分上限（进度条分母）
     this.selectedTowerType = null;
     this.selectedTower = null;
@@ -316,12 +386,17 @@ class Game {
     const onTouchEnd = (e) => input.handleTouchEnd(this, e);
 
     if (typeof wx !== 'undefined' && wx.onTouchStart) {
+      // 先摘掉上一次注册的监听：onTouch* 是累积注册，
+      // 不摘就会出现"一次触摸被多个 Game 实例各处理一遍"（见 _boundEvents 注释）。
+      _unbindEvents('wx');
       wx.onTouchStart(onTouchStart);
       wx.onTouchMove(onTouchMove);
       wx.onTouchEnd(onTouchEnd);
       wx.onTouchCancel(onTouchEnd);
+      _bindEvents('wx', { start: onTouchStart, move: onTouchMove, end: onTouchEnd });
     } else {
-      // 浏览器调试环境兜底
+      // 浏览器调试环境兜底（document 上的监听同样会累积，必须先摘）
+      _unbindEvents('dom');
       this.canvas.addEventListener('touchstart', onTouchStart);
       this.canvas.addEventListener('touchmove', onTouchMove, { passive: false });
       this.canvas.addEventListener('touchend', onTouchEnd);
@@ -330,6 +405,7 @@ class Game {
       document.addEventListener('touchmove', onTouchMove, { passive: false });
       document.addEventListener('touchend', onTouchEnd);
       document.addEventListener('touchcancel', onTouchEnd);
+      _bindEvents('dom', { start: onTouchStart, move: onTouchMove, end: onTouchEnd });
     }
   }
 
@@ -438,6 +514,14 @@ class Game {
     // 恢复游戏
     this.isRunning = true;
     this.gameOver = false;
+
+    // ⚠️ 复活必须真的把生命补回来。
+    // 旧实现只复原波次和金币，lives 仍是 <=0 —— 结果广告一结束、下一帧 update()
+    // 立刻又判定 gameOver，玩家看了 30 秒广告等于白看（现象：出广告就秒死）。
+    if (this.lives <= 0) {
+      const base = this.maxLives > 0 ? this.maxLives : BALANCE.startLives;
+      this.lives = Math.max(1, Math.floor(base * REVIVE_LIVES_RATIO));
+    }
 
     // 恢复当前波次
     this.enemiesToSpawn = waveMod.generateWave(this.currentWave);
@@ -615,8 +699,20 @@ class Game {
    * 世界在此之前完全不推进（见 loop 的 battleStarted 判定）。
    */
   startBattle() {
-    const lv = LEVELS.filter((l) => l.id === this.currentLevel)[0];
-    if (lv && !lv.playable) return false;
+    let lv = LEVELS.filter((l) => l.id === this.currentLevel)[0];
+    // ⚠️ 存档里的 currentLevel 可能是"已不可玩"的关卡（历史上可玩、后来改成占位"待扩展"，
+    //    或坏档 / 外部改档）。旧实现这里直接 `return false`，而输入层照样弹绿色"开始游戏"
+    //    → 玩家看到的是"点了完全没反应"（最典型的一条"界面点不动"）。
+    //    这里兜底切到第一个可玩关卡，保证「开始游戏」永远真的能开始。
+    if (lv && !lv.playable) {
+      const fallback = LEVELS.filter((l) => l.playable)[0];
+      if (fallback) {
+        this.currentLevel = fallback.id;
+        meta.setSelectedLevel(fallback.id);
+        lv = fallback;
+      }
+    }
+    if (!lv || !lv.playable) return false;
     this.restart();
     this.scene = 'battle';
     this.battleStarted = true;
@@ -1336,9 +1432,9 @@ class Game {
         proj.x += Math.cos(proj.angle) * proj.speed * dt;
         proj.y += Math.sin(proj.angle) * proj.speed * dt;
         
-        // 检查是否出屏幕（使用 canvas 尺寸）
-        const w = this.canvas.width;
-        const h = this.canvas.height;
+        // 检查是否出屏幕（用逻辑视口尺寸：this.W/H，不是物理像素的 canvas 尺寸）
+        const w = this.W;
+        const h = this.H;
         if (proj.x < -50 || proj.x > w + 50 || proj.y < -50 || proj.y > h + 50) {
           proj.alive = false;
           continue;
@@ -1462,7 +1558,63 @@ class Game {
     return closest;
   }
 
+  /**
+   * 结算界面此刻是否"真的会显示"。
+   *
+   * ⚠️ 这是渲染层与输入层必须共用的**唯一判据**：
+   *   - 渲染层 renderer.render 只在 scene==='battle' 时画结算；
+   *   - 而 drawGameOver 内部又要求 gameWon 或 lives<=0 才画。
+   * 只要输入层（吞触摸）用的条件比这个宽，就会出现：
+   *   渲染层什么都不画、输入层却把所有触摸吃光 → 屏幕看着正常但整块点不动。
+   *
+   * 之前 input.js 只判 `gameOver`，比这里宽一档，
+   * 于是 "gameOver 但 gameWon=false 且 lives>0" 这个错配态就是永久死锁。
+   * 现在三层（渲染 / 触摸开始 / 触摸结束）统一问这一个方法。
+   */
+  isSettlementActive() {
+    if (!this.gameOver) return false;
+    if (this.scene !== 'battle') return false;
+    return !!this.gameWon || this.lives <= 0;
+  }
+
+  /**
+   * 把 ctx 的变换复位为「1 逻辑像素 = renderScale 物理像素」。
+   *
+   * 画布本身是按物理像素建的（renderScale 倍大），所以这里必须做一次反向缩放，
+   * 之后所有绘制仍按**逻辑坐标**（= game.W/H = 触摸坐标）来 —— 布局与命中判定
+   * 的口径一行都没变，只是每个逻辑像素由 renderScale² 个物理像素来画。
+   *
+   * ⚠️ 为什么每帧都要 setTransform，而不是启动时 scale 一次：
+   *    一次 scale 依赖全项目几十处 save/restore 全都配对。只要有一处不配对
+   *    （或某帧中途抛异常），变换就会顺着帧往下累积 —— 画面越画越大、越画越偏，
+   *    而且极难定位。每帧**直接复位**是唯一不会漂的写法（成本就一次调用）。
+   */
+  applyViewScale() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const s = (this.renderScale > 0) ? this.renderScale : 1;
+
+    if (typeof ctx.setTransform === 'function') {
+      ctx.setTransform(s, 0, 0, s, 0, 0);
+      return;
+    }
+    // 兜底：没有 setTransform 的老环境，用 resetTransform 复位后再 scale
+    if (typeof ctx.resetTransform === 'function') {
+      ctx.resetTransform();
+      if (s !== 1 && typeof ctx.scale === 'function') ctx.scale(s, s);
+      return;
+    }
+    // 两个都没有（极老基础库 / 精简 mock）：只能开场 scale 一次，
+    // 靠 save/restore 配对维持。画质退回 1 倍，但绝不抛错、绝不冻屏。
+    if (!this._viewScaleApplied) {
+      this._viewScaleApplied = true;
+      if (s !== 1 && typeof ctx.scale === 'function') ctx.scale(s, s);
+    }
+  }
+
   draw() {
+    // 每帧先复位坐标系（见 applyViewScale），再画。
+    this.applyViewScale();
     renderer.render(this);
   }
 
@@ -1473,21 +1625,61 @@ class Game {
 
     const dt = Math.min(deltaTime, 0.1);
 
-    // 游戏进行中 + 停留在战斗场景 + 已点过「开始游戏」+ 没开着菜单 → 正常逻辑更新
-    // （战前选关界面 / 游戏中菜单 / 切到图签天赋 都冻结世界，回来接着打）
-    if (this.isRunning && this.scene === 'battle' && this.battleStarted && !this.showMenu) {
-      this.update(dt);
-    } else if (this.watchingVideo) {
-      // 结算界面观看视频：世界冻结，仅推进视频倒计时
-      this.videoTimer -= dt;
-      if (this.videoTimer <= 0) {
-        this.onVideoComplete();
+    // 帧计数：只用来区分"首帧就炸"和"后面某帧炸"。
+    // 首帧就抛异常 = 屏幕上连一个像素都没有 → 真机表现是「卡在原生启动页」，
+    // 而不是"界面点不动"（后者通常发生在已出画面之后）。
+    this._frameCount = (this._frameCount || 0) + 1;
+
+    // ⚠️ update()/draw() 必须被 try 包住。
+    // 旧实现在这里裸跑：任何一帧抛异常都会穿过 rAF 回调，导致下面那行
+    // requestAnimationFrame 永远不再执行 —— 主循环彻底停摆。
+    // 表现就是"画面定格 + 所有动画/按压反馈/波纹消失 = 整个界面点不动"，
+    // 而且日志里只会看到一次异常，很难和生产事故对上号。
+    try {
+      // 游戏进行中 + 停留在战斗场景 + 已点过「开始游戏」+ 没开着菜单 → 正常逻辑更新
+      // （战前选关界面 / 游戏中菜单 / 切到图签天赋 都冻结世界，回来接着打）
+      if (this.isRunning && this.scene === 'battle' && this.battleStarted && !this.showMenu) {
+        this.update(dt);
+      } else if (this.watchingVideo) {
+        // 结算界面观看视频：世界冻结，仅推进视频倒计时
+        this.videoTimer -= dt;
+        if (this.videoTimer <= 0) {
+          this.onVideoComplete();
+        }
+      }
+
+      // 不变式修复：gameOver 一旦置位，就必须落在"结算界面真的会显示"的
+      // 两种自洽状态里（胜利 / 生存积分归零）。否则渲染层什么都不画，
+      // 而输入层若只按 gameOver 吞触摸 → 整块点不动。
+      // 现在输入层也改问 isSettlementActive()，所以这里只是兜底双保险。
+      if (this.gameOver && !this.gameWon && this.lives > 0) {
+        this.gameOver = false;
+        this.isRunning = true;
+      }
+
+      // 始终渲染：结算界面按钮按压/点击动画、拖拽预览等都需要持续帧
+      this.draw();
+    } catch (err) {
+      // 单帧异常不杀死主循环：记录一次（避免刷屏）然后继续下一帧。
+      // 这样即使某个绘制分支炸了，界面依旧是活的（还能点、还能切场景），
+      // 而不是整块卡死让玩家彻底没法操作。
+      //
+      // ⚠️ 但首帧异常的性质完全不同：一个像素都没画出去 → 真机上表现为
+      //    「一直卡在原生启动页」。所以首帧单独喊一嗓子，别让它和
+      //    "后面某帧抽风"混在同一条不痛不痒的日志里。
+      const firstFrame = this._frameCount <= 1;
+      if (firstFrame || !this._loopErrorLogged) {
+        this._loopErrorLogged = true;
+        if (firstFrame) {
+          console.error('[loop] 💀 首帧绘制失败 —— 屏幕上不会有任何画面（真机上表现为「卡在原生启动页」）:',
+            err && err.stack ? err.stack : err);
+        } else {
+          console.error('[loop] 帧异常（已忽略，主循环继续）:', err && err.stack ? err.stack : err);
+        }
       }
     }
 
-    // 始终渲染：结算界面按钮按压/点击动画、拖拽预览等都需要持续帧
-    this.draw();
-
+    // 永远在 try 之外重新排帧：保证主循环不可能因为一次异常而断链
     requestAnimationFrame(() => this.loop());
   }
 }

@@ -122,6 +122,87 @@ function roundRectPath(ctx, x, y, w, h, r) {
   }
 }
 
+/**
+ * 给 2d 上下文补一个 `roundRect`（缺失时）。
+ *
+ * ⚠️ 为什么必须补：`ctx.roundRect` 是很新的 Canvas 2D 接口，**微信小游戏的基础库版本
+ * 差异很大**（老版本没有它）。而 renderer.js 里有几十处是**直接** `ctx.roundRect(...)`
+ * 调用（没有逐个做 typeof 判断）。一旦运行环境缺这个方法，第一帧 `draw()` 就抛
+ * `TypeError: ctx.roundRect is not a function` —— 主循环当场停摆，
+ * 现象就是"画面定格、什么都点不动"。
+ *
+ * 在拿到 ctx 的地方一次补齐，比在几十个调用点各写一遍兜底可靠得多。
+ * 语义对齐原生：**只往当前路径里追加一个闭合子路径，不自己 beginPath**。
+ */
+function polyfillRoundRect(ctx) {
+  if (!ctx || typeof ctx.roundRect === 'function') return ctx;
+  ctx.roundRect = function (x, y, w, h, radii) {
+    let r = 0;
+    if (typeof radii === 'number') r = radii;
+    else if (radii && radii.length) r = radii[0];
+    if (!isFinite(x) || !isFinite(y) || !isFinite(w) || !isFinite(h)) return;
+    const lim = Math.min(Math.abs(w) / 2, Math.abs(h) / 2);
+    const rr = Math.max(0, Math.min(isFinite(r) ? r : 0, lim));
+    if (rr <= 0) {
+      this.moveTo(x, y);
+      this.lineTo(x + w, y);
+      this.lineTo(x + w, y + h);
+      this.lineTo(x, y + h);
+      this.closePath();
+      return;
+    }
+    this.moveTo(x + rr, y);
+    this.lineTo(x + w - rr, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + rr);
+    this.lineTo(x + w, y + h - rr);
+    this.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+    this.lineTo(x + rr, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - rr);
+    this.lineTo(x, y + rr);
+    this.quadraticCurveTo(x, y, x + rr, y);
+    this.closePath();
+  };
+  return ctx;
+}
+
+/**
+ * 给 2d 上下文补齐**所有**老基础库可能缺失的 Canvas 2D 接口。
+ *
+ * 为什么集中做：项目里对 ctx 的调用是"直接调"（不做逐个 typeof 判断），
+ * 而微信小游戏基础库版本差异很大。任何一个新接口缺失，首帧/某帧就抛
+ * TypeError → 该帧只画到一半（表现为界面残缺 + console 报错刷屏）。
+ *
+ * 实测（.workbuddy/tools/entry3.js，3.14.0 场景）：
+ *   · 缺 roundRect   → 首帧直接抛错，主循环停摆（历史事故）
+ *   · 缺 setLineDash → 战前选关界面画到 drawLadderRail 就抛错，只出 492 条指令（半张）
+ *   · 缺 ellipse     → 绘制椭圆塔图标 / 敌人投影时抛错
+ *
+ * 语义对齐原生：只往**当前路径**追加子路径，不自己 beginPath。
+ */
+function polyfillCanvas2D(ctx) {
+  if (!ctx) return ctx;
+  polyfillRoundRect(ctx);
+
+  // setLineDash：缺失时退化为"实线"（视觉降级，但绝不能抛错）
+  if (typeof ctx.setLineDash !== 'function') {
+    ctx.setLineDash = function () {};
+  }
+  if (typeof ctx.getLineDash !== 'function') {
+    ctx.getLineDash = function () { return []; };
+  }
+
+  // ellipse：缺失时用「外接圆」近似（半径取两者均值），保证形状还在
+  if (typeof ctx.ellipse !== 'function') {
+    ctx.ellipse = function (cx, cy, rx, ry, rot, sa, ea, ccw) {
+      if (!isFinite(cx) || !isFinite(cy) || !isFinite(rx) || !isFinite(ry)) return;
+      const r = Math.max(0.5, (Math.abs(rx) + Math.abs(ry)) / 2);
+      this.arc(cx, cy, r, sa, ea, !!ccw);
+    };
+  }
+
+  return ctx;
+}
+
 /** 文本是否在矩形内（含 padding 收缩） */
 function pointInRect(pos, rect, pad) {
   if (!rect) return false;
@@ -803,6 +884,8 @@ module.exports = {
   easeOutCubic,
   easeOutBack,
   roundRectPath,
+  polyfillRoundRect,
+  polyfillCanvas2D,
   pointInRect,
   drawStar,
   applyTowerStyle,

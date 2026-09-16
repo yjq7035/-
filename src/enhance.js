@@ -36,8 +36,8 @@ const ENHANCE_UI = {
  * @returns {{ panel, titleCY, infoLines:number[], cards:Array, hintY, tower, type, options }}
  */
 function getEnhanceLayout(game) {
-  const W = game.canvas.width;
-  const H = game.canvas.height;
+  const W = game.W;
+  const H = game.H;
 
   const picker = game.enhancePicker;
   const tower = picker ? picker.tower : null;
@@ -122,8 +122,8 @@ function optionGainText(opt) {
 
 function drawEnhancePicker(game) {
   const ctx = game.ctx;
-  const W = game.canvas.width;
-  const H = game.canvas.height;
+  const W = game.W;
+  const H = game.H;
 
   const picker = game.enhancePicker;
   if (!picker || !picker.tower) return;

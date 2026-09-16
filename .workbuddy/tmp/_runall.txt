@@ -1,0 +1,2403 @@
+=== runall  2026-09-16T04:15:11.873Z ===
+node = C:\Users\Administrator.WIN-CF4N027LCCI\.workbuddy\binaries\node\versions\22.22.2-3\node.exe
+root = F:\图形塔防
+
+------------------------------------------------------------
+▶ syntax.js  —— node --check 语法
+  exit=0  signal=-  7190ms
+  [artifact _syntax.txt  349B]
+    | ok   auraManager.js
+    | ok   bonusStats.js
+    | ok   codex.js
+    | ok   config.js
+    | ok   enemy.js
+    | ok   enhance.js
+    | ok   eventBus.js
+    | ok   gamemenu.js
+    | ok   game_core.js
+    | ok   geometry.js
+    | ok   input.js
+    | ok   levels.js
+    | ok   meta.js
+    | ok   nav.js
+    | ok   renderer.js
+    | ok   shop.js
+    | ok   talents.js
+    | ok   theme.js
+    | ok   tower.js
+    | ok   units.js
+    | ok   wave.js
+    | ok   game.js
+    | 
+    | 语法检查：22/22 通过
+
+------------------------------------------------------------
+▶ verify.js  —— verify.js 全量逻辑校验
+  exit=0  signal=-  3543ms
+  [stdout]
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 48,
+      mapY: 93.16,
+      mapWidth: 224,
+      mapHeight: 262.84000000000003,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 54,
+      mapY: 101.8,
+      mapWidth: 251.99999999999997,
+      mapHeight: 326.2,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 56.25,
+      mapY: 105.03999999999999,
+      mapWidth: 262.5,
+      mapHeight: 349.96000000000004,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 56.25,
+      mapY: 122.44,
+      mapWidth: 262.5,
+      mapHeight: 470.96,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 62.099999999999994,
+      mapY: 132.51999999999998,
+      mapWidth: 289.79999999999995,
+      mapHeight: 519.68,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 64.2,
+      mapY: 136.12,
+      mapWidth: 299.59999999999997,
+      mapHeight: 537.0799999999999,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 115.19999999999999,
+      mapY: 147.88,
+      mapWidth: 537.5999999999999,
+      mapHeight: 593.92,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 48,
+      mapY: 93.16,
+      mapWidth: 224,
+      mapHeight: 262.84000000000003,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 54,
+      mapY: 101.8,
+      mapWidth: 251.99999999999997,
+      mapHeight: 326.2,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 56.25,
+      mapY: 105.03999999999999,
+      mapWidth: 262.5,
+      mapHeight: 349.96000000000004,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 56.25,
+      mapY: 122.44,
+      mapWidth: 262.5,
+      mapHeight: 470.96,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 62.099999999999994,
+      mapY: 132.51999999999998,
+      mapWidth: 289.79999999999995,
+      mapHeight: 519.68,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 64.2,
+      mapY: 136.12,
+      mapWidth: 299.59999999999997,
+      mapHeight: 537.0799999999999,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 115.19999999999999,
+      mapY: 147.88,
+      mapWidth: 537.5999999999999,
+      mapHeight: 593.92,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 48,
+      mapY: 93.16,
+      mapWidth: 224,
+      mapHeight: 262.84000000000003,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 54,
+      mapY: 101.8,
+      mapWidth: 251.99999999999997,
+      mapHeight: 326.2,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 56.25,
+      mapY: 105.03999999999999,
+      mapWidth: 262.5,
+      mapHeight: 349.96000000000004,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 56.25,
+      mapY: 122.44,
+      mapWidth: 262.5,
+      mapHeight: 470.96,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 62.099999999999994,
+      mapY: 132.51999999999998,
+      mapWidth: 289.79999999999995,
+      mapHeight: 519.68,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 64.2,
+      mapY: 136.12,
+      mapWidth: 299.59999999999997,
+      mapHeight: 537.0799999999999,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 115.19999999999999,
+      mapY: 147.88,
+      mapWidth: 537.5999999999999,
+      mapHeight: 593.92,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 48,
+      mapY: 93.16,
+      mapWidth: 224,
+      mapHeight: 262.84000000000003,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 48,
+      mapY: 93.16,
+      mapWidth: 224,
+      mapHeight: 262.84000000000003,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 54,
+      mapY: 101.8,
+      mapWidth: 251.99999999999997,
+      mapHeight: 326.2,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 56.25,
+      mapY: 105.03999999999999,
+      mapWidth: 262.5,
+      mapHeight: 349.96000000000004,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 56.25,
+      mapY: 122.44,
+      mapWidth: 262.5,
+      mapHeight: 470.96,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 62.099999999999994,
+      mapY: 132.51999999999998,
+      mapWidth: 289.79999999999995,
+      mapHeight: 519.68,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 64.2,
+      mapY: 136.12,
+      mapWidth: 299.59999999999997,
+      mapHeight: 537.0799999999999,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 115.19999999999999,
+      mapY: 147.88,
+      mapWidth: 537.5999999999999,
+      mapHeight: 593.92,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 48,
+      mapY: 93.16,
+      mapWidth: 224,
+      mapHeight: 262.84000000000003,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 48,
+      mapY: 93.16,
+      mapWidth: 224,
+      mapHeight: 262.84000000000003,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 54,
+      mapY: 101.8,
+      mapWidth: 251.99999999999997,
+      mapHeight: 326.2,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 56.25,
+      mapY: 105.03999999999999,
+      mapWidth: 262.5,
+      mapHeight: 349.96000000000004,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 56.25,
+      mapY: 122.44,
+      mapWidth: 262.5,
+      mapHeight: 470.96,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 62.099999999999994,
+      mapY: 132.51999999999998,
+      mapWidth: 289.79999999999995,
+      mapHeight: 519.68,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 64.2,
+      mapY: 136.12,
+      mapWidth: 299.59999999999997,
+      mapHeight: 537.0799999999999,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 115.19999999999999,
+      mapY: 147.88,
+      mapWidth: 537.5999999999999,
+      mapHeight: 593.92,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 48,
+      mapY: 93.16,
+      mapWidth: 224,
+      mapHeight: 262.84000000000003,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 48,
+      mapY: 93.16,
+      mapWidth: 224,
+      mapHeight: 262.84000000000003,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 54,
+      mapY: 101.8,
+      mapWidth: 251.99999999999997,
+      mapHeight: 326.2,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 56.25,
+      mapY: 105.03999999999999,
+      mapWidth: 262.5,
+      mapHeight: 349.96000000000004,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 56.25,
+      mapY: 122.44,
+      mapWidth: 262.5,
+      mapHeight: 470.96,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 62.099999999999994,
+      mapY: 132.51999999999998,
+      mapWidth: 289.79999999999995,
+      mapHeight: 519.68,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 64.2,
+      mapY: 136.12,
+      mapWidth: 299.59999999999997,
+      mapHeight: 537.0799999999999,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 115.19999999999999,
+      mapY: 147.88,
+      mapWidth: 537.5999999999999,
+      mapHeight: 593.92,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 56.25,
+      mapY: 105.03999999999999,
+      mapWidth: 262.5,
+      mapHeight: 349.96000000000004,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 48,
+      mapY: 93.16,
+      mapWidth: 224,
+      mapHeight: 262.84000000000003,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 48,
+      mapY: 93.16,
+      mapWidth: 224,
+      mapHeight: 262.84000000000003,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 115.19999999999999,
+      mapY: 147.88,
+      mapWidth: 537.5999999999999,
+      mapHeight: 593.92,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 48,
+      mapY: 93.16,
+      mapWidth: 224,
+      mapHeight: 262.84000000000003,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 48,
+      mapY: 93.16,
+      mapWidth: 224,
+      mapHeight: 262.84000000000003,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 48,
+      mapY: 93.16,
+      mapWidth: 224,
+      mapHeight: 262.84000000000003,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    PASS=211 FAIL=0
+  [artifact _verify.txt  13813B]
+    | 
+    | === A. 模块加载 ===
+    |   ok   全部 21 个模块 require 成功
+    | 
+    | === A2. 数据表规模 ===
+    |   ok   TOWER_ORDER = 16 种塔   [实际 16]
+    |   ok   TALENTS = 10 个天赋   [实际 10]
+    |   ok   LEVELS 数量 >= 1   [实际 99]
+    |   ok   armorK = 200   [实际 200]
+    |   ok   BALANCE.enhance 配置齐全   [{"maxLevel":5,"minStage":3,"costRate":0.9}]
+    |   ok   强化已彻底移除伤害加成配置（attackRate/attackMin 不得存在）   [{"maxLevel":5,"minStage":3,"costRate":0.9}]
+    |   ok   强化门槛 minStage === MAX_STAGE（3★）   [minStage=3 MAX_STAGE=3]
+    |   ok   强化造价已上调（costRate > 0.6）   [costRate=0.9]
+    | 
+    | === A5. 强化专属特殊属性表（每塔一项：默认值 + 每级增量） ===
+    |   ok   16 种塔各有一项合法专属属性，且 base 与原生值一致   [16 种全部一致]
+    |   ok   三角塔：默认 1 级 5% 暴击，每级 +5%   [critChance 5% +5%/级 → 满级 30%]
+    |   ok   圆塔：二段爆炸默认 25%，每级 +5%   [25% +5%/级 → 满级 50%]
+    |   ok   六边塔：默认精英以上 ×5，每级 +1 倍   [×5 +1/级 → 满级 ×10]
+    |   ok   方块塔：每次升级投射大小 +20%（相对伤害范围同步）   [100% +20%/级 → 满级 200%]
+    |   16 塔专属属性：triangle=暴击几率 circle=二段爆炸伤害 hexagon=精英伤害倍率 square=弹道体积 trapezoid=光环强度 semicircle=激光穿透 sector=扇面张角 long_rectangle=堆叠上限 diamond=攻击速度 pentagon=生命 oval=射程 star=暴击几率 octagon=生命 cross=攻击速度 arrow=穿透 bolt=暴击几率
+    |   ok   ENHANCE_OPTIONS（旧的多选一池）已移除
+    | 
+    | === A6. 天赋平衡性（削弱变态项 + 提高学习成本） ===
+    |   ok   点石成金 每级 3%   [+3%/级 max=6]
+    |   ok   涓流金库 每级 0.25（砍半）   [+0.25/级 max=5]
+    |   ok   洞察先机 每级 5%（砍半）   [+5%/级 max=4]
+    |   ok   波次结余 每级 6   [+6/级 max=5]
+    |   ok   三项变态天赋学习总花费上调   [点石成金=18 涓流金库=16 洞察先机=14]
+    | 
+    | === A3. 16 种塔属性完整性 ===
+    |   ok   每种塔都有合法 critChance/critMult/penetration   [16 种全部合法]
+    |   穿透表：triangle=0 circle=0 hexagon=0 square=0 trapezoid=0 semicircle=0 sector=0 long_rectangle=0 diamond=0 pentagon=0 oval=0 star=0 octagon=0 cross=0 arrow=0 bolt=0
+    |   ok   三角塔 critChance 全塔最高   [top=triangle 5%  次=circle 0%]
+    | 
+    | === A3c. 原生暴击/穿透口径（需求 1：默认不发给图形塔） ===
+    |   ok   除三角塔外，所有塔原生暴击几率 = 0   [其余 15 种全为 0]
+    |   ok   所有塔原生穿透 = 0（穿透只来自强化）   [16 种全为 0]
+    |   ok   三角塔原生暴击几率 = 5%（不是旧的 25%）   [实际 5%]
+    |   ok   未强化的星形塔：暴击 0% / 穿透 0   [暴击=0% 穿透=0]
+    |   ok   三角塔自带 5% 暴击（战斗口径一致）   [实际 5%]
+    |   ok   强化 1 级后暴击 = 原生 + 专属增量（三角塔 5% → 10%）   [强化后 = 10%/0]
+    | 
+    | === A4. 敌人抗性 ===
+    |   ok   所有敌人类型都有 armor 字段   [normal=0 fast=0 heavy=45 elite=90 boss=150 finalBoss=240]
+    | 
+    | === A7. 关卡表（需求 2：天梯一次铺到 99） ===
+    |   ok   LEVELS 共 99 关   [实际 99]
+    |   ok   关卡 id 连续 1..99   [1..99]
+    |   ok   只有关卡 1 可玩   [可玩：1]
+    |   ok   关卡 2~99 全部是"待扩展"占位   [非占位项：]
+    |   ok   关卡名带序号（关卡 N）   [末关 name=关卡 99]
+    | 
+    | === B. 冒烟渲染（8 分辨率 × 13 场景 × 3 帧） ===
+    |   ok   320x568 全部场景渲染无异常   [13 场景 × 3 帧]
+    |   ok   360x640 全部场景渲染无异常   [13 场景 × 3 帧]
+    |   ok   375x667 全部场景渲染无异常   [13 场景 × 3 帧]
+    |   ok   375x812 全部场景渲染无异常   [13 场景 × 3 帧]
+    |   ok   390x844 全部场景渲染无异常   [13 场景 × 3 帧]
+    |   ok   414x896 全部场景渲染无异常   [13 场景 × 3 帧]
+    |   ok   428x926 全部场景渲染无异常   [13 场景 × 3 帧]
+    |   ok   768x1024 全部场景渲染无异常   [13 场景 × 3 帧]
+    |   绘制指令数：battle-ready=179  battle-ready-scrolled=180  battle-run=115  battle-menu=124  battle-panel=162  battle-panel-locked=155  enhance-picker=176  codex=164  codex-sheet=184  codex-sheet-tall=182  codex-scrolled=184  talents=144  gameover=116
+    | 
+    | === C. 布局检查（逐分辨率） ===
+    |   ok   320x568 布局   [全部检查通过]
+    |   ok   360x640 布局   [全部检查通过]
+    |   ok   375x667 布局   [全部检查通过]
+    |   ok   375x812 布局   [全部检查通过]
+    |   ok   390x844 布局   [全部检查通过]
+    |   ok   414x896 布局   [全部检查通过]
+    |   ok   428x926 布局   [全部检查通过]
+    |   ok   768x1024 布局   [全部检查通过]
+    | 
+    | === C2. 天赋列表滚动 ===
+    |   320x568: 行高=52 视口高=392 内容高=592 需滚动=true maxScroll=200
+    |   360x640: 行高=52 视口高=464 内容高=592 需滚动=true maxScroll=128
+    |   375x667: 行高=52 视口高=491 内容高=592 需滚动=true maxScroll=101
+    |   375x812: 行高=56 视口高=636 内容高=632 需滚动=false maxScroll=0
+    |   390x844: 行高=59 视口高=668 内容高=662 需滚动=false maxScroll=0
+    |   414x896: 行高=64 视口高=720 内容高=712 需滚动=false maxScroll=0
+    |   428x926: 行高=67 视口高=750 内容高=742 需滚动=false maxScroll=0
+    |   768x1024: 行高=72 视口高=848 内容高=792 需滚动=false maxScroll=0
+    |   ok   320x568 天赋列表需要滚动   [maxScroll=200]
+    |   ok   滚动值被夹到 maxScroll   [set1e9→200 max=200]
+    |   ok   滚动值下限为 0   [set-50→0]
+    |   ok   滚到底：末行在视口内   [末行 bottom=480 视口底=480]
+    |   ok   滚到底：首行被推出视口（可滚动生效）   [首行 y=-112 视口顶=88]
+    |   ok   已被滚出视口的行点不到   [null]
+    | 
+    | === C2b. 图签格网滚动 ===
+    |   320x568 面板关: 格高=94 视口高=408 内容高=406 maxScroll=0
+    |   320x568 面板开: 格高=94 视口高=206 内容高=406 maxScroll=200
+    |   360x640 面板关: 格高=106 视口高=480 内容高=454 maxScroll=0
+    |   360x640 面板开: 格高=106 视口高=278 内容高=454 maxScroll=176
+    |   375x667 面板关: 格高=106 视口高=507 内容高=454 maxScroll=0
+    |   375x667 面板开: 格高=106 视口高=305 内容高=454 maxScroll=149
+    |   375x812 面板关: 格高=106 视口高=652 内容高=454 maxScroll=0
+    |   375x812 面板开: 格高=106 视口高=450 内容高=454 maxScroll=4
+    |   390x844 面板关: 格高=106 视口高=684 内容高=454 maxScroll=0
+    |   390x844 面板开: 格高=106 视口高=482 内容高=454 maxScroll=0
+    |   414x896 面板关: 格高=106 视口高=736 内容高=454 maxScroll=0
+    |   414x896 面板开: 格高=106 视口高=534 内容高=454 maxScroll=0
+    |   428x926 面板关: 格高=106 视口高=766 内容高=454 maxScroll=0
+    |   428x926 面板开: 格高=106 视口高=564 内容高=454 maxScroll=0
+    |   768x1024 面板关: 格高=106 视口高=864 内容高=454 maxScroll=0
+    |   768x1024 面板开: 格高=106 视口高=676 内容高=454 maxScroll=0
+    |   ok   320x568 图签（详情面板打开）需要滚动   [maxScroll=200]
+    |   ok   图签滚动值被夹到 maxScroll   [set1e9→200 max=200]
+    |   ok   图签滚动下限为 0   [set-50→0]
+    |   ok   图签滚到底：末行完整落在视口内   [末行 bottom=292 视口底=292]
+    |   ok   图签滚到底：首行被推出视口（可滚动生效）   [首行 bottom=-20 视口顶=86]
+    |   ok   已滚出视口的图签格点不到   [{"kind":"close"}]
+    | 
+    | === C2c. 选关天梯滚动 ===
+    |   320x568: 台阶高=62 视口高=308 内容高=7510 maxScroll=7202 默认scroll=7202
+    |   360x640: 台阶高=62 视口高=380 内容高=7510 maxScroll=7130 默认scroll=7130
+    |   375x667: 台阶高=62 视口高=407 内容高=7510 maxScroll=7103 默认scroll=7103
+    |   375x812: 台阶高=62 视口高=552 内容高=7510 maxScroll=6958 默认scroll=6958
+    |   390x844: 台阶高=62 视口高=584 内容高=7510 maxScroll=6926 默认scroll=6926
+    |   414x896: 台阶高=62 视口高=636 内容高=7510 maxScroll=6874 默认scroll=6874
+    |   428x926: 台阶高=62 视口高=666 内容高=7510 maxScroll=6844 默认scroll=6844
+    |   768x1024: 台阶高=62 视口高=764 内容高=7510 maxScroll=6746 默认scroll=6746
+    |   ok   320x568 选关天梯需要滚动   [maxScroll=7202]
+    |   ok   天梯默认贴底：关卡 1 完整落在视口内   [bottom=424 视口底=424]
+    |   ok   天梯贴底时关卡 1 就是最低那级   [最高级 y=362]
+    |   ok   天梯滚动值被夹到 maxScroll   [set1e9→7202]
+    |   ok   天梯滚动下限为 0   [set-50→0]
+    |   ok   天梯滚到顶：最高关卡完整落在视口内   [关卡99 y=116]
+    |   ok   天梯滚到顶：关卡 1 被推出视口   [关卡1 y=7564 视口底=424]
+    |   ok   已滚出视口的台阶点不到   [{"kind":"none"}]
+    |   ok   开始按钮可命中   [{"kind":"start"}]
+    |   ok   天梯视口不与开始按钮重叠   [视口底=424 按钮顶=436]
+    |   ok   99 关天梯内容高 ≈ 99 级台阶   [contentH=7510 maxScroll=7202]
+    |   ok   99 关的滚动条滑块仍然可见（>= 20px）   [滑块 24.64px]
+    |   ok   滚到中段有台阶完整落在视口内   [视口内台阶 5 级：48,49,50,51]
+    | 
+    | === C2d. 图签详情面板：介绍文字自动换行（需求 5） ===
+    |   ok   320x568 16 种塔的详情面板：换行/面板高/按钮 无冲突   [最多 4 行]
+    |   ok   360x640 16 种塔的详情面板：换行/面板高/按钮 无冲突   [最多 3 行]
+    |   ok   375x667 16 种塔的详情面板：换行/面板高/按钮 无冲突   [最多 3 行]
+    |   ok   375x812 16 种塔的详情面板：换行/面板高/按钮 无冲突   [最多 3 行]
+    |   ok   390x844 16 种塔的详情面板：换行/面板高/按钮 无冲突   [最多 3 行]
+    |   ok   414x896 16 种塔的详情面板：换行/面板高/按钮 无冲突   [最多 3 行]
+    |   ok   428x926 16 种塔的详情面板：换行/面板高/按钮 无冲突   [最多 3 行]
+    |   ok   768x1024 16 种塔的详情面板：换行/面板高/按钮 无冲突   [最多 2 行]
+    |   ok   放不下的介绍都被拆成多行（不是 ellipsize 硬截）   [所有过长介绍均已换行]
+    |   ok   行数变多 → 面板跟着变高   [椭圆塔…实为梯塔：3 行 → 面板高 218]
+    | 
+    | === D. 伤害结算口径 ===
+    |   ok   抗性200/穿透0：300 → 150   [实际 150]
+    |   ok   穿透=抗性：无减伤（300 → 300）   [实际 300]
+    |   ok   抗性240/穿透60：300 → 158   [实际 158]
+    |   ok   极高抗性伤害保底 >= 1
+    |   ok   抗性0：原样命中 275
+    |   ok   暴击率100%/倍率2：100 → 200 且 crit=true   [dmg=200 crit=true]
+    |   ok   暴击率0：不暴击（100）   [dmg=100 crit=false]
+    |   ok   allowCrit:false：不暴击（100）   [dmg=100]
+    |   ok   先暴击后减伤：100×2×0.5 = 100   [dmg=100 crit=true]
+    |   ok   击杀：alive=false 且金币入账   [gold 350→360]
+    |   ok   已死敌人二次结算返回 0   [实际 0]
+    |   ok   environment 伤害不吃暴击   [dmg=100]
+    | 
+    | === E. 塔强化（只抬专属特殊属性，不给伤害加成） ===
+    |   ok   isStageReady：0★ 不可强化
+    |   ok   未进阶到 3★ 拒绝强化（reason=stage）   [{"ok":false,"reason":"stage","need":3,"stage":0,"level":0}]
+    |   ok   被拒时不扣金币   [gold=100000]
+    |   ok   2★ 依然不可强化
+    |   ok   3★ 达到门槛
+    |   ok   tower.js 不再导出固定攻击力接口
+    |   ok   calculateFinalDamage 只吃（原生, 等级, 阶段增幅）   [形参个数 = 3]
+    |   ok   3★ 后强化成功：等级 0→1   [lv=1]
+    |   ok   强化扣金币（造价 = 基础造价 × costRate × 等级）   [100000 → 99910 (cost 90)]
+    |   ok   强化不给攻击力（战斗口径 Δ=0）   [106 → 106]
+    |   ok   强化不给穿透（三角塔不是穿透型）   [穿透=0]
+    |   ok   专属属性增量 = per × 等级   [critChance +5]
+    |   ok   三角塔强化 1 级：暴击 5% → 10%   [10%]
+    |   ok   专属属性取值 = base + per × 等级   [Lv.1 = 10%]
+    |   ok   非本塔专属属性的 key 被拒（reason=option）   [{"ok":false,"reason":"option"}]
+    |   ok   强化选项只有 1 项（每塔一项专属属性）   [["critChance"]]
+    |   ok   不传 key 也能强化（浮层不再传选项）   [lv=2]
+    |   ok   强化花费随等级递增   [90 → 270]
+    |   ok   强化封顶 maxLevel=5   [lv=5]
+    |   ok   满级 enhanceCost = Infinity   [Infinity]
+    |   ok   满级后再强化返回 maxed   [{"ok":false,"reason":"maxed","level":5}]
+    |   ok   满级三角塔暴击 = 30%（5 + 5×5）   [30%]
+    |   ok   满级后攻击力依然没被强化改变   [106 vs 106]
+    |   ok   等级回退时增量会被重算（不残留旧值）   [lv2 → 15%]
+    |   ok   金币不足拒绝强化   [{"ok":false,"reason":"gold","cost":90}]
+    |   ok   圆塔未强化：二段爆炸 25% / 半径 60   [25% r=60]
+    |   ok   圆塔强化 2 级：二段爆炸 25% → 35%（每级 +5%）   [25% → 35%]
+    |   ok   圆塔爆炸半径不再随强化变化（旧属性已移除）   [60 → 60]
+    |   ok   椭圆塔：射程 260 → 305（每级 +15）   [260 → 305]
+    |   ok   六边塔未强化：精英伤害 ×5   [×5]
+    |   ok   六边塔强化 3 级：精英伤害 ×8（每级 +1 倍）   [×8]
+    |   ok   正方塔强化 2 级：弹道 10 → 14（每级 +20%，相对伤害范围同步）   [10 → 14]
+    |   ok   扇塔强化 2 级：半张角 45° → 55°   [55°]
+    |   ok   长方塔强化 2 级：堆叠上限 10 → 14 层   [14 层]
+    |   ok   半圆塔强化 2 级：激光穿透 0 → 10   [穿透 10]
+    |   ok   星形塔满级：暴击 0% → 30%（每级 +6%，配 200% 暴击倍率）   [30% ×2]
+    |   ok   16 种塔：强化只改专属属性 / 攻击力零变化 / 面板与引擎同口径   [16 种 × Lv.1~5 全部一致]
+    |   ok   面板原生攻击力 = 纯原生值（不再叠加强化固定值）   [base=20 原生=20]
+    |   ok   面板明细里出现"强化"来源   [sources=3]
+    |   ok   面板最终攻击力与战斗口径一致   [面板=106 战斗=106]
+    |   ok   面板暴击行 = 原生 5% + 强化 +25%（白字 + 绿字）   [{"key":"critChance","label":"暴击率","baseText":"5%","bonusText":"+25%","sign":1,"parts":[{"source":"enhance","label":"强化 Lv.5 · 暴击率","text":"+25%","sign":1}]}]
+    |   ok   六边塔面板「精英伤害倍率」= 5倍 +3倍   [{"key":"eliteMult","label":"精英伤害倍率","baseText":"5倍","bonusText":"+3倍","sign":1,"parts":[{"source":"enhance","label":"强化 Lv.3 · 精英伤害倍率","text":"+3倍","sign":1}]}]
+    |   ok   正方塔面板「弹道体积」= 100% +40%   [{"key":"projectileScale","label":"弹道体积","baseText":"100%","bonusText":"+40%","sign":1,"parts":[{"source":"enhance","label":"强化 Lv.2 · 弹道体积","text":"+40%","sign":1}]}]
+    |   ok   扇塔面板「扇面张角」= 45° +10°   [{"key":"sectorAngle","label":"扇面张角","baseText":"45°","bonusText":"+10°","sign":1,"parts":[{"source":"enhance","label":"强化 Lv.2 · 扇面张角","text":"+10°","sign":1}]}]
+    |   ok   长方塔面板「堆叠上限」= 10层 +4层   [{"key":"stackMax","label":"堆叠上限","baseText":"10层","bonusText":"+4层","sign":1,"parts":[{"source":"enhance","label":"强化 Lv.2 · 堆叠上限","text":"+4层","sign":1}]}]
+    |   ok   非专属塔不凭空多出这 4 行（三角塔面板）   [三角塔面板干净]
+    |   ok   canEnhanceTower(null) 被拒
+    |   ok   辅助塔未强化时光环强度 = 原生 25   [25]
+    |   ok   辅助塔强化 1 级：光环强度 25 → 30（每级 +5%）   [光环=30 范围=150]
+    |   ok   辅助塔强化后依然不产出攻击力   [damage=0]
+    | 
+    | === E2. 天赋（10 项） ===
+    |   ok   10 天赋 max/costs/TALENT_EFFECT 齐备   [gold_start(max6) gold_gain(max6) boss_bounty(max5) gold_per_sec(max5) wave_bonus(max5) points_gain(max4) lives_max(max5) build_cost(max5) codex_ease(max4) high_stakes(max4)]
+    |   ok   升满级后 talentValue = perLevel×max   [10 项全部一致]
+    |   ok   暴利风险 goldPerLevel 取到正增益   [goldPerLevel=+60%]
+    |   ok   暴利风险 主值取到负惩罚（减积分）   [主值=40]
+    |   ok   暴利风险 twoWay 标记存在   [twoWay=true]
+    |   ok   暴利风险 desc 里含双向说明   [特殊积分 -10%/级，击杀金币 +15%/级]
+    |   ok   天赋点不足时 learnTalent 被拒
+    |   ok   暴利风险满级：100 积分只发 60   [实际 60]
+    |   ok   洞察先机(20%) 抵掉暴利风险(40%)：100 → 80   [实际 80]
+    | 
+    | === F. 战斗流程状态机 ===
+    |   ok   初始 battleStarted=false（战前选关）
+    |   ok   初始 showMenu=false
+    |   ok   初始 scene=battle   [battle]
+    |   ok   startBattle() 返回 true
+    |   ok   开始后 battleStarted=true
+    |   ok   开始后波次推进   [currentWave=1]
+    |   ok   openMenu 成功
+    |   ok   closeMenu 后 showMenu=false
+    |   ok   abandonRun 后回到战前（battleStarted=false）   [battleStarted=false]
+    |   ok   abandonRun 后波次归零   [currentWave=0]
+    |   ok   startLevel(1) 成功
+    |   ok   startLevel(2) 被拒（占位未开放）
+    |   ok   未开始时 openMenu 被拒
+    |   ok   loop 判定字段齐备
+    | 
+    | === F2. 底部导航切页（回归） ===
+    |   ok   导航项 >= 4（图签/天赋/战斗/商店）   [nav1/codex/battle/talents/nav5]
+    |   ok   天赋页点「图签」能切到 codex   [实际 codex]
+    |   ok   天赋页点「战斗」能切到 battle   [实际 battle]
+    |   ok   天赋页点「天赋」能切到 talents   [实际 talents]
+    |   天赋页出口：codex→codex  battle→battle  talents→talents
+    |   ok   图签页点「天赋」能切回天赋页（双向）   [实际 talents]
+    |   ok   点非导航区不切场景   [实际 talents]
+    |   ok   未开放导航项「待扩展」不切场景   [实际 battle]
+    |   ok   未开放导航项「待扩展」不切场景   [实际 battle]
+    | 
+    | === F2c. 强化浮层模态（回归：不能锁死 UI） ===
+    |   ok   点属性面板「强化」→ 浮层打开且只有 1 张确认卡   [cards=1]
+    |   ok   金币足够：点卡片 → 强化 +1 且浮层自动关闭   [lv=1 picker=null]
+    |   ok   金币足够：确实扣了钱   [gold=99910]
+    |   ok   金币不足：点卡片不涨等级、浮层保持打开（让玩家看得到价格）   [lv=0]
+    |   ok   金币不足：点空白能取消浮层（旧版会永久锁死）   [picker=null]
+    |   ok   取消浮层后 UI 恢复响应：再点一下关掉属性面板   [showPanel=false]
+    |   ok   浮层开着时切到图签页：浮层被收掉且场景已切换   [scene=codex picker=null]
+    |   ok   pendingDrag 悬空时不吞点击（点强化按钮仍能打开浮层）   [picker=OPEN]
+    | 
+    | === F3. 按钮波纹：0.45s 内必须消失 + 按层绘制 ===
+    |   ok   flashButton 的 duration 是毫秒（450）   [duration=450]
+    |   ok   flashButton 记录归属层（商店卡 = shop）   [layer=shop]
+    |   ok   overlay 层不绘制 shop 层的波纹   [fx 保留]
+    |   ok   shop 层在动画期内绘制自己的波纹   [fx 仍在动画中]
+    |   ok   450ms 后波纹自动清除（不再是 450 秒）   [已清除]
+    |   ok   超过 2s 硬上限也会清除（切场景防残留）   [已清除]
+    |   ok   按下商店卡进入待拖状态   [pendingDrag=true]
+    |   ok   拖放失败触发红色波纹（归属 shop 层）   [color=255,68,68 layer=shop]
+    |   ok   下一次绘制商店面板时红框已自动消失   [已消失]
+    |   ok   点「返回战斗」关闭菜单并留下绿色波纹   [165,214,167]
+    |   ok   该波纹归属 menu 层（菜单一关就没人画它 → 战场不会有幽灵框）   [layer=menu]
+    |   ok   菜单按钮的绿色波纹不会在战场上出现（截图里那个"神秘绿框"）   [已按层隔离]
+    |   ok   未指定归属层时默认 overlay（fail-safe：不会被战场层画出来）   [layer=overlay]
+    |   ok   默认层的闪烁不会漏到战场（宁可少闪一次，也不留幽灵框）   [漏了 0 条]
+    | 
+    | === G. 金币 / 天赋联动 ===
+    |   ok   无天赋时击杀金币倍率=1   [1]
+    |   ok   点石成金满级倍率正确   [1.18 vs 1.18]
+    |   ok   暴利风险与点石成金叠加进击杀倍率   [1.78 vs 1.78]
+    |   ok   涓流金库 2 秒入账 ≈ 2.5   [实际 2]
+    |   ok   未学天赋时不产金币   [实际 0]
+    |   ok   波次结余金币入账 30   [实际 30]
+    |   ok   BOSS 悬赏对 tier3 生效：100 → 150   [实际 150]
+    |   ok   普通怪不吃 BOSS 悬赏   [实际 100]
+    |   ok   每 4 波 +1 天赋点   [实际 1]
+    |   ok   不足 4 波不给天赋点   [实际 0]
+    | 
+    | === H. SVG 回放产物 ===
+    |   battle-ready_390x844.svg  ops=179  52.9KB
+    |   battle-run_390x844.svg  ops=117  32.8KB
+    |   battle-menu_390x844.svg  ops=124  34.5KB
+    |   battle-panel_390x844.svg  ops=162  43.6KB
+    |   codex_390x844.svg  ops=164  46.5KB
+    |   codex-sheet_390x844.svg  ops=184  50.3KB
+    |   talents_390x844.svg  ops=144  57.4KB
+    |   battle-run_375x667.svg  ops=115  32.8KB
+    |   codex-sheet_320x568.svg  ops=124  31.6KB
+    |   talents_320x568.svg  ops=117  44.8KB
+    |   battle-ready_768x1024.svg  ops=201  61.2KB
+    |   enhance-picker_390x844.svg  ops=176  46.0KB
+    |   enhance-picker_320x568.svg  ops=178  46.4KB
+    |   battle-panel-locked_390x844.svg  ops=155  42.1KB
+    |   battle-ready-scrolled_390x844.svg  ops=180  54.1KB
+    |   codex-scrolled_320x568.svg  ops=129  34.2KB
+    |   codex-sheet-tall_320x568.svg  ops=123  31.4KB
+    |   codex-sheet-tall_390x844.svg  ops=182  49.9KB
+    |   ok   SVG 全部生成   [18 张]
+    | 
+    | ============================================
+    |   通过 211   失败 0
+    | ============================================
+    | 
+
+------------------------------------------------------------
+▶ regress-ui.js  —— regress-ui.js 可点性回归
+  exit=0  signal=-  68657ms
+  [stdout]
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    regress-ui: 35 pass / 0 fail
+  [artifact _regress.txt  2146B]
+    | 
+    | === U1 拖拽途中游戏结束 → 松手后拖放态归零 + 结算按钮可点 ===
+    |   ok   U1a 从放置槽拖：touchmove 后进入拖拽   [dragging=true]
+    |   ok   U1b 从放置槽拖：拖拽中成功判负   [gameOver=true lives=-1]
+    |   ok   U1c 从放置槽拖：松手后拖放态归零   [dragging=false pendingDrag=false touchStartPos=null]
+    |   ok   U1d 从放置槽拖：结算界面给出了重新开始按钮   [rect ok]
+    |   ok   U1e 从放置槽拖：点「重新开始」真的有反应   [gameOver=false]
+    |   ok   U1a 从商店卡拖：touchmove 后进入拖拽   [dragging=true]
+    |   ok   U1b 从商店卡拖：拖拽中成功判负   [gameOver=true lives=-1]
+    |   ok   U1c 从商店卡拖：松手后拖放态归零   [dragging=false pendingDrag=false touchStartPos=null]
+    |   ok   U1d 从商店卡拖：结算界面给出了重新开始按钮   [rect ok]
+    |   ok   U1e 从商店卡拖：点「重新开始」真的有反应   [gameOver=false]
+    | 
+    | === U2 逃生通道不变式：每个"吞触摸态"都必须点得动 ===
+    |   ok   U2 游戏菜单开着 存在逃生口   [逃生点=菜单:返回战斗]
+    |   ok   U2 属性面板开着 存在逃生口   [逃生点=导航:codex]
+    |   ok   U2 结算-失败 存在逃生口   [逃生点=结算:重新开始]
+    |   ok   U2 结算-胜利 存在逃生口   [逃生点=结算:重新开始]
+    |   ok   U2 强拖拽残留(旧死锁态) 存在逃生口   [逃生点=导航:codex]
+    |   ok   U2 残留:pendingDrag 丢了起点 存在逃生口   [逃生点=导航:codex]
+    |   ok   U2 残留:dragging 无 pendingDrag 存在逃生口   [逃生点=导航:codex]
+    | 
+    | === U3 看广告复活必须真的补活 ===
+    |   ok   U3a 失败态给出「重新挑战」按钮
+    |   ok   U3b 点了之后进入观看视频态   [watchingVideo=true]
+    |   ok   U3c 广告结束后复活：生命被补回   [lives=30]
+    |   ok   U3d 广告结束后复活：不再立即判负   [gameOver=false gameWon=false]
+    |   ok   U3e 复活后能继续打（2 秒内没有立刻又死）   [gameOver=false lives=30]
+    | 
+    | === U4 「开始游戏」不能被静默拒绝 ===
+    |   ok   U4 存档关卡=1 点「开始游戏」真的开打   [startBattle→battleStarted=true currentLevel=1]
+    |   ok   U4 存档关卡=2 点「开始游戏」真的开打   [startBattle→battleStarted=true currentLevel=1]
+    |   ok   U4 存档关卡=5 点「开始游戏」真的开打   [startBattle→battleStarted=true currentLevel=1]
+    |   ok   U4 存档关卡=99 点「开始游戏」真的开打   [startBattle→battleStarted=true currentLevel=1]
+    | 
+    | === U5 结算态自洽（gameOver ⇒ gameWon 或 lives<=0） ===
+    |   ok   U5 扫了 6250 个状态，没有出现"gameOver 但既没赢也没死"   [违例 0 次]
+    | 
+    | === U6 老基础库（ctx 没有 roundRect）也必须画得出来、点得动 ===
+    |   ok   U6a 前置：ctx 上确实没有 roundRect
+    |   ok   U6b 构造后 roundRect 已被补齐
+    |   ok   U6c 全场景渲染不抛异常（旧基础库首帧炸的就是这里）   [无异常]
+    |   ok   U6d 结算界面照常给出按钮
+    |   ok   U6e 结算按钮照常点得动   [gameOver=false]
+    | 
+    | === U7 结算判据三层一致：渲染层"画了什么" ⇔ 输入层"吞了什么" ===
+    |   ok   U7a 扫了 24 个状态："渲染层画了" 与 "输入层吞了" 完全等价   [完全等价]
+    |   ok   U7b 错配态下点导航仍能切场景（不再是永久死锁）   [全部可逃生]
+    |   ok   U7c 真结算态仍然挡得住底部导航（没被放宽判据漏掉）   [全部被挡住]
+    | 
+    | ============================================
+    |   通过 35   失败 0
+    | ============================================
+    | 
+
+------------------------------------------------------------
+▶ monkey.js  —— monkey.js 随机手势 / 孤儿拖拽态
+  exit=0  signal=-  112886ms
+  [stdout]
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    monkey done
+  [artifact _monkey.txt  2294B]
+    | 
+    | === 1. 猴子随机手势 + 逐次尸检（真实对局，含刷怪/战斗） ===
+    |   随机手势 16000 次，推进 48000 帧，渲染/更新异常 0 次
+    | 
+    |   【I1 孤儿拖拽态（之后所有点击被首行 return 吃掉）】命中 0 次
+    |   【I2 死锁结算态（无结算界面 + 吞掉一切触摸）】命中 0 次
+    |   【I3 广告倒计时卡死】命中 0 次
+    | 
+    | === 2. 定向复现：把 I1 / I2 / I3 逐条钉死 ===
+    |   I1 拖放松手位置 vs 状态残留：
+    |     「slot0」→「topbar」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    |     「slot0」→「menuBtn」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    |     「slot0」→「offTop」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    |     「slot2」→「topbar」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    |     「slot2」→「menuBtn」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    |     「slot2」→「offTop」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    |     「shopCard0」→「topbar」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    |     「shopCard0」→「menuBtn」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    |     「shopCard0」→「offTop」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    |     「shopCard1」→「topbar」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    |     「shopCard1」→「menuBtn」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    |     「shopCard1」→「offTop」松手: dragging=false pendingDrag=false | 紧接着点导航 scene=battle→codex （未受影响）
+    | 
+    |   I2 结算界面各态下的按钮与输入吞没情况：
+    |     正常失败(lives=0): 按钮=[restart,watchContinue] 点导航 battle→battle
+    |     正常失败+观看视频: 按钮=[空] 点导航 battle→battle
+    |     正常胜利(lives>0): 按钮=[restart] 点导航 battle→battle
+    |     ★ 错配态(lives=20,gameOver,非胜利): 按钮=[空]  连点三个导航后 scene=battle  ★ 完全无响应 = 永久死锁
+    | 
+    |   I3 「重新挑战（看广告复活）」链路：
+    |     点「重新挑战」→ watchingVideo=true isRunning=false videoTimer=30
+    |     广告结束后（30.0s）: watchingVideo=false isRunning=true gameOver=false gameWon=false lives=30
+    |     复活后跑 2 秒: gameOver=false lives=30 按钮=[空]
+    |     复活正常
+    |     复活链路收尾点导航 battle→codex
+    | 
+    | === 3. 定向复现：战前选关「开始游戏」被静默拒绝 ===
+    |   currentLevel=1 → startBattle()=true  battleStarted=true  点「开始游戏」后 toast=无
+    |   currentLevel=2 → startBattle()=true  battleStarted=true  点「开始游戏」后 toast=无
+    |   currentLevel=5 → startBattle()=true  battleStarted=true  点「开始游戏」后 toast=无
+    |   currentLevel=6 → startBattle()=true  battleStarted=true  点「开始游戏」后 toast=无
+    |   currentLevel=99 → startBattle()=true  battleStarted=true  点「开始游戏」后 toast=无
+    | 
+    | 
+
+------------------------------------------------------------
+▶ noroundrect.js  —— noroundrect.js 老基础库反证
+  exit=0  signal=-  439ms
+  [stdout]
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    noroundrect done
+  [artifact _noroundrect.txt  673B]
+    | 1) 构造后 ctx.roundRect 类型 = function   （兜底已生效）
+    | 
+    | 2) 现在把兜底摘掉，精确还原"没有 polyfill"的旧环境：
+    |    ctx.roundRect 类型 = undefined
+    | 
+    | 3) 直接画一帧，看会不会抛异常：
+    |    ★ 抛异常：TypeError: ctx.roundRect is not a function
+    |      TypeError: ctx.roundRect is not a function
+    |      at drawSlots (F:\图形塔防\src\renderer.js:140:9)
+    |      at drawBattle (F:\图形塔防\src\renderer.js:1505:3)
+    |      at Object.render (F:\图形塔防\src\renderer.js:1756:5)
+    |      at Game.draw (F:\图形塔防\src\game_core.js:1564:14)
+    |      at Object.<anonymous> (F:\图形塔防\.workbuddy\tools\noroundrect.js:54:5)
+    | 
+    | 4) 重新跑真实入口的启动场景（战前选关），验证"有兜底"时不会炸：
+    |    有兜底 → 正常渲染，无异常
+    | 
+    | 结论：ctx.roundRect 缺失时，renderer 的首帧 draw() 直接抛 TypeError；
+    |       没有 try/catch 的主循环会因此永久停摆 —— 就是"整个界面点不动"。
+    | 
+
+------------------------------------------------------------
+▶ bootretry.js  —— bootretry.js 启动重试 / 离屏画布反证
+  exit=0  signal=-  317ms
+  [stdout]
+    bootretry: 4 pass / 0 fail
+  [artifact _bootretry.txt  704B]
+    | === 反证：重试启动时 wx.createCanvas 调用了几次 ===
+    | 
+    | 1) 当前 game.js（带幂等缓存）：
+    |    createCanvas 调用次数 = 1（canvas#1）
+    |    实际 new Game 次数 = 2，第二次拿到的画布 = canvas#1
+    |   ok   当前版本：重试没有重新创建画布（createCanvas 只调 1 次）   [实际 1 次]
+    |   ok   当前版本：第 2 次 new Game 拿到的仍是屏幕画布 canvas#1   [canvas#1]
+    | 
+    | 2) 反证版（摘掉 if (!canvas) 缓存，等价于旧写法）：  补丁是否生效 = true
+    |    createCanvas 调用次数 = 2（canvas#1, canvas#2）
+    |    第 2 次 new Game 拿到的画布 = canvas#2
+    |   ok   反证成立：没有幂等缓存时，重试会创建第 2 块画布   [实际 2 次]
+    |   ok   反证成立：第 2 次拿到的是**离屏画布** canvas#2（画面不会显示）   [canvas#2]
+    | 
+    | 结论：miniprogram 的 wx.createCanvas() 只有首次返回屏幕画布；
+    |      重试启动必须复用同一块 canvas，否则重试成功后画在离屏画布上 ——
+    |      表现同样是「整个界面点不动」。
+    | 
+    | ============================================
+    |   通过 4   失败 0
+    | ============================================
+    | 
+
+------------------------------------------------------------
+▶ report.js  —— report.js 生成 HTML 报告
+  exit=0  signal=-  440ms
+  [stdout]
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    Game initialized: {
+      mapX: 58.5,
+      mapY: 126.28,
+      mapWidth: 273,
+      mapHeight: 489.52,
+      slots: 12,
+      towers: 0
+    }
+    report done
+
+=== done ===

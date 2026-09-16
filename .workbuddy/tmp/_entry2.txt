@@ -1,0 +1,30 @@
+
+=== A. 用"像真微信"的 wx 加载入口 game.js ===
+  加载前: canvases=0 readyCbs=0 startHandlers=0
+  顶层加载: 正常   canvases=0  startHandlers=0
+  触发 ready 后: canvases=1  是否离屏=[false]  startHandlers=1  readyErr=无
+  第二次 ready: canvases=2  是否离屏=[false,true]  startHandlers=2
+  跑 3 帧后: rafErr=无
+
+  ★ 结论：initGame 执行了 2 次；全局触摸监听累积 2 套
+  ★★ 第 2 次 wx.createCanvas() 在真微信里返回的是【离屏 canvas】（isOffscreen=[false,true]）
+      → 多出来的 Game 实例画在看不见的画布上，却仍然接收并处理屏幕触摸
+  ★★ 一次触摸会被 2 个 Game 实例各自处理一遍（onTouchStart 是累积注册，从没有 offTouchStart）
+
+=== B. 复现：两套监听器同时生效会怎样 ===
+  当前 Game 实例数（= start 监听器数）= 1
+  → 每次 tap 都会依次调用 1 个 handleTouchStart；各实例状态互相独立。
+  → 屏幕上看到的是"主屏 canvas"那一个实例的画面，而输入同时打在全部实例上。
+     只要其中任一实例卡在模态（showMenu / enhancePicker / gameOver / 拖拽残留），
+     它吞掉的不只是自己的状态，用户看到的那份画面也会因为状态分歧而"点不动"。
+
+=== C. loop() 的健壮性：一帧抛异常会怎样 ===
+  game_core.loop() 结构：
+    if (...) this.update(dt); else if (watchingVideo) {...}
+    this.draw();
+    requestAnimationFrame(() => this.loop());   ← 没有 try/catch 包住上面两步
+  → update() 或 draw() 任一处抛异常，异常穿过 rAF 回调后
+    line1491 的 requestAnimationFrame 永远不会执行 → 主循环彻底停摆。
+  → 表现：画面停在出错那一帧，之后所有动画/按压反馈/波纹全部消失，
+    用户看到的就是"整个界面点不动"。
+

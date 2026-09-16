@@ -1,0 +1,17 @@
+=== 配置文件与源码修改时间 ===
+09-16 12:04:02  game.js
+09-16 12:02:38  game_core.js
+09-16 12:02:30  theme.js
+09-16 12:00:49  project.config.json
+09-16 11:57:57  game.json
+09-16 11:51:10  project.private.config.json
+09-16 11:44:17  input.js
+09-16 11:35:46  auraManager.js
+09-16 11:04:53  bonusStats.js
+09-16 11:03:38  config.js
+09-16 10:58:23  tower.js
+09-16 10:58:15  renderer.js
+
+=== 当前生效的基础库版本（private 覆盖 config）===
+project.config.json      → libVersion:3.17.2
+project.private.config   → libVersion:3.14.0

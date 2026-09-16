@@ -1,5 +1,8 @@
 // 渲染层：所有绘制函数从原 Game.draw* 抽离。
-// 约定：每个绘制函数接收 game 实例，内部用 game.ctx / game.canvas；
+// 约定：每个绘制函数接收 game 实例，内部用 game.ctx 取画布。
+// ⚠️ 布局尺寸一律用 **game.W / game.H**（逻辑像素，= 触摸坐标空间），
+//    不要读 game.canvas.width/height —— 画布是物理像素（逻辑 × renderScale，
+//    见 game.js 渲染倍率 / game_core.applyViewScale），读它会整体放大且跑出屏幕。
 // drawTowerIcon 为纯函数，直接吃 ctx。
 const config = require('./config');
 const { TOWER_DEFS, LAYOUT, TOWER_STATS, LEVELS, BALANCE } = config;
@@ -441,8 +444,8 @@ function drawBossHealthBar(ctx, boss, cx, cy, team, maxW) {
  */
 function drawBossBars(game, titleCY, titleH) {
   const ctx = game.ctx;
-  const cx = game.canvas.width / 2;
-  const maxW = game.canvas.width * 0.7;
+  const cx = game.W / 2;
+  const maxW = game.W * 0.7;
   const gap = 8;
   const redBoss = getTeamBoss(game, 'red');
   const blueBoss = getTeamBoss(game, 'blue');
@@ -568,9 +571,8 @@ const ROW_LABEL_COLOR = {
  */
 function drawTowerPanel(game) {
   const ctx = game.ctx;
-  const canvas = game.canvas;
-  const W = canvas.width;
-  const H = canvas.height;
+  const W = game.W;
+  const H = game.H;
 
   const towerType = game.panelTowerType;
   const towerDef = TOWER_DEFS[towerType];
@@ -1262,7 +1264,7 @@ function drawWaveTitleAnimated(game, cx, cy, w, h, text) {
  */
 function drawTopBar(game) {
   const ctx = game.ctx;
-  const width = game.canvas.width;
+  const width = game.W;
   const H = LAYOUT.topBarHeight;
   ctx.save();
   ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
@@ -1311,8 +1313,8 @@ function drawTopBar(game) {
 
 function drawUI(game) {
   const ctx = game.ctx;
-  const width = game.canvas.width;
-  const height = game.canvas.height;
+  const width = game.W;
+  const height = game.H;
 
   // 顶部状态栏：关卡徽标 / 生存积分 / 金币
   drawTopBar(game);
@@ -1366,8 +1368,8 @@ function drawUI(game) {
  */
 function drawGameOver(game) {
   const ctx = game.ctx;
-  const width = game.canvas.width;
-  const height = game.canvas.height;
+  const width = game.W;
+  const height = game.H;
 
   const showWin = !!game.gameWon;
   const showFail = game.lives <= 0 && !showWin;
@@ -1702,8 +1704,8 @@ function drawToast(game) {
   if (elapsed > 2.2) { game.toast = null; return; }
 
   const ctx = game.ctx;
-  const W = game.canvas.width;
-  const H = game.canvas.height;
+  const W = game.W;
+  const H = game.H;
   const navTop = H - LAYOUT.navHeight;
 
   const fadeIn = Math.min(1, elapsed / 0.15);
@@ -1740,11 +1742,12 @@ function drawToast(game) {
 // 组合一帧的完整绘制（按场景分派）
 function render(game) {
   const ctx = game.ctx;
-  const canvas = game.canvas;
 
-  // 清空画布
+  // 清空画布：用逻辑视口尺寸（game.W/H）。
+  // ctx 已被 game.applyViewScale() 缩到逻辑坐标，所以这里填 game.W × game.H
+  // 正好覆盖整块物理画布；写 canvas.width 会多铺 renderScale 倍（无害但浪费）。
   ctx.fillStyle = THEME.surface.page;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, game.W, game.H);
 
   const scene = game.scene || 'battle';
 
@@ -1780,7 +1783,9 @@ function render(game) {
   }
 
   // 结算界面：必须盖住底部导航栏（否则玩家能在结算界面点导航溜走）
-  if (scene === 'battle' && game.gameOver) {
+  // 判据与输入层共用 game.isSettlementActive()（= battle 场景 + 胜利或 lives<=0），
+  // 保证"实际画出来的"与"允许点的"永远是同一套前提。
+  if (game.isSettlementActive()) {
     drawGameOver(game);
   }
 
