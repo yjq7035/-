@@ -268,7 +268,7 @@ const TALENTS = [
   { id: 'lives_max',   name: '坚固防线', desc: '生存积分上限 +10 / 级',          max: 5, costs: [1, 2, 2, 3, 3] },
   { id: 'build_cost',  name: '精打细算', desc: '图形塔造价 -3% / 级',            max: 5, costs: [1, 1, 2, 2, 3] },
   { id: 'codex_ease',  name: '图鉴学',   desc: '图签解锁/升级花费 -5% / 级',      max: 4, costs: [2, 2, 3, 3] },
-  { id: 'high_stakes', name: '暴利风险', desc: '特殊积分 -10%/级，击杀金币 +15%/级', max: 4, costs: [1, 2, 3, 3] },
+  { id: 'high_stakes', name: '暴利风险', desc: '生存积分 -10%/级，击杀金币 +15%/级', max: 4, costs: [1, 2, 3, 3] },
 ];
 
 // 天赋点产出
@@ -279,7 +279,7 @@ const TALENT_POINTS = {
 };
 
 // 天赋数值口径（供 game_core / shop / codex 统一取值，避免各处硬编码）
-// 只有 high_stakes 是"双向"天赋：perLevel 作用于特殊积分（负向），goldPerLevel 作用于击杀金币（正向）
+// 只有 high_stakes 是"双向"天赋：perLevel 作用于生存积分（负向），goldPerLevel 作用于击杀金币（正向）
 const TALENT_EFFECT = {
   gold_start:   { perLevel: 30 },   // 绝对值
   gold_gain:    { perLevel: 3 },    // 百分比

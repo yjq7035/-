@@ -161,11 +161,11 @@ function resetAll() {
 
 // ==================== 积分 ====================
 
-/** 结算后的实际入账积分（天赋"洞察先机"加成、"暴利风险"扣减，在此生效） */
+/** 结算后的实际入账积分（天赋"洞察先机"加成，在此生效） */
 function grantPoints(amount) {
   const m = get();
-  // 暴利风险是负向的：points_gain 与 high_stakes.perLevel 相抵，最低保留 10% 产出
-  const mult = Math.max(0.1, 1 + (talentValue('points_gain') - talentValue('high_stakes')) / 100);
+  // 仅受洞察先机加成影响，暴利风险已改为影响生存积分
+  const mult = Math.max(0.1, 1 + talentValue('points_gain') / 100);
   const gain = Math.max(0, Math.round((amount || 0) * mult));
   m.points += gain;
   return gain;

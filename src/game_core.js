@@ -117,10 +117,12 @@ class Game {
     // 加 try-catch 兜底：Storage 子系统未就绪时回退到默认值，避免阻塞初始化
     let currentLevel = 1;
     let goldBonus = 0, livesBonus = 0;
+    let highStakesPenalty = 0;
     try {
       currentLevel = meta.getSelectedLevel() || 1;
       goldBonus = meta.talentValue('gold_start') || 0;
       livesBonus = meta.talentValue('lives_max') || 0;
+      highStakesPenalty = meta.talentValue('high_stakes') || 0;
     } catch (e) {
       console.warn('[Game] meta 初始化异常，使用默认值:', e.message);
     }
@@ -128,7 +130,9 @@ class Game {
 
     // 游戏状态（起始金币 / 生存积分上限受天赋影响）
     this.gold = BALANCE.startGold + goldBonus;
-    this.lives = BALANCE.startLives + livesBonus;
+    const livesBase = BALANCE.startLives + livesBonus;
+    const livesAfterPenalty = Math.max(1, Math.floor(livesBase * (1 - highStakesPenalty / 100)));
+    this.lives = livesAfterPenalty;
     this.maxLives = this.lives; // 生存积分上限（进度条分母）
     this.selectedTowerType = null;
     this.selectedTower = null;
@@ -431,7 +435,11 @@ class Game {
 
     // 恢复游戏状态（起始金币 / 生存上限含天赋加成）
     this.gold = BALANCE.startGold + meta.talentValue('gold_start');
-    this.lives = BALANCE.startLives + meta.talentValue('lives_max');
+    const livesBonus = meta.talentValue('lives_max') || 0;
+    const highStakesPenalty = meta.talentValue('high_stakes') || 0;
+    const livesBase = BALANCE.startLives + livesBonus;
+    const livesAfterPenalty = Math.max(1, Math.floor(livesBase * (1 - highStakesPenalty / 100)));
+    this.lives = livesAfterPenalty;
     this.maxLives = this.lives;
 
     // 清空游戏对象
