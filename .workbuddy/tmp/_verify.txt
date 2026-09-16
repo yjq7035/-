@@ -47,8 +47,8 @@
 === A7. 关卡表（需求 2：天梯一次铺到 99） ===
   ok   LEVELS 共 99 关   [实际 99]
   ok   关卡 id 连续 1..99   [1..99]
-  ok   只有关卡 1 可玩   [可玩：1]
-  ok   关卡 2~99 全部是"待扩展"占位   [非占位项：]
+  ok   关卡 1~10 可玩（2026-09 扩展）   [可玩：1,2,3,4,5,6,7,8,9,10]
+  ok   关卡 11~99 全部是"待扩展"占位   [非占位项：]
   ok   关卡名带序号（关卡 N）   [末关 name=关卡 99]
 
 === B. 冒烟渲染（8 分辨率 × 13 场景 × 3 帧） ===
@@ -60,7 +60,7 @@
   ok   414x896 全部场景渲染无异常   [13 场景 × 3 帧]
   ok   428x926 全部场景渲染无异常   [13 场景 × 3 帧]
   ok   768x1024 全部场景渲染无异常   [13 场景 × 3 帧]
-  绘制指令数：battle-ready=179  battle-ready-scrolled=180  battle-run=115  battle-menu=124  battle-panel=162  battle-panel-locked=155  enhance-picker=176  codex=164  codex-sheet=184  codex-sheet-tall=182  codex-scrolled=184  talents=144  gameover=116
+  绘制指令数：battle-ready=173  battle-ready-scrolled=180  battle-run=115  battle-menu=124  battle-panel=162  battle-panel-locked=155  enhance-picker=176  codex=164  codex-sheet=184  codex-sheet-tall=182  codex-scrolled=184  talents=144  gameover=116
 
 === C. 布局检查（逐分辨率） ===
   ok   320x568 布局   [全部检查通过]
@@ -171,7 +171,7 @@
   ok   calculateFinalDamage 只吃（原生, 等级, 阶段增幅）   [形参个数 = 3]
   ok   3★ 后强化成功：等级 0→1   [lv=1]
   ok   强化扣金币（造价 = 基础造价 × costRate × 等级）   [100000 → 99910 (cost 90)]
-  ok   强化不给攻击力（战斗口径 Δ=0）   [106 → 106]
+  ok   3★ 强化塔 +5%/级 白字攻击力（战斗口径）   [106 → 111 (expected 111, codex×1.06)]
   ok   强化不给穿透（三角塔不是穿透型）   [穿透=0]
   ok   专属属性增量 = per × 等级   [critChance +5]
   ok   三角塔强化 1 级：暴击 5% → 10%   [10%]
@@ -184,7 +184,7 @@
   ok   满级 enhanceCost = Infinity   [Infinity]
   ok   满级后再强化返回 maxed   [{"ok":false,"reason":"maxed","level":5}]
   ok   满级三角塔暴击 = 30%（5 + 5×5）   [30%]
-  ok   满级后攻击力依然没被强化改变   [106 vs 106]
+  ok   满级后攻击力包含 3★ 强化 +25% 白字（5 级 × 5%）   [106 vs 132]
   ok   等级回退时增量会被重算（不残留旧值）   [lv2 → 15%]
   ok   金币不足拒绝强化   [{"ok":false,"reason":"gold","cost":90}]
   ok   圆塔未强化：二段爆炸 25% / 半径 60   [25% r=60]
@@ -198,10 +198,11 @@
   ok   长方塔强化 2 级：堆叠上限 10 → 14 层   [14 层]
   ok   半圆塔强化 2 级：激光穿透 0 → 10   [穿透 10]
   ok   星形塔满级：暴击 0% → 30%（每级 +6%，配 200% 暴击倍率）   [30% ×2]
-  ok   16 种塔：强化只改专属属性 / 攻击力零变化 / 面板与引擎同口径   [16 种 × Lv.1~5 全部一致]
-  ok   面板原生攻击力 = 纯原生值（不再叠加强化固定值）   [base=20 原生=20]
-  ok   面板明细里出现"强化"来源   [sources=3]
-  ok   面板最终攻击力与战斗口径一致   [面板=106 战斗=106]
+  ok   16 种塔：3★ 强化只改专属属性 + 攻击力 +5%/级（白字）/ 面板与引擎同口径   [16 种 × Lv.1~5 全部一致]
+  ok   面板白字攻击力包含 3★ 强化 +5%/级（不再是纯原生值）   [base=25 期望=25 (enhanceLv=5)]
+  ok   面板明细里出现"强化"来源（专属属性，不是攻击力）   [sources=3]
+  ok   面板最终攻击力与战斗口径一致   [面板=132 战斗=132]
+  ok   面板攻击力来源里没有"强化"攻击力条目（强化攻击力走白字）   [强化攻击力来源数=2]
   ok   面板暴击行 = 原生 5% + 强化 +25%（白字 + 绿字）   [{"key":"critChance","label":"暴击率","baseText":"5%","bonusText":"+25%","sign":1,"parts":[{"source":"enhance","label":"强化 Lv.5 · 暴击率","text":"+25%","sign":1}]}]
   ok   六边塔面板「精英伤害倍率」= 5倍 +3倍   [{"key":"eliteMult","label":"精英伤害倍率","baseText":"5倍","bonusText":"+3倍","sign":1,"parts":[{"source":"enhance","label":"强化 Lv.3 · 精英伤害倍率","text":"+3倍","sign":1}]}]
   ok   正方塔面板「弹道体积」= 100% +40%   [{"key":"projectileScale","label":"弹道体积","baseText":"100%","bonusText":"+40%","sign":1,"parts":[{"source":"enhance","label":"强化 Lv.2 · 弹道体积","text":"+40%","sign":1}]}]
@@ -236,7 +237,7 @@
   ok   abandonRun 后回到战前（battleStarted=false）   [battleStarted=false]
   ok   abandonRun 后波次归零   [currentWave=0]
   ok   startLevel(1) 成功
-  ok   startLevel(2) 被拒（占位未开放）
+  ok   startLevel(2) 成功（关卡 2 已开放）
   ok   未开始时 openMenu 被拒
   ok   loop 判定字段齐备
 
@@ -290,26 +291,26 @@
   ok   不足 4 波不给天赋点   [实际 0]
 
 === H. SVG 回放产物 ===
-  battle-ready_390x844.svg  ops=179  53.5KB
-  battle-run_390x844.svg  ops=115  32.9KB
-  battle-menu_390x844.svg  ops=124  34.9KB
-  battle-panel_390x844.svg  ops=162  43.5KB
+  battle-ready_390x844.svg  ops=173  48.1KB
+  battle-run_390x844.svg  ops=115  32.6KB
+  battle-menu_390x844.svg  ops=124  34.5KB
+  battle-panel_390x844.svg  ops=162  43.9KB
   codex_390x844.svg  ops=164  46.5KB
   codex-sheet_390x844.svg  ops=184  50.3KB
   talents_390x844.svg  ops=144  57.4KB
-  battle-run_375x667.svg  ops=115  32.7KB
+  battle-run_375x667.svg  ops=115  32.9KB
   codex-sheet_320x568.svg  ops=124  31.6KB
   talents_320x568.svg  ops=117  44.8KB
-  battle-ready_768x1024.svg  ops=201  61.2KB
-  enhance-picker_390x844.svg  ops=176  46.2KB
-  enhance-picker_320x568.svg  ops=176  46.1KB
-  battle-panel-locked_390x844.svg  ops=155  42.1KB
-  battle-ready-scrolled_390x844.svg  ops=180  53.9KB
+  battle-ready_768x1024.svg  ops=193  54.0KB
+  enhance-picker_390x844.svg  ops=178  46.4KB
+  enhance-picker_320x568.svg  ops=176  46.2KB
+  battle-panel-locked_390x844.svg  ops=155  42.3KB
+  battle-ready-scrolled_390x844.svg  ops=180  54.1KB
   codex-scrolled_320x568.svg  ops=129  34.2KB
   codex-sheet-tall_320x568.svg  ops=123  31.4KB
   codex-sheet-tall_390x844.svg  ops=182  49.9KB
   ok   SVG 全部生成   [18 张]
 
 ============================================
-  通过 211   失败 0
+  通过 212   失败 0
 ============================================

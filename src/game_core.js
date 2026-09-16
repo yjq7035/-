@@ -12,6 +12,7 @@ const units = require('./units');
 const EventBus = require('./eventBus');
 const AuraManager = require('./auraManager');
 const meta = require('./meta');
+const levelsMod = require('./levels');
 
 const {
   LAYOUT, BALANCE, TOWER_DEFS, PLAYER, ATTACK_SPEED_BASE, MAX_STAGE, AURA_DURATION,
@@ -487,7 +488,8 @@ class Game {
     this.codexSelected = null;
     this.codexScroll = 0;
     this.talentScroll = 0;
-    this.levelScroll = null;
+    // levelScroll 不在 restart 里重置：保留用户滚动位置，让选关界面回到原来的位置
+    // （startLevel 会显式设置到目标关卡，abandonRun 保留上次滚动）
     this.enhancePicker = null;
     this.showMenu = false;
 
@@ -572,10 +574,21 @@ class Game {
   }
 
   /** 图签加成后的最终攻击力（战斗与属性面板同口径）
-   *  强化不再提供攻击力，只有「合成进阶（等级/阶段）」与「图签」两条线参与 */
+   *  攻击力三条线：
+   *    ① 3★ 阶段强化塔 → 基础攻击力 +5%/级（白字，受等级/阶段/图签绿字加成影响）
+   *    ② 合成进阶（等级/阶段）—— 绿字
+   *    ③ 图签 —— 绿字
+   */
   towerDamage(tower, baseDamage) {
+    // ① 3★ 阶段强化塔的白字加成：每次强化 +5% 基础攻击力
+    let whiteBonus = baseDamage;
+    const stage = tower && tower.stage ? tower.stage : 0;
+    const enhanceLv = tower && tower.enhanceLevel ? tower.enhanceLevel : 0;
+    if (stage >= BALANCE.enhance.minStage && enhanceLv > 0) {
+      whiteBonus = Math.floor(baseDamage * (1 + enhanceLv * 0.05));
+    }
     const dmg = towerMod.calculateFinalDamage(
-      baseDamage, tower.level, tower.attackPowerBoost
+      whiteBonus, tower.level, tower.attackPowerBoost
     );
     return Math.floor(dmg * meta.codexDamageMultiplier(tower.type));
   }
@@ -650,11 +663,19 @@ class Game {
     }
   }
 
-  /** 通关关卡：首通额外奖励 + 天赋点 */
+  /** 通关关卡：首通额外奖励 + 天赋点；自动把预选关卡推进到下一关（若已实现） */
   onLevelCleared() {
     const first = meta.markLevelCleared(this.currentLevel, this.currentWave);
     meta.grantPoints(POINTS.clearLevel + (first ? POINTS.firstClearBonus : 0));
     meta.grantTalentPoints(TALENT_POINTS.clearLevel);
+    // 首通时：自动把预选关卡指向下一关（若已实现），让玩家"冲下一关"
+    if (first) {
+      const nextId = this.currentLevel + 1;
+      if (meta.isLevelPlayable(nextId)) {
+        meta.setSelectedLevel(nextId);
+        this.currentLevel = nextId;
+      }
+    }
     meta.save(true);
   }
 
@@ -700,19 +721,17 @@ class Game {
    */
   startBattle() {
     let lv = LEVELS.filter((l) => l.id === this.currentLevel)[0];
-    // ⚠️ 存档里的 currentLevel 可能是"已不可玩"的关卡（历史上可玩、后来改成占位"待扩展"，
-    //    或坏档 / 外部改档）。旧实现这里直接 `return false`，而输入层照样弹绿色"开始游戏"
-    //    → 玩家看到的是"点了完全没反应"（最典型的一条"界面点不动"）。
-    //    这里兜底切到第一个可玩关卡，保证「开始游戏」永远真的能开始。
-    if (lv && !lv.playable) {
-      const fallback = LEVELS.filter((l) => l.playable)[0];
+    // 存档里的 currentLevel 可能已不可玩/未解锁（历史上可玩、后来锁定，或坏档）。
+    // 兜底切到第一个"已解锁"的关卡（默认就是关卡 1），保证「开始游戏」永远真的能开始。
+    if (!lv || !meta.isLevelUnlocked(this.currentLevel)) {
+      const fallback = LEVELS.filter((l) => meta.isLevelUnlocked(l.id))[0];
       if (fallback) {
         this.currentLevel = fallback.id;
         meta.setSelectedLevel(fallback.id);
         lv = fallback;
       }
     }
-    if (!lv || !lv.playable) return false;
+    if (!lv || !meta.isLevelUnlocked(lv.id)) return false;
     this.restart();
     this.scene = 'battle';
     this.battleStarted = true;
@@ -731,14 +750,15 @@ class Game {
     return true;
   }
 
-  /** 进入指定关卡（仅切换"待开始"的关卡，不直接开跑）。当前只有关卡 1 可玩。 */
+  /** 进入指定关卡（仅切换"待开始"的关卡，不直接开跑）。需关卡已解锁。 */
   startLevel(levelId) {
-    const lv = LEVELS.filter((l) => l.id === levelId)[0];
-    if (!lv || !lv.playable) return false;
+    if (!meta.isLevelUnlocked(levelId)) return false;
     meta.setSelectedLevel(levelId);
     this.currentLevel = levelId;
     this.restart();
     this.scene = 'battle';
+    // 自动把天梯滚动到选中关卡的位置（居中显示）
+    levelsMod.scrollToLevel(this, levelId);
     return true;
   }
 
@@ -834,6 +854,9 @@ class Game {
       if (this.spawnTimer <= 0 && this.enemiesToSpawn.length > 0) {
         const type = this.enemiesToSpawn.shift();
         const enemy = enemyMod.spawnEnemy(type, this.pathPoints, this.currentWave);
+        // 动态抗性：关卡1全程0，关卡N(N≥2)每波抗性 = (关卡-1) × 波次
+        // 直接覆盖 ENEMY_TYPES 里的固定 armor（关卡1时 level-1=0 → 0*wave=0 符合"全程0"）
+        enemy.armor = Math.max(0, (this.currentLevel - 1) * this.currentWave);
         this.enemies.push(enemy);
         this.spawnTimer = this.spawnInterval;
       }

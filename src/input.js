@@ -432,9 +432,13 @@ function handleTouchEnd(game, e) {
         }
       } else if (tap.kind === 'level') {
         if (game.startLevel(tap.id)) toast(game, `已选择关卡 ${tap.id}`, THEME.accent.gold);
-        else toast(game, '该关卡待扩展', THEME.text.dim);
+        else toast(game, '该关卡暂不可进入', THEME.text.dim);
       } else if (tap.kind === 'locked') {
-        toast(game, '该关卡待扩展', THEME.text.dim);
+        if (tap.reason === 'progression') {
+          toast(game, `通关关卡 ${tap.id - 1} 才能解锁`, THEME.text.dim);
+        } else {
+          toast(game, '该关卡待扩展', THEME.text.dim);
+        }
       }
     }
     releaseButton(game);

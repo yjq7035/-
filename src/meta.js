@@ -13,7 +13,7 @@
 // ============================================================================
 
 const {
-  SHOP_TOWERS, TOWER_ORDER, TOWER_DEFS, CODEX, TALENTS, TALENT_EFFECT,
+  SHOP_TOWERS, TOWER_ORDER, TOWER_DEFS, CODEX, TALENTS, TALENT_EFFECT, LEVELS,
 } = require('./config');
 
 const STORAGE_KEY = 'graphic_td_meta_v1';
@@ -336,6 +336,25 @@ function isLevelCleared(levelId) {
   return !!get().levels.cleared[String(levelId)];
 }
 
+/** 该关卡是否属于"已实现、可玩"范围（不是"待扩展"占位关卡） */
+function isLevelPlayable(levelId) {
+  const lv = LEVELS.find((l) => l.id === levelId);
+  return !!(lv && lv.playable);
+}
+
+/**
+ * 该关卡是否已解锁（可以进入战前选关并开始游戏）。
+ * 规则：
+ *   · 必须属于可玩范围（非"待扩展"占位）
+ *   · 关卡 1 默认解锁
+ *   · 关卡 N > 1 需要关卡 N-1 已通关
+ */
+function isLevelUnlocked(levelId) {
+  if (!isLevelPlayable(levelId)) return false;
+  if (levelId <= 1) return true;
+  return isLevelCleared(levelId - 1);
+}
+
 function bestWaveOf(levelId) {
   return get().levels.best[String(levelId)] || 0;
 }
@@ -377,6 +396,8 @@ module.exports = {
   recordWave,
   markLevelCleared,
   isLevelCleared,
+  isLevelPlayable,
+  isLevelUnlocked,
   bestWaveOf,
   setSelectedLevel,
   getSelectedLevel,

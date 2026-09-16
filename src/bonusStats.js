@@ -222,9 +222,8 @@ function collectTowerStats(game, tower, stats, towerType) {
   }
 
   // 1.35 塔强化（局内花金币，需 3★）
-  //   2026-09 二次重做后：强化**不再给攻击力**，只把该塔的专属特殊属性往上推。
-  //   这里把「强化 Lv.N · 属性名」的增量登记成一条点值来源（绿字）。
-  //   注意：强化增量只在这条明细里出现，不会混进 base.damage（攻击力是白字原生值）。
+  //   专属特殊属性增量登记成点值来源（绿字），不混入 base.damage。
+  //   但 3★ 阶段强化会给白字基础攻击力 +5%/级（见下方 section 2 原生值）。
   const enhanceLv = (tower && tower.enhanceLevel > 0) ? tower.enhanceLevel : 0;
   const enhanceAttrs = (tower && tower.enhanceAttrs) ? tower.enhanceAttrs : null;
   if (enhanceLv > 0 && enhanceAttrs) {
@@ -260,9 +259,14 @@ function collectTowerStats(game, tower, stats, towerType) {
   }
 
   // ================= 2. 原生值 =================
-  // 强化不参与原生值（它只抬专属特殊属性，见上方 1.35），所以攻击力就是纯 TOWER_STATS。
+  // 3★ 强化塔：基础攻击力 +5%/级（白字，属于原生值范畴，不是绿字来源）
+  const stage3EnhanceLv = (tower && tower.stage >= BALANCE.enhance.minStage) ? enhanceLv : 0;
+  const rawBaseDamage = st.damage || 0;
+  const whiteBonusDamage = stage3EnhanceLv > 0
+    ? Math.floor(rawBaseDamage * (1 + stage3EnhanceLv * 0.05))
+    : rawBaseDamage;
   const base = {
-    damage: st.damage || 0,
+    damage: whiteBonusDamage,
     attackSpeedMultiplier: st.attackSpeedMultiplier || 0,
     attackInterval: st.attackInterval || 0,
     range: st.range || 0,

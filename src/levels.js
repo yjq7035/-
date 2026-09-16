@@ -136,8 +136,31 @@ function isReadyScrollable(game) {
 }
 
 /**
+ * 计算某关卡卡片居中显示所需的 scroll 值，并写回 game.levelScroll。
+ * 选中关卡切换后调用 → 选关界面始终停在选中关卡的位置。
+ * @param {number} levelId
+ * @returns {number} 实际设置的 scroll 值
+ */
+function scrollToLevel(game, levelId) {
+  const L0 = getReadyLayout(game);  // getReadyLayout 内部会根据 game.levelScroll 计算 scroll
+  const idx = Math.max(0, Math.min(LEVELS.length - 1, (levelId || 1) - 1));
+  const card = L0.cards[idx];
+  if (!card) return L0.scroll;
+
+  const rowStep = LV_UI.rowH + LV_UI.gap;
+  // fromTop 越大（越底层），scroll 应该越大（内容越往下滚）
+  // 默认贴底时 scroll=maxScroll，关卡1（fromTop 最大）正好落在 viewport 中间
+  const viewportCenter = L0.viewport.y + L0.viewport.h / 2;
+  // 原始位置（scroll=0 时）：viewportTop + fromTop * rowStep
+  const rawY = L0.viewport.y + card.fromTop * rowStep;
+  // 居中条件：rawY + h/2 - scroll = viewportCenter
+  const targetScroll = rawY + card.h / 2 - viewportCenter;
+  return setLevelScroll(game, targetScroll);
+}
+
+/**
  * 命中检测（视口外的台阶不可点）。面板内空白也吞掉，避免误触到下面的战场。
- * @returns {{kind:'level', id:number}|{kind:'locked', id:number}|{kind:'start'}|{kind:'none'}}
+ * @returns {{kind:'level', id:number}|{kind:'locked', id:number, reason:'progression'|'not_implemented'}|{kind:'start'}|{kind:'none'}}
  */
 function hitReady(game, pos) {
   const L = getReadyLayout(game);
@@ -149,9 +172,14 @@ function hitReady(game, pos) {
     for (const card of L.cards) {
       if (card.y + card.h <= v.y || card.y >= v.y + v.h) continue;
       if (theme.pointInRect(pos, card)) {
-        return card.level.playable
-          ? { kind: 'level', id: card.level.id }
-          : { kind: 'locked', id: card.level.id };
+        const lv = card.level;
+        if (!meta.isLevelPlayable(lv.id)) {
+          return { kind: 'locked', id: lv.id, reason: 'not_implemented' };
+        }
+        if (meta.isLevelUnlocked(lv.id)) {
+          return { kind: 'level', id: lv.id };
+        }
+        return { kind: 'locked', id: lv.id, reason: 'progression' };
       }
     }
   }
@@ -261,11 +289,17 @@ function drawLadderRail(game, L) {
     if (cy < L.rail.top - 4 || cy > L.rail.bottom + 4) continue;
 
     const lv = card.level;
-    const playable = !!lv.playable;
-    const cleared = playable && meta.isLevelCleared(lv.id);
+    const playable = meta.isLevelPlayable(lv.id);
+    const unlocked = playable && meta.isLevelUnlocked(lv.id);
+    const cleared = unlocked && meta.isLevelCleared(lv.id);
     const selected = selectedId === lv.id;
-    const dotColor = !playable ? THEME.text.off
-      : (selected ? THEME.accent.gold : (cleared ? THEME.accent.green : THEME.team.red.light));
+    // 状态点颜色：待扩展（完全灰）、进度锁定（深灰）、已通关（绿环）、选中（金）、普通（红）
+    let dotColor;
+    if (!playable) dotColor = THEME.text.off;
+    else if (!unlocked) dotColor = 'rgba(120, 120, 140, 0.7)';
+    else if (selected) dotColor = THEME.accent.gold;
+    else if (cleared) dotColor = THEME.accent.green;
+    else dotColor = THEME.team.red.light;
 
     // 从梯绳横到卡片边缘的横档
     const cardInnerEdge = card.side < 0 ? (card.x + card.w) : card.x;
@@ -298,37 +332,97 @@ function drawLadderRail(game, L) {
   ctx.restore();
 }
 
-/** 单级台阶（关卡卡） */
+/** 单级台阶（关卡卡）—— 四种状态颜色语义明确区分 */
 function drawLadderCard(game, card, L) {
   const ctx = game.ctx;
   const lv = card.level;
   const { x, y, w, h } = card;
-  const playable = !!lv.playable;
-  const cleared = playable && meta.isLevelCleared(lv.id);
+  const playable = meta.isLevelPlayable(lv.id);
+  const unlocked = playable && meta.isLevelUnlocked(lv.id);
+  const cleared = unlocked && meta.isLevelCleared(lv.id);
   const selected = meta.getSelectedLevel() === lv.id;
   const best = meta.bestWaveOf(lv.id);
 
+  // ---- 状态优先级：选中 > 通关 > 可挑战 > 进度锁定 > 待扩展 ----
+  // （选中时不强调"已通关"——选中本身是玩家动作，通关是历史状态）
+  let state;
+  if (!playable) state = 'not_impl';
+  else if (!unlocked) state = 'prog_locked';
+  else if (selected) state = 'selected';
+  else if (cleared) state = 'cleared';
+  else state = 'normal';
+
   ctx.save();
 
-  // 卡底：可玩 = 红蓝对阵渐变（呼应战场身份色），占位 = 灰
+  // ---- 卡片底渐变 ----
   const grad = ctx.createLinearGradient(x, y, x, y + h);
-  if (playable) {
-    grad.addColorStop(0, cleared ? 'rgba(165, 214, 167, 0.20)' : 'rgba(229, 115, 115, 0.20)');
-    grad.addColorStop(1, 'rgba(100, 181, 246, 0.08)');
-  } else {
-    grad.addColorStop(0, 'rgba(255, 255, 255, 0.045)');
-    grad.addColorStop(1, 'rgba(255, 255, 255, 0.02)');
+  let strokeColor, strokeWidth, textColor, chipColor;
+  switch (state) {
+    case 'not_impl':
+      grad.addColorStop(0, 'rgba(255, 255, 255, 0.05)');
+      grad.addColorStop(1, 'rgba(255, 255, 255, 0.02)');
+      strokeColor = THEME.border.subtle;
+      strokeWidth = 1;
+      break;
+    case 'prog_locked':
+      grad.addColorStop(0, 'rgba(120, 120, 140, 0.18)');
+      grad.addColorStop(1, 'rgba(80, 80, 100, 0.08)');
+      strokeColor = 'rgba(180, 180, 200, 0.45)';
+      strokeWidth = 1.2;
+      break;
+    case 'normal':
+      grad.addColorStop(0, 'rgba(229, 115, 115, 0.22)');
+      grad.addColorStop(1, 'rgba(100, 181, 246, 0.10)');
+      strokeColor = 'rgba(229, 115, 115, 0.75)';
+      strokeWidth = 1.4;
+      break;
+    case 'cleared':
+      grad.addColorStop(0, 'rgba(76, 175, 80, 0.28)');
+      grad.addColorStop(1, 'rgba(139, 195, 74, 0.10)');
+      strokeColor = 'rgba(76, 175, 80, 0.9)';
+      strokeWidth = 1.6;
+      break;
+    case 'selected':
+      grad.addColorStop(0, 'rgba(255, 215, 0, 0.28)');
+      grad.addColorStop(1, 'rgba(255, 183, 77, 0.10)');
+      strokeColor = THEME.accent.gold;
+      strokeWidth = 2.5;
+      break;
   }
   ctx.fillStyle = grad;
-  ctx.strokeStyle = selected ? THEME.accent.gold
-    : (playable ? 'rgba(229, 115, 115, 0.55)' : THEME.border.subtle);
-  ctx.lineWidth = selected ? 2 : 1.2;
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = strokeWidth;
   roundRectPath(ctx, x, y, w, h, THEME.radius.medium);
   ctx.fill();
   ctx.stroke();
 
-  if (!playable) {
-    // 占位台阶：虚线 + 锁 + 待扩展
+  // 选中态：额外的金色外发光（呼吸感）
+  if (state === 'selected') {
+    const t = Math.sin(Date.now() / 350) * 0.3 + 0.7;  // 0.4 ~ 1.0
+    ctx.shadowColor = 'rgba(255, 215, 0, ' + (0.45 * t).toFixed(2) + ')';
+    ctx.shadowBlur = 14;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // ---- 进度锁定：虚线框 + 锁 + 灰色文字，带引导"通关前一关解锁" ----
+  if (state === 'prog_locked') {
+    drawDashedBox(ctx, x + 4, y + 4, w - 8, h - 8, THEME.radius.small, strokeColor);
+    drawLockIcon(ctx, x + 26, y + h / 2, 16, THEME.text.off);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 13px Arial';
+    ctx.fillStyle = THEME.text.dim;
+    ctx.fillText(lv.name, x + 44, y + h / 2 - 8);
+    ctx.font = '10px Arial';
+    ctx.fillStyle = 'rgba(200, 200, 220, 0.55)';
+    ctx.fillText(`通关关卡 ${lv.id - 1} 解锁`, x + 44, y + h / 2 + 9);
+    ctx.restore();
+    return;
+  }
+
+  // ---- 待扩展：虚线 + 锁 + 灰字 ----
+  if (state === 'not_impl') {
     drawDashedBox(ctx, x + 4, y + 4, w - 8, h - 8, THEME.radius.small, THEME.border.subtle);
     drawLockIcon(ctx, x + 26, y + h / 2, 16, THEME.text.off);
     ctx.textAlign = 'left';
@@ -343,12 +437,19 @@ function drawLadderCard(game, card, L) {
     return;
   }
 
-  // 可玩台阶：关卡名 + 状态 / 副标题 / 波数 + 最高波次
+  // ---- 可玩台阶：关卡名 + 副标题 / 波数 + 最高波次 ----
   ctx.textBaseline = 'middle';
+
+  // 状态决定文字颜色
+  switch (state) {
+    case 'selected': textColor = THEME.accent.gold; chipColor = THEME.accent.gold; break;
+    case 'cleared':  textColor = THEME.accent.green; chipColor = THEME.accent.green; break;
+    case 'normal':   textColor = THEME.text.primary; chipColor = 'rgba(229, 115, 115, 0.95)'; break;
+  }
 
   ctx.textAlign = 'left';
   ctx.font = 'bold 14px Arial';
-  ctx.fillStyle = selected ? THEME.accent.gold : THEME.text.primary;
+  ctx.fillStyle = textColor;
   ctx.fillText(lv.name, x + 12, y + 15);
 
   ctx.font = '10px Arial';
@@ -360,8 +461,10 @@ function drawLadderCard(game, card, L) {
   ctx.fillText(`${lv.waves} 波`, x + 12, y + 49);
 
   // 右上：状态徽标
-  const label = cleared ? '已通关' : (selected ? '已选中' : '可挑战');
-  const chipColor = cleared ? THEME.accent.green : (selected ? THEME.accent.gold : THEME.team.red.light);
+  let label;
+  if (state === 'selected') label = '● 已选中';
+  else if (state === 'cleared') label = '✓ 已通关';
+  else label = '可挑战';
   ctx.font = 'bold 10px Arial';
   ctx.textAlign = 'right';
   ctx.fillStyle = chipColor;
@@ -373,6 +476,24 @@ function drawLadderCard(game, card, L) {
     ctx.fillText(`最高 ${best} 波`, x + w - 12, y + 49);
   }
 
+  // 已通关右下角：绿色 ✓ 角标（更醒目的视觉锚点）
+  if (state === 'cleared') {
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.font = 'bold 20px Arial';
+    ctx.fillStyle = 'rgba(76, 175, 80, 0.85)';
+    ctx.fillText('✓', x + w - 6, y + h - 2);
+  }
+
+  // 选中左下角：金色 ◆ 小标记（与右上状态徽标呼应）
+  if (state === 'selected') {
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.font = 'bold 14px Arial';
+    ctx.fillStyle = 'rgba(255, 215, 0, 0.9)';
+    ctx.fillText('◆', x + 10, y + h - 3);
+  }
+
   ctx.restore();
 }
 
@@ -381,6 +502,7 @@ module.exports = {
   getLevelBadgeRect,
   getReadyLayout,
   setLevelScroll,
+  scrollToLevel,
   isReadyScrollable,
   hitReady,
   drawBattleReady,

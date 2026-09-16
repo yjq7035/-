@@ -222,11 +222,11 @@ section('A7. 关卡表（需求 2：天梯一次铺到 99）');
   ok('LEVELS 共 99 关', lv.length === 99, '实际 ' + lv.length);
   ok('关卡 id 连续 1..99', lv.every((l, i) => l.id === i + 1),
     lv.length ? (lv[0].id + '..' + lv[lv.length - 1].id) : '空');
-  ok('只有关卡 1 可玩', lv.filter((l) => l.playable).map((l) => l.id).join(',') === '1',
+  ok('关卡 1~10 可玩（2026-09 扩展）', lv.filter((l) => l.playable).map((l) => l.id).join(',') === '1,2,3,4,5,6,7,8,9,10',
     '可玩：' + lv.filter((l) => l.playable).map((l) => l.id).join(','));
-  ok('关卡 2~99 全部是"待扩展"占位',
-    lv.slice(1).every((l) => l.playable === false && l.subtitle === '待扩展'),
-    '非占位项：' + lv.slice(1).filter((l) => l.playable || l.subtitle !== '待扩展').map((l) => l.id).join(',') || '无');
+  ok('关卡 11~99 全部是"待扩展"占位',
+    lv.slice(10).every((l) => l.playable === false && l.subtitle === '待扩展'),
+    '非占位项：' + lv.slice(10).filter((l) => l.playable || l.subtitle !== '待扩展').map((l) => l.id).join(',') || '无');
   ok('关卡名带序号（关卡 N）', lv[98].name === '关卡 99', '末关 name=' + lv[98].name);
 }
 
@@ -750,9 +750,14 @@ section('E. 塔强化（只抬专属特殊属性，不给伤害加成）');
     g.gold === goldBefore - cost1 && cost1 === Math.round(cfg.TOWER_DEFS.triangle.cost * E.costRate * 1),
     `${goldBefore} → ${g.gold} (cost ${cost1})`);
 
-  // ---- 核心断言：强化不发放任何伤害加成 ----
-  ok('强化不给攻击力（战斗口径 Δ=0）', g.towerDamage(t, ATK) === baseDmg,
-    `${baseDmg} → ${g.towerDamage(t, ATK)}`);
+  // ---- 核心断言：3★ 强化塔 +5%/级 白字攻击力（不是绿字来源）----
+  //   t: ATK=20, level=0, stage=3 (boost=400%), 无强化 baseDmg = floor(20×5×codex)
+  //   强化 1 级后：白字 = floor(20×1.05)=21, final = floor(21×5×codex)
+  const codexMult = CUR.meta.codexDamageMultiplier('triangle');
+  const expectWhite1 = Math.floor(ATK * (1 + 1 * 0.05));
+  const expectFinal1 = Math.floor(expectWhite1 * (1 + towerMod.getAttackPowerBoost(t.stage) / 100) * codexMult);
+  ok('3★ 强化塔 +5%/级 白字攻击力（战斗口径）', g.towerDamage(t, ATK) === expectFinal1,
+    `${baseDmg} → ${g.towerDamage(t, ATK)} (expected ${expectFinal1}, codex×${codexMult})`);
   ok('强化不给穿透（三角塔不是穿透型）', towerMod.getAttackProfile(t).penetration === 0,
     '穿透=' + towerMod.getAttackProfile(t).penetration);
 
@@ -784,8 +789,11 @@ section('E. 塔强化（只抬专属特殊属性，不给伤害加成）');
   ok('满级后再强化返回 maxed', rrMax.ok === false && rrMax.reason === 'maxed', JSON.stringify(rrMax));
   ok('满级三角塔暴击 = 30%（5 + 5×5）', towerMod.getAttackProfile(t).critChance === 30,
     towerMod.getAttackProfile(t).critChance + '%');
-  ok('满级后攻击力依然没被强化改变', g.towerDamage(t, ATK) === baseDmg,
-    `${baseDmg} vs ${g.towerDamage(t, ATK)}`);
+  ok('满级后攻击力包含 3★ 强化 +25% 白字（5 级 × 5%）', (() => {
+    const whiteLv5 = Math.floor(ATK * (1 + E.maxLevel * 0.05));
+    const expected = Math.floor(whiteLv5 * (1 + towerMod.getAttackPowerBoost(t.stage) / 100) * CUR.meta.codexDamageMultiplier('triangle'));
+    return g.towerDamage(t, ATK) === expected;
+  })(), `${baseDmg} vs ${g.towerDamage(t, ATK)}`);
   ok('等级回退时增量会被重算（不残留旧值）', (() => {
     t.enhanceLevel = 2; towerMod.applyEnhanceAttrs(t);
     return towerMod.getAttackProfile(t).critChance === 15;
@@ -861,15 +869,20 @@ section('E. 塔强化（只抬专属特殊属性，不给伤害加成）');
     Math.abs(towerMod.getAttackProfile(stw).critMult - 2.0) < 1e-9,
     `${towerMod.getAttackProfile(stw).critChance}% ×${r2(towerMod.getAttackProfile(stw).critMult)}`);
 
-  // ---- 全 16 种塔：强化只改专属属性，攻击力零变化，面板/引擎同口径 ----
+  // ---- 全 16 种塔：3★ 强化只改专属属性 + 攻击力 +5%/级（白字，不是绿字来源），面板/引擎同口径 ----
   {
     const probs = [];
     for (const type of cfg.TOWER_ORDER) {
       const sp = cfg.ENHANCE_SPECIAL[type];
       const tw = towerMod.createTower(type, 0, 0);
       tw.stage = E.minStage;
+      // createTower 默认 attackPowerBoost=0，需要显式设为阶段增幅值（与生产路径一致）
+      tw.attackPowerBoost = towerMod.getAttackPowerBoost(tw.stage);
       g.gold = 1000000;
-      const dmg0 = g.towerDamage(tw, cfg.TOWER_STATS[type].damage || 0);
+      const typeBaseDmg = cfg.TOWER_STATS[type].damage || 0;
+      const codexMult = CUR.meta.codexDamageMultiplier(type);
+      const boostMult = 1 + tw.attackPowerBoost / 100;
+      const dmg0 = g.towerDamage(tw, typeBaseDmg);
       for (let lv = 1; lv <= E.maxLevel; lv++) {
         const r = g.enhanceTower(tw, sp.key);
         if (!r.ok) { probs.push(type + ': 强化失败 ' + JSON.stringify(r)); break; }
@@ -879,8 +892,14 @@ section('E. 塔强化（只抬专属特殊属性，不给伤害加成）');
         if (towerMod.getSpecialValue(type, lv) !== sp.base + sp.per * lv) {
           probs.push(`${type}: Lv.${lv} 取值 ${towerMod.getSpecialValue(type, lv)} ≠ ${sp.base + sp.per * lv}`);
         }
+        // 每级攻击力 = floor(floor(base×(1+lv×5%)) × boost) × codexMult
+        const expectWhite = Math.floor(typeBaseDmg * (1 + lv * 0.05));
+        const expectFinal = Math.floor(Math.floor(expectWhite * boostMult) * codexMult);
+        const actual = g.towerDamage(tw, typeBaseDmg);
+        if (actual !== expectFinal) {
+          probs.push(`${type}: Lv.${lv} 攻击力 ${actual} ≠ 期望 ${expectFinal} (白字${expectWhite}×boost${boostMult}×codex${codexMult})`);
+        }
       }
-      if (g.towerDamage(tw, cfg.TOWER_STATS[type].damage || 0) !== dmg0) probs.push(type + ': 攻击力被强化改变了');
       const info = CUR.bonusStats.collectTowerStats(g, tw, cfg.TOWER_STATS[type], type);
       const attr = CUR.bonusStats.ENHANCE_ATTR_MAP[sp.key];
       // 梯塔的光环强度会被自身阶段放大（+100%/星，见 applyTrapezoidAuras），
@@ -898,22 +917,31 @@ section('E. 塔强化（只抬专属特殊属性，不给伤害加成）');
           probs.push(`trapezoid: 面板 ${info.final.auraPower} ≠ 引擎 ${eng}`);
         }
       }
-      if (info.base.damage !== (cfg.TOWER_STATS[type].damage || 0)) {
-        probs.push(type + ': 面板原生攻击力 ' + info.base.damage + ' ≠ 原生 ' + (cfg.TOWER_STATS[type].damage || 0));
+      // 白字攻击力必须包含 3★ 强化的 +5%/级加成
+      const expectBaseWhite = Math.floor(typeBaseDmg * (1 + E.maxLevel * 0.05));
+      if (info.base.damage !== expectBaseWhite) {
+        probs.push(type + ': 面板白字攻击力 ' + info.base.damage + ' ≠ 期望 ' + expectBaseWhite);
       }
     }
-    ok('16 种塔：强化只改专属属性 / 攻击力零变化 / 面板与引擎同口径', probs.length === 0,
+    ok('16 种塔：3★ 强化只改专属属性 + 攻击力 +5%/级（白字）/ 面板与引擎同口径', probs.length === 0,
       probs.slice(0, 4).join(' | ') || ('16 种 × Lv.1~' + E.maxLevel + ' 全部一致'));
   }
 
-  // ---- 属性面板口径：攻击力是纯原生值（白字），强化只出现在专属属性行 ----
+  // ---- 属性面板口径：白字攻击力包含 3★ 强化 +5%/级，绿字来自等级/阶段/图签，攻击力不出现在绿字来源 ----
   const info = CUR.bonusStats.collectTowerStats(g, t, cfg.TOWER_STATS.triangle, 'triangle');
-  ok('面板原生攻击力 = 纯原生值（不再叠加强化固定值）',
-    info.base.damage === ATK, `base=${info.base.damage} 原生=${ATK}`);
-  ok('面板明细里出现"强化"来源',
+  // 此时 t 已经强化到满级 enhanceLevel=5，stage=3, ATK=20 → 白字 = floor(20×(1+5×5%))=floor(20×1.25)=25
+  const lvNow = t.enhanceLevel || 0;
+  ok('面板白字攻击力包含 3★ 强化 +5%/级（不再是纯原生值）',
+    info.base.damage === Math.floor(ATK * (1 + lvNow * 0.05)),
+    `base=${info.base.damage} 期望=${Math.floor(ATK * (1 + lvNow * 0.05))} (enhanceLv=${lvNow})`);
+  ok('面板明细里出现"强化"来源（专属属性，不是攻击力）',
     info.sources.some((s) => s.source === 'enhance'), 'sources=' + info.sources.length);
   ok('面板最终攻击力与战斗口径一致',
     info.final.damage === g.towerDamage(t, ATK), `面板=${info.final.damage} 战斗=${g.towerDamage(t, ATK)}`);
+  ok('面板攻击力来源里没有"强化"攻击力条目（强化攻击力走白字）', (() => {
+    const dmgFromEnhance = info.sources.filter((s) => s.attr === 'damage' && s.source === 'enhance');
+    return dmgFromEnhance.length === 0;
+  })(), `强化攻击力来源数=${info.sources.filter((s) => s.attr === 'damage').length}`);
   ok('面板暴击行 = 原生 5% + 强化 +25%（白字 + 绿字）', (() => {
     const row = info.rows.filter((r) => r.key === 'critChance')[0];
     return !!row && row.baseText === '5%' && row.bonusText === '+25%';
@@ -1071,7 +1099,7 @@ section('F. 战斗流程状态机');
   ok('abandonRun 后回到战前（battleStarted=false）', g.battleStarted === false, 'battleStarted=' + g.battleStarted);
   ok('abandonRun 后波次归零', g.currentWave === 0, 'currentWave=' + g.currentWave);
   ok('startLevel(1) 成功', g.startLevel(1) === true);
-  ok('startLevel(2) 被拒（占位未开放）', g.startLevel(2) === false);
+  ok('startLevel(2) 成功（关卡 2 已开放）', g.startLevel(2) === true);
   ok('未开始时 openMenu 被拒', (function () { const g2 = freshGame(390, 844); g2.battleStarted = false; return g2.openMenu() === false; })());
   // 主循环推进判定（loop 内条件）
   ok('loop 判定字段齐备', 'battleStarted' in g && 'showMenu' in g && 'scene' in g && 'isRunning' in g);
