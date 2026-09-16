@@ -1450,23 +1450,9 @@ class Game {
           const dist = Math.sqrt(dx * dx + dy * dy);
           
           if (dist < proj.size / 2 + enemy.size / 2) {
-            // 造成伤害
-            // 触发命中事件
-            this.triggerHit(enemy, proj, proj.damage);
-            // 触发伤害事件
-            this.triggerDamage(proj, proj.damage, enemy);
-            
-            enemy.hp -= proj.damage;
+            // 造成伤害：走统一结算入口（暴击 + 穿透 + 抗性减伤）
+            this.applyDamage(proj.sourceTower, enemy, proj.damage, { source: proj });
             proj.hitEnemies.add(enemy);
-            
-            if (enemy.hp <= 0) {
-              enemy.alive = false;
-              this.grantKillReward(enemy);
-              // 从单位注册表移除
-              units.removeUnit(enemy.uniqueId);
-              // 触发死亡事件
-              this.triggerDeath(enemy, proj);
-            }
             break;
           }
         }
@@ -1482,23 +1468,10 @@ class Game {
       // 如果弹道已经到达目标位置
       if (dist < 5) {
         proj.alive = false;
-        // 造成伤害
+        // 造成伤害：走统一结算入口（暴击 + 穿透 + 抗性减伤）
         const target = proj.targetType;
         if (target && target.alive) {
-          // 触发命中事件
-          this.triggerHit(target, proj, proj.damage);
-          // 触发伤害事件
-          this.triggerDamage(proj, proj.damage, target);
-          
-          target.hp -= proj.damage;
-          if (target.hp <= 0) {
-            target.alive = false;
-            this.grantKillReward(target); // 获得金币与积分奖励
-            // 从单位注册表移除
-            units.removeUnit(target.uniqueId);
-            // 触发死亡事件
-            this.triggerDeath(target, proj);
-          }
+          this.applyDamage(proj.sourceTower || null, target, proj.damage, { source: proj });
         }
         continue;
       }
