@@ -39,9 +39,18 @@ class Game {
 
     // 场景：battle / codex / talents（底部导航切换；战斗状态常驻，切走只是冻结不销毁）
     this.scene = 'battle';
-    this.showLevels = false;      // 关卡选择浮层开关
+    // 战斗子状态（需求：不再点徽标选关，改成战前居中选关 + 开始游戏才跑）
+    this.battleStarted = false;   // false = 战前"选关"界面（世界冻结）；true = 战斗进行中
+    this.showMenu = false;        // 顶栏 ☰ 打开的游戏中菜单（返回战斗 / 放弃结束）
     this.codexSelected = null;    // 图签界面当前选中的塔类型
+    this.codexScroll = 0;         // 图签格网的上下滚动量（0 = 顶部）
+    this.talentScroll = 0;        // 天赋列表的上下滚动量（0 = 顶部）
+    this.levelScroll = null;      // 选关天梯的上下滚动量（null = 尚未初始化，默认贴底看关卡1）
+    this.enhancePicker = null;    // 强化「多选一」浮层：null=关闭，否则 { tower }
     this.toast = null;            // 操作轻提示 { text, color, t0 }
+    // 涓流金库（每秒金币天赋）：小数累计，避免每帧取整丢钱
+    this._goldTick = 0;
+    this._goldFraction = 0;
 
     // 当前关卡（默认取存档里选中的关卡，初始 = 关卡 1）
     this.currentLevel = meta.getSelectedLevel();
@@ -400,7 +409,11 @@ class Game {
     // 重置元进度相关 UI 状态
     this.toast = null;
     this.codexSelected = null;
-    this.showLevels = false;
+    this.codexScroll = 0;
+    this.talentScroll = 0;
+    this.levelScroll = null;
+    this.enhancePicker = null;
+    this.showMenu = false;
 
     // 主循环常驻运行，这里只需恢复 isRunning 标志
   }
@@ -448,17 +461,24 @@ class Game {
     return towerMod.getDiscountedCost(type, meta.talentValue('build_cost'));
   }
 
-  /** 击杀金币收益（含"点石成金"天赋） */
+  /** 击杀金币倍率：点石成金 + 暴利风险（增益侧） */
+  killGoldMultiplier() {
+    return 1 + (meta.talentValue('gold_gain') + meta.talentValue('high_stakes', 'goldPerLevel')) / 100;
+  }
+
+  /** 入账金币（含击杀金币天赋加成） */
   gainGold(amount) {
-    const mult = 1 + meta.talentValue('gold_gain') / 100;
+    const mult = this.killGoldMultiplier();
     this.gold += Math.max(0, Math.round((amount || 0) * mult));
   }
 
   /** 击杀结算：金币 + 特殊积分 +（BOSS 及以上）天赋点 */
   grantKillReward(enemy) {
     if (!enemy) return;
-    this.gainGold(enemy.reward);
     const tier = enemy.tier || 0;
+    // BOSS 悬赏：精英(tier3) 及以上额外加成
+    const bounty = tier >= 3 ? (1 + meta.talentValue('boss_bounty') / 100) : 1;
+    this.gainGold((enemy.reward || 0) * bounty);
     let pts = 0;
     if (tier >= 5) pts = POINTS.tier5;
     else if (tier >= 4) pts = POINTS.tier4;
@@ -467,15 +487,78 @@ class Game {
     if (tier >= 4) meta.grantTalentPoints(TALENT_POINTS.bossKill);
   }
 
-  /** 图签加成后的最终攻击力（战斗与属性面板同口径） */
+  /** 图签加成后的最终攻击力（战斗与属性面板同口径）
+   *  强化不再提供攻击力，只有「合成进阶（等级/阶段）」与「图签」两条线参与 */
   towerDamage(tower, baseDamage) {
-    const dmg = towerMod.calculateFinalDamage(baseDamage, tower.level, tower.attackPowerBoost);
+    const dmg = towerMod.calculateFinalDamage(
+      baseDamage, tower.level, tower.attackPowerBoost
+    );
     return Math.floor(dmg * meta.codexDamageMultiplier(tower.type));
   }
 
-  /** 清空一波：入账特殊积分；每 N 波给天赋点；记录最高波次 */
+  /**
+   * 统一的伤害结算入口（暴击 + 抗性/穿透 + 事件 + 击杀处理）。
+   *
+   * 结算顺序：
+   *   ① 暴击：按塔的暴击率 roll，命中则伤害 × 暴击倍率（溅射/爆炸默认不暴击，可显式开启）
+   *   ② 抗性：有效抗性 = max(0, 敌人抗性 - 塔的穿透)
+   *   ③ 减伤：实际伤害 = 造成伤害 × (1 - 有效抗性 / (有效抗性 + BALANCE.armorK))
+   *           —— 递减曲线，抗性再高也只是接近免疫而不会真的免疫；
+   *              穿透直接抵掉抗性，所以高穿透塔对高抗性目标收益最大。
+   *
+   * @param {object|null} sourceTower 伤害来源塔（null = 环境伤害，不吃暴击/穿透）
+   * @param {object} enemy 目标
+   * @param {number} baseDamage 暴击/抗性结算前的伤害
+   * @param {{allowCrit?:boolean, source?:any}} [opts]
+   * @returns {{damage:number, crit:boolean, killed:boolean}}
+   */
+  applyDamage(sourceTower, enemy, baseDamage, opts) {
+    if (!enemy || !enemy.alive) return { damage: 0, crit: false, killed: false };
+    const o = opts || {};
+    const source = o.source || sourceTower || { type: 'explosion' };
+
+    let dmg = Math.max(0, baseDamage || 0);
+    let crit = false;
+
+    // ① 暴击
+    if (sourceTower && o.allowCrit !== false) {
+      const prof = towerMod.getAttackProfile(sourceTower);
+      if (prof.critChance > 0 && Math.random() * 100 < prof.critChance) {
+        dmg = Math.round(dmg * prof.critMult);
+        crit = true;
+      }
+    }
+
+    // ②③ 抗性 / 穿透 + 递减减伤
+    const pen = sourceTower ? towerMod.getAttackProfile(sourceTower).penetration : 0;
+    const armor = enemy.armor || 0;
+    const effectiveArmor = Math.max(0, armor - pen);
+    if (effectiveArmor > 0 && dmg > 0) {
+      const reduce = effectiveArmor / (effectiveArmor + BALANCE.armorK);
+      dmg = Math.max(1, Math.round(dmg * (1 - reduce)));
+    }
+
+    this.triggerHit(enemy, source, dmg);
+    this.triggerDamage(source, dmg, enemy);
+
+    enemy.hp -= dmg;
+    let killed = false;
+    if (enemy.hp <= 0) {
+      enemy.alive = false;
+      killed = true;
+      this.grantKillReward(enemy);
+      units.removeUnit(enemy.uniqueId);
+      this.triggerDeath(enemy, source);
+    }
+    return { damage: dmg, crit: crit, killed: killed };
+  }
+
+  /** 清空一波：特殊积分 + 波次结余金币；每 N 波给天赋点；记录最高波次 */
   onWaveCleared() {
     meta.grantPoints(POINTS.perWave);
+    // 波次结余天赋：直接入账，不吃击杀金币倍率
+    const waveGold = meta.talentValue('wave_bonus');
+    if (waveGold > 0) this.gold += waveGold;
     meta.recordWave(this.currentLevel, this.currentWave);
     const every = TALENT_POINTS.perWaveGroup.every;
     if (every > 0 && this.currentWave % every === 0) {
@@ -496,7 +579,12 @@ class Game {
     if (scene === this.scene) return;
     this.scene = scene;
     this.codexSelected = null;
-    this.showLevels = false;
+    this.showMenu = false;
+    this.enhancePicker = null;   // 强化浮层是战斗内模态，切场景必须收掉
+    this.dragging = false;
+    this.pendingDrag = false;
+    this.draggingFromSlot = null;
+    this.btnPress = null;
     if (scene !== 'battle') {
       this.selectedTower = null;
       this.showPanel = false;
@@ -505,7 +593,49 @@ class Game {
     meta.save(true);
   }
 
-  /** 进入指定关卡（重新开始该关卡）。当前只有关卡 1 可玩。 */
+  // ========== 战斗流程（战前选关 → 开始游戏 → 游戏中菜单）==========
+
+  /** 打开 ☰ 游戏菜单 */
+  openMenu() {
+    if (!this.battleStarted || this.gameOver) return false;
+    this.showMenu = true;
+    this.showPanel = false;
+    this.selectedTower = null;
+    this.panelTowerType = null;
+    return true;
+  }
+
+  /** 关闭菜单，返回战斗 */
+  closeMenu() {
+    this.showMenu = false;
+  }
+
+  /**
+   * 开始游戏：当前所选关卡正式开跑。
+   * 世界在此之前完全不推进（见 loop 的 battleStarted 判定）。
+   */
+  startBattle() {
+    const lv = LEVELS.filter((l) => l.id === this.currentLevel)[0];
+    if (lv && !lv.playable) return false;
+    this.restart();
+    this.scene = 'battle';
+    this.battleStarted = true;
+    this.showMenu = false;
+    meta.save(true);
+    return true;
+  }
+
+  /** 放弃结束：结束本局，回到战前选关界面（局内进度丢弃，局外积分/天赋点已入账） */
+  abandonRun() {
+    this.restart();
+    this.scene = 'battle';
+    this.battleStarted = false;
+    this.showMenu = false;
+    meta.save(true);
+    return true;
+  }
+
+  /** 进入指定关卡（仅切换"待开始"的关卡，不直接开跑）。当前只有关卡 1 可玩。 */
   startLevel(levelId) {
     const lv = LEVELS.filter((l) => l.id === levelId)[0];
     if (!lv || !lv.playable) return false;
@@ -513,11 +643,87 @@ class Game {
     this.currentLevel = levelId;
     this.restart();
     this.scene = 'battle';
-    this.showLevels = false;
     return true;
   }
 
+  // ========== 塔强化（局内花金币：只抬该塔的专属特殊属性，不给伤害）==========
+
+  /** 强化到下一级的花费；已满级返回 Infinity */
+  enhanceCost(tower) {
+    if (!tower) return Infinity;
+    return towerMod.getEnhanceCost(tower.type, tower.enhanceLevel || 0);
+  }
+
+  /** 该塔能否在属性面板里强化（需 3★ + 未满级 + 有实体塔） */
+  canEnhanceTower(tower) {
+    if (!tower) return { ok: false, reason: 'none' };
+    if (!towerMod.isStageReady(tower)) {
+      return { ok: false, reason: 'stage', need: BALANCE.enhance.minStage, stage: tower.stage || 0 };
+    }
+    if (!towerMod.canEnhance(tower)) return { ok: false, reason: 'maxed' };
+    return { ok: true };
+  }
+
+  /**
+   * 强化选中的塔：扣金币 → 强化等级 +1 → 重算专属特殊属性。
+   *
+   * 与旧版的区别（2026-09 二次重做）：
+   *   · 不再发放「固定攻击力点数」，因此塔的攻击力完全不受强化影响；
+   *   · 不再多选一，每塔只有一项专属属性（见 config.ENHANCE_SPECIAL），
+   *     强化只是把它的取值从 base + per×L 推到 base + per×(L+1)。
+   *
+   * @param {object} tower 目标塔
+   * @param {string} [optionKey] 兼容参数：必须等于该塔的专属属性 key（不传则无条件通过）
+   * @returns {{ok:boolean, level?:number, cost?:number, option?:object, special?:object, reason?:string}}
+   */
+  enhanceTower(tower, optionKey) {
+    const gate = this.canEnhanceTower(tower);
+    if (!gate.ok) {
+      return Object.assign({}, gate, { level: tower ? (tower.enhanceLevel || 0) : 0 });
+    }
+    const opt = towerMod.getEnhanceOption(tower.type, optionKey);
+    if (!opt) return { ok: false, reason: 'option' };
+
+    const cost = this.enhanceCost(tower);
+    if (this.gold < cost) return { ok: false, reason: 'gold', cost: cost };
+
+    this.gold -= cost;
+    tower.enhanceLevel = (tower.enhanceLevel || 0) + 1;
+    // 单一真源：按等级全量重算，而不是在旧值上累加
+    towerMod.applyEnhanceAttrs(tower);
+    tower.enhancePicks = tower.enhancePicks || [];
+    tower.enhancePicks.push(opt.key);
+    return {
+      ok: true,
+      level: tower.enhanceLevel,
+      cost: cost,
+      option: opt,
+      special: {
+        name: opt.name,
+        gain: opt.perLevel,
+        unit: opt.unit,
+        value: towerMod.getSpecialValue(tower.type, tower.enhanceLevel),
+        text: towerMod.specialText(tower.type, tower.enhanceLevel),
+      },
+    };
+  }
+
+  /** 涓流金库：每秒金币天赋（小数累计，逐点入账） */
+  tickPassiveGold(dt) {
+    const perSec = meta.talentValue('gold_per_sec');
+    if (perSec <= 0) return;
+    this._goldFraction += perSec * dt;
+    const whole = Math.floor(this._goldFraction);
+    if (whole > 0) {
+      this.gold += whole;
+      this._goldFraction -= whole;
+    }
+  }
+
   update(deltaTime) {
+    // 被动金币（天赋"涓流金库"）
+    this.tickPassiveGold(deltaTime);
+
     // 更新倒计时 / 波次
     if (!this.waveInProgress) {
       this.waitTimer -= deltaTime;
@@ -618,7 +824,7 @@ class Game {
       }
 
       // 通过光环管理器获取带光环加成的攻击速度
-      const stats = renderer.getTowerStats(tower.type);
+      const stats = towerMod.getTowerRuntimeStats(tower);
       const baseAttackSpeed = stats.attackSpeedMultiplier || ATTACK_SPEED_BASE;
       const effectiveAttackSpeed = this.auraManager.getBuffedValue(tower.uniqueId, baseAttackSpeed);
 
@@ -681,7 +887,6 @@ class Game {
         }
         continue;
       }
-
       // 圆塔：爆炸溅射
       if (tower.type === 'circle') {
         if (nearestTarget) {
@@ -706,7 +911,7 @@ class Game {
       if (nearestTarget) {
         // 长方塔：堆叠伤害机制
         if (tower.type === 'long_rectangle') {
-          const towerStats = renderer.getTowerStats(tower.type);
+          const towerStats = towerMod.getTowerRuntimeStats(tower);
           // 检查目标是否切换或堆叠已过期
           if (tower.lockedTarget !== nearestTarget || tower.stackTimer <= 0) {
             // 切换目标或堆叠过期 → 重置
@@ -715,8 +920,8 @@ class Game {
             tower.stackTimer = 5.0; // 新目标开始5秒计时
           }
           
-          // 攻击时增加堆叠层数（最多10层）
-          tower.stackCount = Math.min(tower.stackCount + 1, 10);
+          // 攻击时增加堆叠层数（上限 = 原生 10 层 + 专属属性"堆叠上限"强化）
+          tower.stackCount = Math.min(tower.stackCount + 1, towerMod.getStackMax(tower));
           
           // 堆叠伤害计算：配置基础攻击力 + 层数加成，应用攻击增幅
           const baseDamage = this.towerDamage(tower, towerStats.damage);
@@ -730,10 +935,11 @@ class Game {
           continue;
         }
         
-        // 六边塔：对精英级以上怪物伤害×5，应用攻击增幅
+        // 六边塔：对精英及以上（tier>=3，含 BOSS）伤害 ×N，
+        // N = 原生 5 倍 + 专属属性"精英伤害倍率"强化（见 tower.getEliteMultiplier）
         if (tower.type === 'hexagon' && nearestTarget.tier >= 3) {
-          const towerStats = renderer.getTowerStats(tower.type);
-          const totalDamage = this.towerDamage(tower, towerStats.damage) * 5;
+          const towerStats = towerMod.getTowerRuntimeStats(tower);
+          const totalDamage = this.towerDamage(tower, towerStats.damage) * towerMod.getEliteMultiplier(tower);
           
           const effectiveInterval = 1.2 / (effectiveAttackSpeed / 100);
           tower.attackTimer = effectiveInterval;
@@ -742,7 +948,7 @@ class Game {
         }
         
         // 普通塔正常伤害计算，使用配置中的 attackInterval
-        const towerStats = renderer.getTowerStats(tower.type);
+        const towerStats = towerMod.getTowerRuntimeStats(tower);
         const effectiveInterval = towerStats.attackInterval / (effectiveAttackSpeed / 100);
         tower.attackTimer = effectiveInterval;
         this.fireProjectile(tower, nearestTarget);
@@ -761,7 +967,7 @@ class Game {
     for (const tower of this.towers) {
       if (!tower.isSupport) continue;
 
-      const stats = renderer.getTowerStats(tower.type);
+      const stats = towerMod.getTowerRuntimeStats(tower);
       const range = stats.range || 150;
       const baseBuff = stats.supportBuff || { attackSpeedMultiplier: 25 };
       // 光环强度随自身阶段提升（1星+50、2星+75、3星+100），3星封顶
@@ -795,7 +1001,7 @@ class Game {
 
   fireProjectile(tower, target, customDamage) {
     const towerDef = TOWER_DEFS[tower.type];
-    const towerStats = renderer.getTowerStats(tower.type);
+    const towerStats = towerMod.getTowerRuntimeStats(tower);
     
     // 使用 tower.js 中的 calculateFinalDamage 计算最终攻击力
     let damage;
@@ -817,6 +1023,7 @@ class Game {
       targetX: target.x,
       targetY: target.y,
       targetType: target, // 保存对敌人的引用
+      sourceTower: tower, // 命中时用于暴击/穿透结算
       speed: 300, // 弹道速度（像素/秒）
       color: towerDef.color,
       type: tower.type,
@@ -835,7 +1042,7 @@ class Game {
    */
   fireSquareProjectile(tower, target) {
     const towerDef = TOWER_DEFS[tower.type];
-    const towerStats = renderer.getTowerStats(tower.type);
+    const towerStats = towerMod.getTowerRuntimeStats(tower);
     const damage = this.towerDamage(tower, towerStats.damage);
     
     // 计算从塔到目标的方向
@@ -848,6 +1055,7 @@ class Game {
       y: tower.y,
       angle: angle, // 冲锋方向
       rotationAngle: 0, // 弹道自身旋转角度
+      sourceTower: tower,
       speed: 500, // 冲锋速度
       damage: damage,
       type: 'square',
@@ -864,29 +1072,16 @@ class Game {
    * 半圆塔：激光攻击（持续直连线条）
    */
   fireLaser(tower, target, dt) {
-    const towerStats = renderer.getTowerStats(tower.type);
+    const towerStats = towerMod.getTowerRuntimeStats(tower);
     const towerDamage = this.towerDamage(tower, towerStats.damage);
     
     // 每秒伤害 = 塔攻击力，按时间比例计算单帧伤害
     const damage = Math.max(1, Math.floor(towerDamage * dt));
     
-    // 直接造成伤害（激光持续命中）
+    // 直接造成伤害（激光持续命中）：每帧伤害太低，不吃暴击（避免每帧 roll 抖动），但吃护甲/穿透
     if (target && target.alive) {
-      // 触发命中事件
-      this.triggerHit(target, tower, damage);
-      // 触发伤害事件
-      this.triggerDamage(tower, damage, target);
-      
-      target.hp -= damage;
-      if (target.hp <= 0) {
-          target.alive = false;
-          this.grantKillReward(target);
-          // 从单位注册表移除
-          units.removeUnit(target.uniqueId);
-          // 触发死亡事件
-          this.triggerDeath(target, tower);
-        }
-      }
+      this.applyDamage(tower, target, damage, { allowCrit: false });
+    }
       
       // 记录激光效果（持续线条）
     this.effects.push({
@@ -905,12 +1100,13 @@ class Game {
 
   /**
    * 扇塔：查找扇形范围内的第一个敌人（最近的）
+   * 半张角取 tower.getSectorHalfAngle：原生 45° + 专属属性"扇面张角"强化
    */
   findSectorTarget(tower) {
-    const towerStats = renderer.getTowerStats(tower.type);
+    const towerStats = towerMod.getTowerRuntimeStats(tower);
     const range = towerStats.range;
     const angle = tower.attackAngle || 0;
-    const halfAngle = Math.PI / 4; // 45度扇形
+    const halfAngle = towerMod.getSectorHalfAngle(tower);
     
     let closestTarget = null;
     let closestDist = Infinity;
@@ -944,12 +1140,12 @@ class Game {
    * 弹道仅作视觉表现
    */
   fireSectorAOE(tower) {
-    const towerStats = renderer.getTowerStats(tower.type);
+    const towerStats = towerMod.getTowerRuntimeStats(tower);
     const damage = this.towerDamage(tower, towerStats.damage);
     
     const range = towerStats.range;
     const angle = tower.attackAngle || 0;
-    const halfAngle = Math.PI / 4; // 45度扇形
+    const halfAngle = towerMod.getSectorHalfAngle(tower);
     
     // 对扇形内所有存活敌人一次性结算伤害
     for (const enemy of this.enemies) {
@@ -966,20 +1162,8 @@ class Game {
       while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
       
       if (Math.abs(angleDiff) <= halfAngle) {
-        // 触发命中事件
-        this.triggerHit(enemy, tower, damage);
-        // 触发伤害事件
-        this.triggerDamage(tower, damage, enemy);
-        
-        enemy.hp -= damage;
-        if (enemy.hp <= 0) {
-          enemy.alive = false;
-          this.grantKillReward(enemy);
-          // 从单位注册表移除
-          units.removeUnit(enemy.uniqueId);
-          // 触发死亡事件
-          this.triggerDeath(enemy, tower);
-        }
+        // 统一结算：暴击 + 护甲/穿透 + 事件 + 击杀（AOE 每只怪独立 roll 暴击）
+        this.applyDamage(tower, enemy, damage);
       }
     }
     
@@ -1004,7 +1188,7 @@ class Game {
    */
   fireExplosiveProjectile(tower, target) {
     const towerDef = TOWER_DEFS[tower.type];
-    const towerStats = renderer.getTowerStats(tower.type);
+    const towerStats = towerMod.getTowerRuntimeStats(tower);
     const damage = this.towerDamage(tower, towerStats.damage);
     
     const dx = target.x - tower.x;
@@ -1017,6 +1201,7 @@ class Game {
       targetX: target.x,
       targetY: target.y,
       targetType: target,
+      sourceTower: tower,
       speed: 250,
       color: towerDef.color,
       type: 'circle',
@@ -1036,8 +1221,9 @@ class Game {
 
   /**
    * 创建爆炸效果
+   * @param {object} [sourceTower] 伤害来源塔（用于护甲/穿透结算；null = 环境伤害）
    */
-  fireExplosion(x, y, maxRadius, color, splashDamage) {
+  fireExplosion(x, y, maxRadius, color, splashDamage, sourceTower) {
     this.effects.push({
       type: 'explosion',
       x: x,
@@ -1053,13 +1239,13 @@ class Game {
     });
     
     // 命中时立即触发二段爆炸伤害
-    this.applyExplosionDamage(x, y, maxRadius || 60, splashDamage || 0);
+    this.applyExplosionDamage(x, y, maxRadius || 60, splashDamage || 0, sourceTower);
   }
 
   /**
-   * 应用爆炸溅射伤害
+   * 应用爆炸溅射伤害（溅射不暴击，但同样吃护甲/穿透）
    */
-  applyExplosionDamage(x, y, radius, splashDamage) {
+  applyExplosionDamage(x, y, radius, splashDamage, sourceTower) {
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
       
@@ -1068,21 +1254,11 @@ class Game {
       const dist = Math.sqrt(dx * dx + dy * dy);
       
       if (dist <= radius) {
-        // 触发命中事件（爆炸作为伤害来源）
-        this.triggerHit(enemy, { type: 'explosion', x: x, y: y }, splashDamage);
-        // 触发伤害事件
-        this.triggerDamage({ type: 'explosion', x: x, y: y }, splashDamage, enemy);
-        
-        enemy.hp -= splashDamage;
-        
-        if (enemy.hp <= 0) {
-          enemy.alive = false;
-          this.grantKillReward(enemy);
-          // 从单位注册表移除
-          units.removeUnit(enemy.uniqueId);
-          // 触发死亡事件（爆炸作为击杀者）
-          this.triggerDeath(enemy, { type: 'explosion', x: x, y: y });
-        }
+        const src = sourceTower || { type: 'explosion', x: x, y: y };
+        this.applyDamage(sourceTower || null, enemy, splashDamage, {
+          allowCrit: false,
+          source: src,
+        });
       }
     }
   }
@@ -1109,23 +1285,13 @@ class Game {
           // 命中目标，造成伤害
           const target = proj.targetType;
           if (target && target.alive) {
-            // 触发命中事件
-            this.triggerHit(target, proj, proj.damage);
-            // 触发伤害事件
-            this.triggerDamage(proj, proj.damage, target);
-            
-            target.hp -= proj.damage;
-            if (target.hp <= 0) {
-              target.alive = false;
-              this.grantKillReward(target);
-              // 从单位注册表移除
-              units.removeUnit(target.uniqueId);
-              // 触发死亡事件
-              this.triggerDeath(target, proj);
-            }
+            this.applyDamage(proj.sourceTower || null, target, proj.damage, { source: proj });
           }
           // 创建爆炸效果（无论目标是否死亡）
-          this.fireExplosion(proj.targetX, proj.targetY, 60, '#4444FF', Math.floor(proj.damage * 0.25));
+          // 爆炸半径与溅射比例由 tower.js 统一给出（圆塔强化"爆炸范围 / 二段爆炸伤害"在此生效）
+          const boom = towerMod.getExplosionParams(proj.sourceTower || { type: 'circle' });
+          this.fireExplosion(proj.targetX, proj.targetY, boom.radius, '#4444FF',
+            Math.floor(proj.damage * boom.ratio), proj.sourceTower);
           proj.alive = false;
           continue;
         }
@@ -1279,7 +1445,7 @@ class Game {
   findTarget(tower) {
     let closest = null;
     let closestDist = Infinity;
-    const range = (renderer.getTowerStats(tower.type).range) || 200;
+    const range = (towerMod.getTowerRuntimeStats(tower).range) || 200;
 
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
@@ -1307,9 +1473,9 @@ class Game {
 
     const dt = Math.min(deltaTime, 0.1);
 
-    // 游戏进行中且停留在战斗场景 → 正常逻辑更新
-    // （切到图签/天赋时世界冻结，回来接着打）
-    if (this.isRunning && this.scene === 'battle') {
+    // 游戏进行中 + 停留在战斗场景 + 已点过「开始游戏」+ 没开着菜单 → 正常逻辑更新
+    // （战前选关界面 / 游戏中菜单 / 切到图签天赋 都冻结世界，回来接着打）
+    if (this.isRunning && this.scene === 'battle' && this.battleStarted && !this.showMenu) {
       this.update(dt);
     } else if (this.watchingVideo) {
       // 结算界面观看视频：世界冻结，仅推进视频倒计时

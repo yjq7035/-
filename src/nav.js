@@ -13,7 +13,7 @@
 const { LAYOUT } = require('./config');
 const theme = require('./theme');
 
-const { THEME, roundRectPath, drawStar, drawDashedBox } = theme;
+const { THEME, roundRectPath, drawStar, drawDashedBox, drawButtonFx } = theme;
 
 // 导航项定义（唯一真源）
 // icon: 字符图标（emoji 直接 fillText，WeChat canvas 支持）；
@@ -32,7 +32,28 @@ const NAV_UI = {
   iconDY: -10,                // 图标相对每格中心的上偏
   labelDY: 13,                // 文字相对每格中心的下偏
   topBarH: 3,                 // 激活项顶条高度
+  // 战斗格专用（多一行状态字，图标/文字整体上移）
+  battleIconDY: -12,
+  battleLabelDY: 8,
+  battleStatusDY: 21,
 };
+
+/**
+ * 战斗格的状态（动态显示"游戏是否已经开始"）。
+ * @returns {{ started:boolean, live:boolean, text:string, color:string, pulse:boolean }}
+ */
+function battleStatus(game) {
+  const started = !!game.battleStarted && !game.gameOver;
+  const inBattle = (game.scene || 'battle') === 'battle';
+  if (!started) {
+    return { started: false, live: false, text: '待开始', color: '#FFB74D', pulse: true };
+  }
+  if (!inBattle) {
+    // 已开打但人不在战斗页（在图签/天赋）→ 世界冻结，闪呼吸点提示"还活着"
+    return { started: true, live: true, text: '战斗中', color: '#66BB6A', pulse: true };
+  }
+  return { started: true, live: true, text: '进行中', color: '#66BB6A', pulse: true };
+}
 
 /**
  * 计算导航栏布局（纯函数，渲染/输入共用）
@@ -139,7 +160,10 @@ function drawNav(game) {
     const iconColor = it.disabled ? THEME.text.off : (active ? THEME.accent.gold : THEME.text.secondary);
     const labelColor = it.disabled ? THEME.text.off : (active ? THEME.accent.gold : THEME.text.dim);
 
-    const iconCY = cy + NAV_UI.iconDY;
+    // 战斗格多一行状态字：图标与名称整体上移，给状态让位
+    const isBattle = (it.id === 'battle' && !it.disabled);
+    const iconCY = cy + (isBattle ? NAV_UI.battleIconDY : NAV_UI.iconDY);
+    const labelY = cy + (isBattle ? NAV_UI.battleLabelDY : NAV_UI.labelDY);
 
     if (it.disabled) {
       // 占位按钮：虚线方框 + 问号，明确表达"这里以后会有东西"
@@ -170,10 +194,32 @@ function drawNav(game) {
     ctx.textBaseline = 'middle';
     ctx.font = 'bold 10px Arial';
     ctx.fillStyle = labelColor;
-    ctx.fillText(it.label, cx, cy + NAV_UI.labelDY);
+    ctx.fillText(it.label, cx, labelY);
+
+    // 战斗格：动态状态（待开始 / 进行中 / 战斗中）+ 呼吸圆点
+    if (isBattle) {
+      const st = battleStatus(game);
+      const blink = 0.45 + 0.55 * Math.abs(Math.sin(Date.now() / 520));
+      ctx.save();
+      ctx.globalAlpha = st.pulse ? blink : 1;
+      ctx.beginPath();
+      ctx.arc(cx + 15, iconCY - 8, 3, 0, Math.PI * 2);
+      ctx.fillStyle = st.color;
+      ctx.fill();
+      ctx.restore();
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 9px Arial';
+      ctx.fillStyle = st.color;
+      ctx.fillText(st.text, cx, cy + NAV_UI.battleStatusDY);
+    }
   }
 
   ctx.restore();
+
+  // 导航项的点击波纹（只画 nav 层）
+  drawButtonFx(game, ctx, 'nav');
 }
 
 /**
@@ -250,5 +296,6 @@ module.exports = {
   getNavLayout,
   hitNav,
   activeNavId,
+  battleStatus,
   drawNav,
 };

@@ -1,0 +1,42 @@
+
+=== Part 1. 真实入口 game.js 加载（verify.js 完全没覆盖这一段） ===
+wx.ready 形态 = immediate
+  加载异常      : 无
+  createCanvas  : 1 次（真机只会创建 1 次主画布）
+  ready 调用    : 2 次
+  触摸回调注册  : start=true move=true end=true cancel=true
+  首帧绘制指令  : 1969 条
+  派发触摸后重绘: 0 条指令  （★ 没有任何绘制 → 循环已死）
+
+wx.ready 形态 = never
+  加载异常      : 无
+  createCanvas  : 0 次（真机只会创建 1 次主画布）
+  ready 调用    : 0 次
+  触摸回调注册  : start=false move=false end=false cancel=false
+  首帧绘制指令  : 0 条
+
+wx.ready 形态 = absent
+  加载异常      : 无
+  createCanvas  : 0 次（真机只会创建 1 次主画布）
+  ready 调用    : 0 次
+  触摸回调注册  : start=false move=false end=false cancel=false
+  首帧绘制指令  : 0 条
+
+
+=== Part 2. 活性探针：施加手势后，界面还能不能响应？ ===
+  共测 144 种手势组合
+  把 UI 锁死的组合：1 个
+    ★ 单击「menuBtn」 @(368,17)  → 之后界面无响应
+
+  诊断（以「从 slot0 拖到顶栏松手」为例）松手后的内部状态：
+    dragging=true  pendingDrag=true  touchStartPos=null
+    dragType=triangle  draggingFromSlot=slot  dragFromShop=false
+    gameOver=false  showMenu=false  enhancePicker=false  showPanel=false
+    ↑ handleTouchStart 第 1 行 `if (game.dragging || game.pendingDrag) return;` 会把之后**所有**触摸吃掉
+
+=== Part 3. touchend 丢失 / 多指手势 造成的悬空状态 ===
+  ① 按下商店卡后丢失 touchend → pendingDrag=false touchStartPos=null  之后点导航：★ 切不动，界面锁死  scene=battle
+  ② 按下塔槽后丢失 touchend → pendingDrag=false  之后点导航：★ 切不动，界面锁死  scene=battle
+  ③ 拖拽中丢失 touchend → dragging=false pendingDrag=false  之后点导航：★ 切不动，界面锁死  scene=battle
+  ④ touchend 时 touches 里还留着另一根手指 → 松手位置被判成 (117,815) 而不是真正的松手点
+

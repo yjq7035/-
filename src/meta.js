@@ -157,10 +157,11 @@ function resetAll() {
 
 // ==================== 积分 ====================
 
-/** 结算后的实际入账积分（天赋"洞察先机"在此生效） */
+/** 结算后的实际入账积分（天赋"洞察先机"加成、"暴利风险"扣减，在此生效） */
 function grantPoints(amount) {
   const m = get();
-  const mult = 1 + talentValue('points_gain') / 100;
+  // 暴利风险是负向的：points_gain 与 high_stakes.perLevel 相抵，最低保留 10% 产出
+  const mult = Math.max(0.1, 1 + (talentValue('points_gain') - talentValue('high_stakes')) / 100);
   const gain = Math.max(0, Math.round((amount || 0) * mult));
   m.points += gain;
   return gain;
@@ -273,15 +274,22 @@ function talentLevel(id) {
   return m.talents[id] || 0;
 }
 
-/** 天赋的数值产出（等级 × 每级数值），口径见 config.TALENT_EFFECT */
-function talentValue(id) {
+/**
+ * 天赋的数值产出（等级 × 每级数值），口径见 config.TALENT_EFFECT。
+ * @param {string} id 天赋 id
+ * @param {string} [key] 取哪一档数值，默认 'perLevel'。
+ *        双向天赋（如 high_stakes）用 'goldPerLevel' 取"增益侧"数值，
+ *        'perLevel' 取"负向侧"数值（特殊积分）。
+ */
+function talentValue(id, key) {
   const def = TALENTS.filter((t) => t.id === id)[0];
   if (!def) return 0;
   const lv = talentLevel(id);
   if (lv <= 0) return 0;
   const eff = TALENT_EFFECT[id];
   if (!eff) return lv;
-  return lv * eff.perLevel;
+  const k = key || 'perLevel';
+  return lv * (eff[k] !== undefined ? eff[k] : 0);
 }
 
 /** 学习下一级天赋 */

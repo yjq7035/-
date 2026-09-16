@@ -206,7 +206,9 @@ function drawShop(game) {
     drawOfferCard(game, card);
   }
 
-  drawButtonFx(game, ctx);
+  // 只画"归属商店层"的点击波纹（刷新按钮 / 卡片）；弹层按钮的波纹由 overlay 层负责，
+  // 否则会在商店面板位置重画一个跟菜单按钮一样大的框（幽灵框的成因之一）。
+  drawButtonFx(game, ctx, 'shop');
 }
 
 /** 单张货架卡 */

@@ -1,0 +1,33 @@
+===== .workbuddy/tmp/_verify.txt (283 lines) =====
+  battle-ready_768x1024.svg  ops=201  61.5KB
+  enhance-picker_390x844.svg  ops=181  47.4KB
+  enhance-picker_320x568.svg  ops=183  47.4KB
+  battle-panel-locked_390x844.svg  ops=155  42.1KB
+  battle-ready-scrolled_390x844.svg  ops=180  54.0KB
+  codex-scrolled_320x568.svg  ops=130  34.4KB
+  codex-sheet-tall_320x568.svg  ops=122  31.2KB
+  codex-sheet-tall_390x844.svg  ops=181  49.7KB
+  ok   SVG 全部生成   [18 张]
+
+============================================
+  通过 180   失败 0
+============================================
+
+===== .workbuddy/tmp/_shoot.txt (79 lines) =====
+  ok   enhance-picker_390x844 内容充满画布（左右均有内容）   [左 0 右 388]
+  talents_320x568: 非背景 91.3%  色簇 169  内容盒 (0,0)-(318,564)
+  ok   talents_320x568 非空白   [91.3%]
+  ok   talents_320x568 颜色层次足够（非纯色块）   [169 色簇]
+  ok   talents_320x568 内容充满画布（左右均有内容）   [左 0 右 318]
+  talents_390x844: 非背景 94%  色簇 178  内容盒 (0,0)-(388,840)
+  ok   talents_390x844 非空白   [94%]
+  ok   talents_390x844 颜色层次足够（非纯色块）   [178 色簇]
+  ok   talents_390x844 内容充满画布（左右均有内容）   [左 0 右 388]
+
+============================================
+  截图 54 通过  0 失败
+============================================
+
+===== .workbuddy/tmp/_syntax.txt (2 lines) =====
+共 22 个文件
+全部通过

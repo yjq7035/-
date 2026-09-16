@@ -10,14 +10,15 @@
 // 交互：点卡片 → 底部弹出详情面板（属性 + 解锁/升级 + 登场/下架）；点空白关闭。
 // ============================================================================
 
-const { TOWER_ORDER, TOWER_DEFS, LAYOUT, CODEX, RARITY } = require('./config');
+const { TOWER_ORDER, TOWER_DEFS, TOWER_STATS, LAYOUT, CODEX, RARITY } = require('./config');
 const theme = require('./theme');
 const towerMod = require('./tower');
 const meta = require('./meta');
 
 const {
   THEME, roundRectPath, drawTowerIcon, drawChip, drawButton, drawStar,
-  drawLockIcon, drawTaperedDivider, ellipsize,
+  drawLockIcon, drawTaperedDivider, ellipsize, drawScrollBar, drawScrollHint,
+  wrapTextLines,
 } = theme;
 
 const CODEX_UI = {
@@ -27,31 +28,80 @@ const CODEX_UI = {
   headerH: 30,
   gridTopGap: 12,
   cellMaxH: 106,
-  cellMinH: 72,
-  sheetH: 184,
+  cellMinH: 88,
+  sheetH: 190,        // 详情面板【基准】高（描述恰好 1 行时）；描述换行多出来的行数会把它撑高
+  descPadX: 14,       // 描述文字左右内边距（相对详情面板）
+  descFont: '11px Arial',
+  descLineH: 14,      // 描述行高
+  descTop: 52,        // 描述首行中心相对面板顶的偏移
   sheetGap: 8,
-  gridBottomPad: 14,
+  gridBottomPad: 16,
 };
+
+/** 描述文字的最大可用宽度（面板内左右各留 descPadX） */
+function descMaxWidth(W) {
+  return (W - CODEX_UI.padX * 2) - CODEX_UI.descPadX * 2;
+}
+
+/**
+ * 某塔的介绍文字在详情面板里会占几行（用于把面板高度算准，见 getCodexLayout）。
+ * 说明：面板高度必须与"绘制时同样的换行结果"一致，所以这里复用一个换行函数，
+ *      字体也走同一份配置（CODEX_UI.descFont）。
+ * @returns {string[]} 行数组（至少 1 行）
+ */
+function getDescLines(game, type) {
+  const st = type ? TOWER_STATS[type] : null;
+  const text = st && st.description ? st.description : '';
+  if (!text) return [''];
+  const lines = wrapTextLines(game.ctx, text, descMaxWidth(game.canvas.width), CODEX_UI.descFont);
+  return lines.length ? lines : [''];
+}
+
 
 /**
  * 图签布局（纯函数，渲染/输入共用）
- * @returns {{ cols, rows, header, grid: Array, sheet, cursor }}
+ *
+ * 滚动约定（2026-09 新增）：
+ *   · 格高按"整屏可用高"一次算定，**不随详情面板开合变化**（否则点一下卡片整张网重排、视觉抖）
+ *   · 视口 = [gridTop, 视口底]（详情面板打开时视口底收窄到面板之上）
+ *   · 内容比视口高 → maxScroll > 0，靠上下拖动看；滚动条把这件事画出来
+ *
+ * @returns {{ cols, rows, cellW, cellH, gridY, header, grid, sheet, navTop,
+ *             viewport, contentH, maxScroll, scroll }}
  */
 function getCodexLayout(game) {
   const W = game.canvas.width;
   const H = game.canvas.height;
   const navTop = H - LAYOUT.navHeight;
 
-  const cols = W < 420 ? 3 : 4;
+  // 4 列固定：图形塔已扩到 16 种，3 列会变成 6 行把格网挤出屏幕
+  const cols = 4;
   const total = TOWER_ORDER.length;
   const rows = Math.ceil(total / cols);
 
   const cellW = Math.floor((W - CODEX_UI.padX * 2 - (cols - 1) * CODEX_UI.gap) / cols);
   const gridY = CODEX_UI.headerTop + CODEX_UI.headerH + CODEX_UI.gridTopGap;
-  const availH = navTop - CODEX_UI.gridBottomPad - gridY;
 
-  let cellH = Math.floor((availH - (rows - 1) * CODEX_UI.gap) / rows);
-  cellH = Math.max(CODEX_UI.cellMinH, Math.min(CODEX_UI.cellMaxH, cellH));
+  // ---- 格高：按面板收起时的整屏可用高来定（稳定）----
+  const fullBottom = navTop - CODEX_UI.gridBottomPad;
+  const fullH = Math.max(0, fullBottom - gridY);
+  const fitH = Math.floor((fullH - (rows - 1) * CODEX_UI.gap) / rows);
+  let cellH = Math.max(CODEX_UI.cellMinH, Math.min(CODEX_UI.cellMaxH, fitH));
+  // 极矮屏：连 cellMinH 都塞不下时才继续缩（宁可格子扁一点，也不能一屏连一行都放不下）
+  if (fitH < CODEX_UI.cellMinH) cellH = Math.max(38, fitH);
+
+  // ---- 视口：详情面板打开时把底部让出来 ----
+  // 面板高度自适应：介绍文字过长会自动换行（见 drawSheet），
+  // 每多一行就把面板顶往上一行，保证"描述永远完整、不被按钮压住、也不越出屏幕"。
+  const descLineCount = getDescLines(game, game.codexSelected).length;
+  const sheetH = CODEX_UI.sheetH + Math.max(0, descLineCount - 1) * CODEX_UI.descLineH;
+  const sheetTop = navTop - sheetH - CODEX_UI.sheetGap;
+  const viewportBottom = game.codexSelected ? (sheetTop - 6) : fullBottom;
+  const viewportH = Math.max(0, viewportBottom - gridY);
+
+  const contentH = rows * cellH + (rows - 1) * CODEX_UI.gap;
+  const maxScroll = Math.max(0, contentH - viewportH);
+  const scroll = Math.max(0, Math.min(maxScroll, game.codexScroll || 0));
 
   const gridW = cols * cellW + (cols - 1) * CODEX_UI.gap;
   const x0 = Math.round((W - gridW) / 2);
@@ -63,7 +113,7 @@ function getCodexLayout(game) {
       idx: i,
       type: type,
       x: x0 + c * (cellW + CODEX_UI.gap),
-      y: gridY + r * (cellH + CODEX_UI.gap),
+      y: gridY + r * (cellH + CODEX_UI.gap) - scroll,
       w: cellW,
       h: cellH,
     };
@@ -81,15 +131,31 @@ function getCodexLayout(game) {
     points:   { x: pointsX, y: headerCY - 10, w: pointsW, h: 20 },
   };
 
-  // 详情面板（底部弹出，压在格网之上）
+  // 详情面板（底部弹出，压在格网之上；高度随介绍文字行数自适应）
   const sheet = {
     x: CODEX_UI.padX,
-    y: navTop - CODEX_UI.sheetH - CODEX_UI.sheetGap,
+    y: sheetTop,
     w: W - CODEX_UI.padX * 2,
-    h: CODEX_UI.sheetH,
+    h: sheetH,
   };
 
-  return { cols, rows, cellW, cellH, gridY, header, grid, sheet, navTop };
+  return {
+    cols, rows, cellW, cellH, gridY, header, grid, sheet, navTop,
+    viewport: { x: 0, y: gridY, w: W, h: viewportH },
+    contentH, maxScroll, scroll,
+  };
+}
+
+/** 把滚动值夹到合法区间并写回 game（输入层滚动手势用） */
+function setCodexScroll(game, value) {
+  const L = getCodexLayout(game);
+  game.codexScroll = Math.max(0, Math.min(L.maxScroll, value || 0));
+  return game.codexScroll;
+}
+
+/** 图签格网当前是否需要滚动 */
+function isCodexScrollable(game) {
+  return getCodexLayout(game).maxScroll > 0;
 }
 
 /** 详情面板内的按钮矩形（依赖当前选中塔的状态） */
@@ -105,7 +171,7 @@ function getSheetButtons(game, sheet) {
 }
 
 /**
- * 命中检测（详情面板优先于格网）
+ * 命中检测（详情面板优先于格网；已被滚出视口的格子不可点）
  * @returns {{kind:'upgrade'|'lineup'|'card'|'close', type?:string}|null}
  */
 function hitCodex(game, pos) {
@@ -119,8 +185,13 @@ function hitCodex(game, pos) {
     if (theme.pointInRect(pos, L.sheet)) return { kind: 'none' }; // 面板内空白 → 吞掉，不误触格网
   }
 
-  for (const cell of L.grid) {
-    if (theme.pointInRect(pos, cell)) return { kind: 'card', type: cell.type };
+  // 视口外的格子（滚上去/滚下去的那些）不参与命中，否则会点到屏幕上看不见的卡
+  const v = L.viewport;
+  if (pos.y >= v.y && pos.y <= v.y + v.h) {
+    for (const cell of L.grid) {
+      if (cell.y + cell.h <= v.y || cell.y >= v.y + v.h) continue;
+      if (theme.pointInRect(pos, cell)) return { kind: 'card', type: cell.type };
+    }
   }
 
   return { kind: 'close' };
@@ -169,16 +240,31 @@ function drawCodex(game) {
     bg: 'rgba(179, 136, 255, 0.12)', stroke: 'rgba(179, 136, 255, 0.35)',
   });
 
-  // 格网下方的规则说明（一行小字，位置在详情面板之上，不会被压住）
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = '10px Arial';
-  ctx.fillStyle = THEME.text.off;
-  ctx.fillText(`图签每级 +${CODEX.bonusPerLevel}% 攻击力 · 只有登场的图形塔会出现在商店`,
-    W / 2, L.grid[L.grid.length - 1].y + L.grid[L.grid.length - 1].h + 9);
+  // 规则说明（一行小字）：贴在视口下沿之外、导航栏之上；详情面板打开时会被面板盖住，不再画
+  if (!game.codexSelected) {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '10px Arial';
+    ctx.fillStyle = THEME.text.off;
+    ctx.fillText(`图签每级 +${CODEX.bonusPerLevel}% 攻击力 · 只有登场的图形塔会出现在商店`,
+      W / 2, L.navTop - CODEX_UI.gridBottomPad / 2 - 2);
+  }
 
-  // ---- 格网 ----
-  for (const cell of L.grid) drawCodexCell(game, cell);
+  // ---- 格网（裁剪在视口内，超出部分靠上下拖动看）----
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(L.viewport.x, L.viewport.y, L.viewport.w, L.viewport.h);
+  ctx.clip();
+  for (const cell of L.grid) {
+    if (cell.y + cell.h <= L.viewport.y) continue;
+    if (cell.y >= L.viewport.y + L.viewport.h) continue;
+    drawCodexCell(game, cell);
+  }
+  ctx.restore();
+
+  // ---- 滚动条 + 上下渐隐箭头：把"还能滑"画出来 ----
+  drawScrollBar(ctx, L.viewport, L.scroll, L.maxScroll, L.viewport.h, L.contentH);
+  drawScrollHint(ctx, L.viewport, L.scroll, L.maxScroll, 'rgba(26, 26, 46, 0.95)', THEME.accent.violet);
 
   // ---- 详情面板 ----
   if (game.codexSelected) drawSheet(game, L);
@@ -217,8 +303,9 @@ function drawCodexCell(game, cell) {
   ctx.fill();
   ctx.stroke();
 
-  // 图标（未解锁 → 灰剪影）
-  drawTowerIcon(ctx, x + w / 2, y + h * 0.36, unlocked ? def.color : THEME.text.off, cell.type, 0.94);
+  // 图标（未解锁 → 灰剪影）；格子矮时同步缩小，避免图标压到名称
+  const iconScale = Math.max(0.5, Math.min(0.94, h / 112));
+  drawTowerIcon(ctx, x + w / 2, y + h * 0.36, unlocked ? def.color : THEME.text.off, cell.type, iconScale);
 
   if (!unlocked) {
     // 未解锁遮罩 + 锁
@@ -302,7 +389,7 @@ function drawSheet(game, L) {
 
   // 标题区：图标 + 名称 + 稀有度 + 关闭提示
   const iconX = sheet.x + 30;
-  const iconY = sheet.y + 30;
+  const iconY = sheet.y + 22;
   drawTowerIcon(ctx, iconX, iconY, unlocked ? def.color : THEME.text.off, type);
 
   ctx.textAlign = 'left';
@@ -322,18 +409,28 @@ function drawSheet(game, L) {
   ctx.fillStyle = THEME.text.off;
   ctx.fillText('点空白关闭', sheet.x + sheet.w - 14, sheet.y + 22);
 
-  // 描述（最多两行）
+  // 分隔线①：标题与下方正文之间（此前缺这一条，标题和描述糊在一起）
+  drawTaperedDivider(ctx, sheet.x + sheet.w / 2, sheet.y + 38, sheet.w - 28, 4);
+
+  // ---- 描述：按面板宽度【自动换行】（面板高度已按行数算好，见 getCodexLayout）----
+  // 早期这里用 ellipsize 压成一行，长介绍会被硬截成"…但完全没有"这种半句；
+  // 现在整段换行显示，行数变化由 sheet.h 承接，下面的内容整体下移同样多的距离。
+  const descLines = getDescLines(game, type);
+  const descShift = Math.max(0, descLines.length - 1) * CODEX_UI.descLineH;
+
   ctx.textAlign = 'left';
-  ctx.font = '11px Arial';
+  ctx.textBaseline = 'middle';
+  ctx.font = CODEX_UI.descFont;
   ctx.fillStyle = THEME.text.secondary;
-  const lines = theme.wrapTextLines(ctx, stats.description || '', sheet.w - 28, '11px Arial').slice(0, 2);
-  lines.forEach((ln, i) => ctx.fillText(ln, sheet.x + 14, sheet.y + 46 + i * 14));
+  for (let i = 0; i < descLines.length; i++) {
+    ctx.fillText(descLines[i], sheet.x + CODEX_UI.descPadX, sheet.y + CODEX_UI.descTop + i * CODEX_UI.descLineH);
+  }
 
-  // 分隔线
-  drawTaperedDivider(ctx, sheet.x + sheet.w / 2, sheet.y + 78, sheet.w - 28, 4);
+  // 分隔线②：描述与属性数值区之间（随描述行数下移）
+  drawTaperedDivider(ctx, sheet.x + sheet.w / 2, sheet.y + 66 + descShift, sheet.w - 28, 4);
 
-  // 属性行（含图签加成）——三等分，窄面板也不重叠
-  const attrY = sheet.y + 92;
+  // 属性行（含图签加成）——三等分，窄面板也不重叠（整块随描述行数下移）
+  const attrY = sheet.y + 82 + descShift;
   const colW = (sheet.w - 28) / 3;
   ctx.textAlign = 'left';
   ctx.font = '11px Arial';
@@ -351,11 +448,25 @@ function drawSheet(game, L) {
   ctx.fillText(`射程 ${stats.range}`, sheet.x + 14 + colW, attrY);
   ctx.fillText(`生命 ${stats.hp}`, sheet.x + 14 + colW * 2, attrY);
 
-  // 图签等级（第二行左侧，避免与属性行/按钮挤在一起）
+  // 第二属性行：暴击率 / 暴击伤害 / 穿透（辅助塔无此三项）
+  if (!isSupport) {
+    const row2Y = attrY + 18;
+    const crit = (stats.critChance || 0);
+    const critMult = stats.critMult || 1.5;
+    const pen = stats.penetration || 0;
+    ctx.fillStyle = THEME.accent.cyan;
+    ctx.fillText(`暴击 ${crit}%`, sheet.x + 14, row2Y);
+    ctx.fillStyle = THEME.text.dim;
+    ctx.fillText(`暴伤 ${Math.round(critMult * 100)}%`, sheet.x + 14 + colW, row2Y);
+    ctx.fillStyle = THEME.accent.gold;
+    ctx.fillText(`穿透 ${pen}`, sheet.x + 14 + colW * 2, row2Y);
+  }
+
+  // 图签等级（第三行左侧，避免与属性行/按钮挤在一起）
   ctx.textAlign = 'left';
   ctx.font = 'bold 11px Arial';
   ctx.fillStyle = THEME.accent.violet;
-  ctx.fillText(unlocked ? `图签 Lv.${level}/${CODEX.maxLevel}  ·  伤害 +${Math.round((dmgMult - 1) * 100)}%` : '未解锁（需 ✨' + cost + '）', sheet.x + 14, attrY + 20);
+  ctx.fillText(unlocked ? `图签 Lv.${level}/${CODEX.maxLevel}  ·  伤害 +${Math.round((dmgMult - 1) * 100)}%` : '未解锁（需 ✨' + cost + '）', sheet.x + 14, attrY + 36);
 
   // ---- 按钮 1：解锁 / 升级 ----
   let upLabel, upEnabled, upSub;
@@ -467,6 +578,9 @@ module.exports = {
   CODEX_UI,
   getCodexLayout,
   getSheetButtons,
+  getDescLines,
+  setCodexScroll,
+  isCodexScrollable,
   hitCodex,
   drawCodex,
   actCodex,

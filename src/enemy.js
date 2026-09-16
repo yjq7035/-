@@ -46,6 +46,8 @@ function spawnEnemy(type, pathPoints, waveNumber) {
   enemy.speed = config.speed * finalSpeedBonus;
   enemy.color = config.color;
   enemy.tier = config.tier;
+  // 固定护甲（减伤值）：与塔的穿透抵扣，见 game_core.applyDamage
+  enemy.armor = config.armor || 0;
   // 击杀奖励：基础奖励 + 每波加成（rewardPerWave 未配置则为固定奖励）
   enemy.reward = config.reward + (config.rewardPerWave || 0) * (waveNumber || 1);
   enemy.size = config.size;

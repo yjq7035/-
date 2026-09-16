@@ -1,0 +1,88 @@
+﻿=== git status ===
+ M .workbuddy/memory/2026-09-16.md
+ D .workbuddy/preview/shot_battle.html
+ D .workbuddy/preview/shot_codex.html
+ D .workbuddy/preview/shot_codexMaxed.html
+ D .workbuddy/preview/shot_codexUnlocked.html
+ D .workbuddy/preview/shot_levels.html
+ D .workbuddy/preview/shot_shopEdge.html
+ D .workbuddy/preview/shot_shopZoom.html
+ D .workbuddy/preview/shot_talents.html
+ D .workbuddy/preview/tower_panel_preview.svg
+ D .workbuddy/preview/v2_all.html
+ D .workbuddy/preview/v2_battle.png
+ D .workbuddy/preview/v2_battle.svg
+ D .workbuddy/preview/v2_codex.png
+ D .workbuddy/preview/v2_codex.svg
+ D .workbuddy/preview/v2_codexMaxed.png
+ D .workbuddy/preview/v2_codexMaxed.svg
+ D .workbuddy/preview/v2_codexUnlocked.png
+ D .workbuddy/preview/v2_codexUnlocked.svg
+ D .workbuddy/preview/v2_levels.png
+ D .workbuddy/preview/v2_levels.svg
+ D .workbuddy/preview/v2_shopEdge.png
+ D .workbuddy/preview/v2_shopEdge.svg
+ D .workbuddy/preview/v2_shopZoom.png
+ D .workbuddy/preview/v2_talents.png
+ D .workbuddy/preview/v2_talents.svg
+ M src/bonusStats.js
+ M src/codex.js
+ M src/config.js
+ M src/enemy.js
+ M src/game_core.js
+ M src/input.js
+ M src/levels.js
+ M src/meta.js
+ M src/nav.js
+ M src/renderer.js
+ M src/shop.js
+ M src/talents.js
+ M src/theme.js
+ M src/tower.js
+?? .workbuddy/preview/talents_320x568.png
+?? .workbuddy/preview/talents_390x844.png
+?? .workbuddy/preview/zoom_codex-sheet_390x844.png
+?? ".workbuddy/preview/\345\274\272\345\214\226\346\224\271\351\200\240_\351\242\204\350\247\210.html"
+?? .workbuddy/tmp/
+?? .workbuddy/tools/
+?? src/enhance.js
+?? src/gamemenu.js
+
+=== git log ===
+686864d feat: 瀹屾垚v2澶х増鏈噸鏋勶紝鏂板瀵艰埅/鍥剧/澶╄祴/鍏冲崱绯荤粺
+0e744e9 浜屻€囦簩鍏勾涔濇湀鍗佸叚鏃?8cb1af4 2026-9-16
+3c2d217 2026-9-15
+515d8fc 浜屻€囦簩鍏勾涔濇湀鍗佷簲鏃?2ae899e 2026-9-15
+a1ea59a 2026-9-15
+9a5b3ed 2026-9-15
+861e5ed 2026-9-15
+d4ce7d8 2026骞?鏈?5鏃?bcde9e0 refactor(renderer): 閲嶆瀯娉㈡鏍囬UI锛岀粺涓€椋庢牸涓庣Н鍒嗘潯
+d3b92fd 2026-9-14
+81fda71 feat: 瀹屾垚濉旈槻娓告垙鏍稿績鍔熻兘杩唬锛屾柊澧炴€墿鐢熷懡鍊肩缉鏀俱€佸鍗囩骇绯荤粺涓庝簨浠舵€荤嚎
+99362ed chore: add SHOP_TOWERS import from config
+1101ca7 refactor: 灏嗗崟鏂囦欢game.js鎷嗗垎涓哄妯″潡缁勭粐浠ｇ爜
+affe0a5 chore: 瀹屾垚寰俊灏忔父鎴忛」鐩噸鏋勬敹灏?ed16bdd 1
+9ffade3 2026骞?鏈?3鏃?aaf4a40 style(ui.js): 绉婚櫎澶氫綑鐨勭┖琛?f06e9a9 feat: 鍒濆鍖栧闃叉父鎴忛」鐩紝瀹屾垚鍩虹妗嗘灦鍜屾牳蹇冨姛鑳?
+
+=== recent files ===
+2026-09-16 11:08:57  F:\图形塔防\.workbuddy\tools\verify.js
+2026-09-16 11:08:44  F:\图形塔防\src\input.js
+2026-09-16 11:04:53  F:\图形塔防\src\bonusStats.js
+2026-09-16 11:03:38  F:\图形塔防\src\config.js
+2026-09-16 10:58:23  F:\图形塔防\src\tower.js
+2026-09-16 10:58:15  F:\图形塔防\src\renderer.js
+2026-09-16 10:57:38  F:\图形塔防\src\enhance.js
+2026-09-16 10:56:14  F:\图形塔防\src\game_core.js
+2026-09-16 10:31:19  F:\图形塔防\src\levels.js
+2026-09-16 10:31:11  F:\图形塔防\src\nav.js
+2026-09-16 10:30:39  F:\图形塔防\src\gamemenu.js
+2026-09-16 10:29:11  F:\图形塔防\.workbuddy\tmp\repro_ghost.js
+2026-09-16 10:25:23  F:\图形塔防\src\codex.js
+2026-09-16 10:24:34  F:\图形塔防\src\shop.js
+2026-09-16 10:24:08  F:\图形塔防\src\theme.js
+2026-09-16 10:00:01  F:\图形塔防\.workbuddy\tools\probe.js
+2026-09-16 09:57:33  F:\图形塔防\.workbuddy\tools\zoom.js
+2026-09-16 09:42:26  F:\图形塔防\src\talents.js
+2026-09-16 09:30:40  F:\图形塔防\.workbuddy\tools\syntax.js
+2026-09-16 09:27:45  F:\图形塔防\.workbuddy\tools\shoot.js
+

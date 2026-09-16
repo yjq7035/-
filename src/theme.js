@@ -185,11 +185,12 @@ function applyTowerStyle(ctx, x, y, color, approxR) {
   ctx.stroke();
 }
 
-// ========== 图形塔图标（12 种轮廓，全项目统一绘制入口）==========
-// 方向语义保持原样：三角 / 扇 / 半圆 仍按攻击朝向绘制（正右方为 0 度）。
+// ========== 图形塔图标（16 种轮廓，全项目统一绘制入口）==========
+// 方向语义保持原样：三角 / 扇 / 半圆 / 箭形 仍按攻击朝向绘制（正右方为 0 度）。
 const TOWER_SHAPES = [
   'triangle', 'circle', 'hexagon', 'square', 'trapezoid', 'semicircle',
   'sector', 'long_rectangle', 'diamond', 'pentagon', 'oval', 'star',
+  'octagon', 'cross', 'arrow', 'bolt',
 ];
 
 /**
@@ -349,6 +350,70 @@ function drawTowerIcon(ctx, x, y, color, type, scale) {
       break;
     }
 
+    case 'octagon': {
+      // 八边塔 - 正八边形
+      const or_ = 12;
+      approxR = or_;
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const angle = (Math.PI / 4) * i - Math.PI / 8;
+        const px = x + or_ * Math.cos(angle);
+        const py = y + or_ * Math.sin(angle);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      break;
+    }
+
+    case 'cross': {
+      // 十字塔 - 等臂十字（12 个顶点的凹多边形，绕行一圈闭合）
+      const arm = 7, len = 13;
+      approxR = len;
+      const pts = [
+        [-arm, -len], [arm, -len], [arm, -arm], [len, -arm],
+        [len, arm], [arm, arm], [arm, len], [-arm, len],
+        [-arm, arm], [-len, arm], [-len, -arm], [-arm, -arm],
+      ];
+      ctx.beginPath();
+      pts.forEach((p, i) => {
+        const px = x + p[0], py = y + p[1];
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+      ctx.closePath();
+      break;
+    }
+
+    case 'arrow': {
+      // 箭形塔 - 箭头朝右（与攻击方向一致）：箭尖 + 双翼 + 尾杆
+      approxR = 13;
+      ctx.beginPath();
+      ctx.moveTo(x + 15, y);            // 箭尖
+      ctx.lineTo(x + 4, y - 11);        // 上翼
+      ctx.lineTo(x + 4, y - 4.5);
+      ctx.lineTo(x - 12, y - 4.5);      // 尾杆上沿
+      ctx.lineTo(x - 12, y + 4.5);
+      ctx.lineTo(x + 4, y + 4.5);
+      ctx.lineTo(x + 4, y + 11);        // 下翼
+      ctx.closePath();
+      break;
+    }
+
+    case 'bolt': {
+      // 闪电塔 - 双折闪电（上宽下尖，重心偏上）
+      approxR = 13;
+      ctx.beginPath();
+      ctx.moveTo(x + 2, y - 13);
+      ctx.lineTo(x - 9, y + 2);
+      ctx.lineTo(x - 1, y + 2);
+      ctx.lineTo(x - 5, y + 13);
+      ctx.lineTo(x + 9, y - 3);
+      ctx.lineTo(x + 1, y - 3);
+      ctx.closePath();
+      break;
+    }
+
     default: {
       // 未知类型：兜底画圆，避免静默不画
       approxR = 11;
@@ -504,15 +569,31 @@ function drawButton(ctx, o) {
 
 /**
  * 绘制按钮点击波纹（释放瞬间）：从按钮中心扩散的圆角矩形光环，短时间内透明度衰减。
- * game.buttonFx = { x, y, w, h, t0, duration, color }。
+ * game.buttonFx = { x, y, w, h, t0, duration, color, layer }。
+ *
+ * ⚠️ 两个历史坑（都是"幽灵红框/绿框永久挂在屏幕上"的成因，别改回去）：
+ *   ① duration 单位是【毫秒】（flashButton 写死 450）。早期这里误写成
+ *      `(now - t0) / (duration * 1000)`，等于把 450ms 当成 450 秒 →
+ *      波纹 7.5 分钟不消失，而且每一帧都被绘制层重画，看起来就是个永久框；
+ *      只有下一次 flashButton（比如点"更新"）把它替换掉才会"突然消失"。
+ *   ② 波纹要按【层】绘制：flashButton 记下发起它的层（'shop' / 'overlay'），
+ *      绘制方传同一个 layer 才会画。否则商店层会替菜单/面板的按钮画波纹 —— 
+ *      于是战场中间凭空出现一个跟按钮一样大的框。
+ * 另外加了 2s 硬上限：万一某层的 fx 没人负责绘制（切场景），也不会永久残留。
+ *
+ * @param {string} [layer] 绘制层；不传 = 任意层都可绘制（兼容旧调用）
  */
-function drawButtonFx(game, ctx) {
+function drawButtonFx(game, ctx, layer) {
   const fx = game.buttonFx;
   if (!fx) return;
+  // 归属层不匹配 → 不画也【不清】，交给它自己的层去画/清
+  if (layer && fx.layer && fx.layer !== layer) return;
 
   const now = Date.now();
-  const p = (now - fx.t0) / (fx.duration * 1000);
-  if (p >= 1) {
+  const age = now - fx.t0;
+  const dur = fx.duration > 0 ? fx.duration : 450;
+  const p = age / dur;
+  if (p >= 1 || age > 2000) {
     game.buttonFx = null;
     return;
   }
@@ -636,6 +717,84 @@ function drawDashedBox(ctx, x, y, w, h, r, color) {
   ctx.restore();
 }
 
+/**
+ * 绘制竖直滚动条（细条，靠轨道右侧）——把"这里能上下滑"变成看得见的东西。
+ * 不需要滚动（maxScroll <= 0）时什么都不画。
+ * @param {object} track 视口矩形 {x,y,w,h}
+ * @param {number} scroll 当前滚动量
+ * @param {number} maxScroll 最大滚动量
+ * @param {number} viewportH 视口高（= track.h，显式传入便于调用方自查）
+ * @param {number} contentH 内容总高
+ */
+function drawScrollBar(ctx, track, scroll, maxScroll, viewportH, contentH) {
+  if (!(maxScroll > 0) || !(contentH > 0) || !(viewportH > 0)) return;
+  const w = 3;
+  const x = track.x + track.w - w - 2;
+  const ratio = Math.max(0.08, Math.min(1, viewportH / contentH));
+  const thumbH = Math.max(20, track.h * ratio);
+  const travel = track.h - thumbH;
+  const t = Math.max(0, Math.min(1, scroll / maxScroll));
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.10)';
+  roundRectPath(ctx, x, track.y, w, track.h, w / 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.42)';
+  roundRectPath(ctx, x, track.y + travel * t, w, thumbH, w / 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * 上下渐隐 + 呼吸箭头：暗示"还能继续滑"。
+ * @param {string} [bg] 渐隐用的底色（默认页面底色）
+ * @param {string} [accent] 箭头颜色
+ */
+function drawScrollHint(ctx, viewport, scroll, maxScroll, bg, accent) {
+  if (!(maxScroll > 0)) return;
+  const fadeH = 16;
+  const t = Date.now() / 700;
+  const blink = 0.35 + 0.35 * Math.abs(Math.sin(t));
+  const base = bg || THEME.surface.page;
+
+  ctx.save();
+  if (scroll > 2) {
+    const g1 = ctx.createLinearGradient(0, viewport.y, 0, viewport.y + fadeH);
+    g1.addColorStop(0, base);
+    g1.addColorStop(1, 'rgba(26, 26, 46, 0)');
+    ctx.fillStyle = g1;
+    ctx.fillRect(viewport.x, viewport.y, viewport.w, fadeH);
+    ctx.globalAlpha = blink;
+    drawChevron(ctx, viewport.x + viewport.w / 2, viewport.y + 7, -1, accent || THEME.accent.cyan);
+    ctx.globalAlpha = 1;
+  }
+  if (scroll < maxScroll - 2) {
+    const g2 = ctx.createLinearGradient(0, viewport.y + viewport.h - fadeH, 0, viewport.y + viewport.h);
+    g2.addColorStop(0, 'rgba(26, 26, 46, 0)');
+    g2.addColorStop(1, base);
+    ctx.fillStyle = g2;
+    ctx.fillRect(viewport.x, viewport.y + viewport.h - fadeH, viewport.w, fadeH);
+    ctx.globalAlpha = blink;
+    drawChevron(ctx, viewport.x + viewport.w / 2, viewport.y + viewport.h - 7, 1, accent || THEME.accent.cyan);
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
+/** 小箭头（滚动提示用） */
+function drawChevron(ctx, cx, cy, dir, color) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx - 5, cy + dir * 2.5);
+  ctx.lineTo(cx, cy - dir * 2.5);
+  ctx.lineTo(cx + 5, cy + dir * 2.5);
+  ctx.stroke();
+  ctx.restore();
+}
+
 module.exports = {
   THEME,
   TOWER_SHAPES,
@@ -659,4 +818,7 @@ module.exports = {
   drawPillTitle,
   drawLockIcon,
   drawDashedBox,
+  drawScrollBar,
+  drawScrollHint,
+  drawChevron,
 };

@@ -27,7 +27,7 @@ const RARITY = {
   3: { key: 3, name: '史诗', color: '#FFB74D' },
 };
 
-// ========== 全部塔定义（12 种，图签"最低 10 个起步"的容量已达标）==========
+// ========== 全部塔定义（16 种）==========
 // color = 战场身份色；cost = 基础造价；rarity = 稀有度(1~3)
 const TOWER_DEFS = {
   triangle:      { name: '三角塔', color: '#FF4444', cost: 100, rarity: 1 },
@@ -42,28 +42,101 @@ const TOWER_DEFS = {
   pentagon:      { name: '五边塔', color: '#7CFF6B', cost: 320, rarity: 2 },
   oval:          { name: '椭圆塔', color: '#B0BEC5', cost: 260, rarity: 1 },
   star:          { name: '星形塔', color: '#FF7BAC', cost: 420, rarity: 3 },
+  // ---- 第二批扩展图形（图签容量提升到 16 格）----
+  octagon:       { name: '八边塔', color: '#00BFA5', cost: 240, rarity: 2 },
+  cross:         { name: '十字塔', color: '#F50057', cost: 210, rarity: 1 },
+  arrow:         { name: '箭形塔', color: '#FFA000', cost: 280, rarity: 2 },
+  bolt:          { name: '闪电塔', color: '#D500F9', cost: 380, rarity: 3 },
 };
 
 // 塔的详细属性（含攻击间隔秒数）
 // 注：本批新增的 4 种塔（diamond / pentagon / oval / star）走 game_core 的"普通塔单体攻击"
 //     通用分支，因此必须提供 attackInterval，否则 attackTimer 会变成 NaN → 每帧开火。
+//
+// 战斗三属性口径（2026-09 二次修订，务必别改错）：
+//   critChance  暴击率(%)    —— 【原生值默认 0】。唯一例外是"特殊效果本身就是暴击"的三角塔（5%）。
+//                               其余塔的暴击只能来自「强化」——每塔的专属特殊属性之一是暴击几率时
+//                               （星形塔 / 闪电塔）才堆得起来（见 ENHANCE_SPECIAL）。
+//   penetration 穿透       —— 【原生值默认 0】。只有把穿透定为专属特殊属性的塔
+//                               （半圆塔 / 菱形塔 / 箭形塔）才能靠强化抵消敌人抗性。
+//   critMult    暴击倍率     —— 保留为塔的"上限特征"（如闪电塔 2.0、星形塔 2.0）。
+//                               暴击率为 0 时它不参与结算，等强化出暴击率后才会兑现。
+//   注：敌人抗性减伤见 BALANCE.armorK 的递减公式；穿透为 0 时按"无抵扣"结算。
+//
+// 四条"专属特殊属性"的来源字段（由 ENHANCE_SPECIAL 逐级抬高，见该表）：
+//   eliteMult        精英伤害倍率 —— 六边塔：对 tier>=3（精英/BOSS/最终BOSS）的伤害倍数
+//   projectileScale  弹道体积(%)   —— 正方塔：冲锋弹道的缩放百分比（100 = 原始体积）
+//   sectorHalfAngle  扇面半张角(°) —— 扇塔：扇形张角的一半（45 = 上下各 45°，共 90°）
+//   stackMax         堆叠上限(层) —— 长方塔：同一目标可累积的最大堆叠层数
 const TOWER_STATS = {
-  triangle:      { hp: 100, damage: 20, range: 200, attackSpeedMultiplier: 100, attackInterval: 0.5, isSupport: false, description: '快速射击，对单个目标造成持续伤害。适合应对大量敌人。' },
-  circle:        { hp: 150, damage: 25, range: 200, attackSpeedMultiplier: 100, attackInterval: 0.8, isSupport: false, description: '攻击命中时触发二次爆炸，对周围敌人造成25%溅射伤害。适合对付聚集的敌人。' },
-  hexagon:       { hp: 200, damage: 50, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.2, isSupport: false, description: '强力狙击射击，对单一目标造成高额伤害。对精英及以上等级怪物特攻，伤害翻倍。' },
-  square:        { hp: 220, damage: 30, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.5, isSupport: false, description: '旋转冲锋攻击，直线穿透多个敌人。均衡的单体输出，适合应对各类敌人。' },
-  trapezoid:     { hp: 230, damage: 0, range: 150, attackSpeedMultiplier: 0, isSupport: true, supportBuff: { attackSpeedMultiplier: 25 }, description: '辅助塔，不提供攻击。给周围我方图形塔增加25%攻击速度光环；自身每进阶一星光环强度+100%，高阶光环覆盖低阶光环。' },
-  semicircle:    { hp: 130, damage: 2, range: 200, attackSpeedMultiplier: 100, attackInterval: 0.15, isSupport: false, description: '持续激光连接目标，对连接的敌人造成持续伤害。适合对付高血量单体目标。' },
-  sector:        { hp: 180, damage: 25, range: 250, attackSpeedMultiplier: 100, attackInterval: 3.0, isSupport: false, description: '扇形范围攻击，AOE伤害覆盖大面积区域。适合对付密集敌人群。' },
-  long_rectangle:{ hp: 250, damage: 2, range: 200, attackSpeedMultiplier: 100, attackInterval: 0.25, isSupport: false, description: '堆叠火炮系统，对重复单位攻击时叠加伤害，累积层数后造成巨额爆发。适合对付BOSS级别敌人。' },
-  diamond:       { hp: 170, damage: 38, range: 210, attackSpeedMultiplier: 100, attackInterval: 1.0, isSupport: false, description: '锐击穿刺，单发伤害高且射程略长。均衡的切入型输出塔，前期性价比优秀。' },
-  pentagon:      { hp: 260, damage: 62, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.4, isSupport: false, description: '稳重的重击塔，血厚攻高，节奏偏慢。适合站在前排槽位承担主力输出。' },
-  oval:          { hp: 140, damage: 12, range: 260, attackSpeedMultiplier: 100, attackInterval: 0.4, isSupport: false, description: '超远射程的快射塔，单发伤害低但覆盖全图大部分路径。适合补刀漏网之鱼。' },
-  star:          { hp: 300, damage: 96, range: 240, attackSpeedMultiplier: 100, attackInterval: 2.0, isSupport: false, description: '六芒重炮，全塔最高单发伤害，换弹极慢。配合攻速光环可碾压精英与BOSS。' },
+  // 三角塔：特殊效果 = 暴击 → 唯一持有原生暴击几率的塔（5%），仍无穿透
+  triangle:      { hp: 100, damage: 20, range: 200, attackSpeedMultiplier: 100, attackInterval: 0.5, critChance: 5,  critMult: 1.6, penetration: 0,  isSupport: false, description: '快速射击，对单个目标造成持续伤害。专属特殊属性：暴击几率（默认 5%，每次强化 +5%，满级 30%）。' },
+  circle:        { hp: 150, damage: 25, range: 200, attackSpeedMultiplier: 100, attackInterval: 0.8, critChance: 0,  critMult: 1.5, penetration: 0,  isSupport: false, explosionRadius: 60, explosionRatio: 25, description: '攻击命中时触发二次爆炸，对周围敌人造成 25% 溅射伤害。专属特殊属性：二段爆炸伤害比例（默认 25%，每次强化 +5%）。适合对付聚集的敌人。' },
+  hexagon:       { hp: 200, damage: 50, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.2, critChance: 0,  critMult: 1.8, penetration: 0,  isSupport: false, eliteMult: 5, description: '强力狙击射击，对单一目标造成高额伤害。专属特殊属性：精英伤害倍率（默认对精英及以上 ×5，每次强化 +1 倍，满级 ×10）。' },
+  square:        { hp: 220, damage: 30, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.5, critChance: 0,  critMult: 1.5, penetration: 0,  isSupport: false, projectileScale: 100, description: '旋转冲锋攻击，弹道可贯穿直线上的敌人。专属特殊属性：弹道体积（默认 100%，每次强化 +20%，命中范围同步放大）。' },
+  trapezoid:     { hp: 230, damage: 0,  range: 150, attackSpeedMultiplier: 0,   critChance: 0,  critMult: 1,   penetration: 0,  isSupport: true,  supportBuff: { attackSpeedMultiplier: 25 }, description: '辅助塔，不提供攻击。给周围我方图形塔增加 25% 攻击速度光环；自身每进阶一星光环强度 +100%，高阶光环覆盖低阶光环。专属特殊属性：光环强度（默认 25%，每次强化 +5%）。' },
+  semicircle:    { hp: 130, damage: 2,  range: 200, attackSpeedMultiplier: 100, attackInterval: 0.15, critChance: 0,  critMult: 1.5, penetration: 0,  isSupport: false, description: '持续激光连接目标，对连接的敌人造成持续伤害。专属特殊属性：激光穿透（每次强化 +5，直接抵扣敌人抗性）。' },
+  sector:        { hp: 180, damage: 25, range: 250, attackSpeedMultiplier: 100, attackInterval: 3.0, critChance: 0,  critMult: 1.5, penetration: 0, isSupport: false, sectorHalfAngle: 45, description: '扇形范围攻击，AOE 伤害覆盖大面积区域。专属特殊属性：扇面张角（默认上下各 45°，每次强化 +5°，扫过更宽的一片）。' },
+  long_rectangle:{ hp: 250, damage: 2,  range: 200, attackSpeedMultiplier: 100, attackInterval: 0.25, critChance: 0, critMult: 1.7, penetration: 0, isSupport: false, stackMax: 10, description: '堆叠火炮系统，对重复单位攻击时叠加伤害，累积层数后造成巨额爆发。专属特殊属性：堆叠上限（默认 10 层，每次强化 +2 层）。适合对付 BOSS 级别敌人。' },
+  diamond:       { hp: 170, damage: 38, range: 210, attackSpeedMultiplier: 100, attackInterval: 1.0, critChance: 0, critMult: 1.6, penetration: 0, isSupport: false, description: '锐击穿刺，单发伤害高且射程略长。专属特殊属性：攻击速度（默认 100%，每次强化 +7%）。性价比优秀的前期切入塔。' },
+  pentagon:      { hp: 260, damage: 62, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.4, critChance: 0, critMult: 1.7, penetration: 0, isSupport: false, description: '稳重的重击塔，血厚攻高，节奏偏慢。专属特殊属性：生命（默认 260，每次强化 +45）。适合站在前排槽位承担主力输出。' },
+  oval:          { hp: 140, damage: 12, range: 260, attackSpeedMultiplier: 100, attackInterval: 0.4, critChance: 0,  critMult: 1.5, penetration: 0,  isSupport: false, description: '超远射程的快射塔，单发伤害低但覆盖全图大部分路径。专属特殊属性：射程（默认 260，每次强化 +15）。适合补刀漏网之鱼。' },
+  star:          { hp: 300, damage: 96, range: 240, attackSpeedMultiplier: 100, attackInterval: 2.0, critChance: 0, critMult: 2.0, penetration: 0, isSupport: false, description: '六芒重炮，全塔最高单发伤害，换弹极慢。专属特殊属性：暴击几率（默认 0%，每次强化 +6%）——配上 200% 暴击倍率上限惊人。' },
+  octagon:       { hp: 210, damage: 44, range: 205, attackSpeedMultiplier: 100, attackInterval: 1.1, critChance: 0,  critMult: 1.6, penetration: 0, isSupport: false, description: '八面均衡的中坚塔，攻防兼顾没有短板。专属特殊属性：生命（默认 210，每次强化 +40），适合填满中段槽位。' },
+  cross:         { hp: 160, damage: 34, range: 190, attackSpeedMultiplier: 100, attackInterval: 0.9, critChance: 0, critMult: 1.5, penetration: 0, isSupport: false, description: '十字速射塔，射速快、射程偏短。专属特殊属性：攻击速度（默认 100%，每次强化 +8%）。适合贴身补伤。' },
+  arrow:         { hp: 150, damage: 46, range: 240, attackSpeedMultiplier: 100, attackInterval: 1.2, critChance: 0, critMult: 1.7, penetration: 0, isSupport: false, description: '箭形狙击塔，射程远、单发高。专属特殊属性：穿透（默认 0，每次强化 +7），专克高抗性单位。' },
+  bolt:          { hp: 170, damage: 70, range: 220, attackSpeedMultiplier: 100, attackInterval: 1.5, critChance: 0, critMult: 2.0, penetration: 0, isSupport: false, description: '闪电炮塔，暴击倍率全塔最高（200%），原生暴击几率为 0。专属特殊属性：暴击几率（每次强化 +4%），堆起来后上限惊人。' },
 };
 
-// 默认已解锁 + 默认登场池的 5 种塔（玩家开局的起点阵容）
-// 图签里其余 7 种需要消耗"特殊积分"解锁后才能进入登场池。
+// ============================================================================
+// 强化（升级）专属特殊属性表 —— 每种图形塔一项，**不再给伤害加成**
+// ----------------------------------------------------------------------------
+// 2026-09 二次重做。上一版是「固定攻击力点数 + 从 2 项里多选一」，现在改成：
+//   每次强化只把该塔的**招牌特殊属性**往上推，不发放任何攻击力。
+//   等级 L（0 ~ BALANCE.enhance.maxLevel）的取值：
+//
+//      当前值(L) = base + per × L
+//
+//   · base = 该属性"默认"（未强化）时的取值，也就是需求里的「默认 1 级」
+//            —— 必须与 TOWER_STATS 里的原生值严格一致（引擎按"原生 + per×L"结算，
+//               这里只是同口径的展示真源，verify.js 会逐塔断言两者相等）。
+//   · per  = 每强化一级的增量，也就是需求里的「后续每次升级 +X」。
+//
+// 例：
+//   三角塔 base=5 per=5  → 默认 5% 暴击，每级 +5%，Lv.5 = 30%
+//   圆塔   base=25 per=5 → 默认 25% 溅射，每级 +5%，Lv.5 = 50%
+//   六边塔 base=5 per=1  → 默认 ×5（精英），每级 +1 倍，Lv.5 = ×10
+//   方块塔 base=0 per=20 → 默认无加成，每级 +20%，Lv.5 = +100%
+//
+// 字段：
+//   key  —— 属性键，与 tower.js 运行时口径 / bonusStats.ATTR 同名
+//   name —— 浮层与属性面板里显示的名字
+//   unit —— 展示单位（'' / '%' / '倍' / '°' / '层'）
+//   desc —— 浮层里的一句话说明
+//   玩家不再二选一：每塔的属性与增量由本表唯一决定。
+// ============================================================================
+const ENHANCE_SPECIAL = {
+  // ---- 首批 5 种（开局阵容）----
+  triangle:       { key: 'critChance',            name: '暴击几率',     base: 5,   per: 5,  unit: '%',  desc: '命中时触发暴击的概率' },
+  circle:         { key: 'explosionDamage',       name: '二段爆炸伤害', base: 25,  per: 5,  unit: '%',  desc: '二次爆炸的溅射伤害占主伤害的比例' },
+  hexagon:        { key: 'eliteMult',             name: '精英伤害倍率', base: 5,   per: 1,  unit: '倍', desc: '对精英及以上（含 BOSS）的伤害倍数' },
+  square:         { key: 'projectileScale',       name: '弹道体积',     base: 100, per: 20, unit: '%',  desc: '放大冲锋弹道，命中范围（相对伤害范围）同步变大' },
+  semicircle:     { key: 'penetration',           name: '激光穿透',     base: 0,   per: 5,  unit: '',   desc: '直接抵扣敌人抗性，激光不再被高抗性吃伤害' },
+  // ---- 进阶图形 ----
+  trapezoid:      { key: 'auraPower',             name: '光环强度',     base: 25,  per: 5,  unit: '%',  desc: '给周围我方塔的攻速光环再抬高一点' },
+  sector:         { key: 'sectorAngle',           name: '扇面张角',     base: 45,  per: 5,  unit: '°',  desc: '扇形半张角，越大扫过的面越宽' },
+  long_rectangle: { key: 'stackMax',              name: '堆叠上限',     base: 10,  per: 2,  unit: '层', desc: '同一目标可累积的最大堆叠层数' },
+  diamond:        { key: 'attackSpeedMultiplier', name: '攻击速度',     base: 100, per: 7,  unit: '%',  desc: '出手更快，穿刺弹道更密' },
+  pentagon:       { key: 'hp',                    name: '生命',         base: 260, per: 45, unit: '',   desc: '本体更耐打，敢站前排' },
+  oval:           { key: 'range',                 name: '射程',         base: 260, per: 15, unit: '',   desc: '覆盖更长的路径' },
+  star:           { key: 'critChance',            name: '暴击几率',     base: 0,   per: 6,  unit: '%',  desc: '命中时触发暴击的概率（配上 200% 暴击倍率）' },
+  octagon:        { key: 'hp',                    name: '生命',         base: 210, per: 40, unit: '',   desc: '本体更耐打' },
+  cross:          { key: 'attackSpeedMultiplier', name: '攻击速度',     base: 100, per: 8,  unit: '%',  desc: '贴身速射更凶' },
+  arrow:          { key: 'penetration',           name: '穿透',         base: 0,   per: 7,  unit: '',   desc: '直接抵扣敌人抗性' },
+  bolt:           { key: 'critChance',            name: '暴击几率',     base: 0,   per: 4,  unit: '%',  desc: '命中时触发暴击的概率（暴击倍率全塔最高）' },
+};
+
+// 默认已解锁 + 默认登场池的 5 种塔（玩家开局的起点阵容）// 图签里其余 7 种需要消耗"特殊积分"解锁后才能进入登场池。
 const SHOP_TOWERS = ['triangle', 'circle', 'hexagon', 'square', 'semicircle'];
 
 // 全部塔类型顺序（图签网格 / 商店抽池 都按此稳定顺序，避免随机排序导致 UI 跳动）
@@ -73,13 +146,14 @@ const TOWER_ORDER = Object.keys(TOWER_DEFS);
 // elite/boss/finalBoss 的 hp 是相对普通怪基础 HP(100) 的倍率
 // elite = 15倍, boss = 50倍, finalBoss = boss的5倍 = 250倍
 // rewardPerWave: 击杀奖励随波次增长的额外金币（每波 +N），未配置则为固定奖励
+// armor: 抗性值 —— 有效抗性 = max(0, armor - 塔的穿透)，减伤 = 有效抗性/(有效抗性+BALANCE.armorK)
 const ENEMY_TYPES = {
-  normal:    { hp: 100,      speed: 6.0, color: '#808080', tier: 0, reward: 10,  rewardPerWave: 1, size: 16 },
-  fast:      { hp: 100,      speed: 10.0, color: '#FF8C00', tier: 1, reward: 15,  rewardPerWave: 1, size: 14 },
-  heavy:     { hp: 500,      speed: 4.0, color: '#555555', tier: 2, reward: 50,  rewardPerWave: 3, size: 20 },
-  elite:     { hp: 1500,     speed: 6.0, color: '#FFD700', tier: 3, reward: 500,  size: 22 },
-  boss:      { hp: 5000,     speed: 5.0, color: '#FF0000', tier: 4, reward: 1000, size: 28 },
-  finalBoss: { hp: 25000,    speed: 3.0, color: '#9900FF', tier: 5, reward: 5000, size: 36 },
+  normal:    { hp: 100,      speed: 6.0,  color: '#808080', tier: 0, reward: 10,   rewardPerWave: 1, size: 16, armor: 0 },
+  fast:      { hp: 100,      speed: 10.0, color: '#FF8C00', tier: 1, reward: 15,   rewardPerWave: 1, size: 14, armor: 0 },
+  heavy:     { hp: 500,      speed: 4.0,  color: '#555555', tier: 2, reward: 50,   rewardPerWave: 3, size: 20, armor: 45 },
+  elite:     { hp: 1500,     speed: 6.0,  color: '#FFD700', tier: 3, reward: 500,  size: 22, armor: 90 },
+  boss:      { hp: 5000,     speed: 5.0,  color: '#FF0000', tier: 4, reward: 1000, size: 28, armor: 150 },
+  finalBoss: { hp: 25000,    speed: 3.0,  color: '#9900FF', tier: 5, reward: 5000, size: 36, armor: 240 },
 };
 
 // 布局参数
@@ -108,6 +182,29 @@ const BALANCE = {
   // 加速怪（fast）随机刷新：每只普通怪刷新时按此概率变为加速怪；每波加速怪总数（含计划特殊怪）不超过上限
   fastChance: 0.1,
   maxFastPerWave: 3,
+
+  // ---- 战斗结算口径（暴击 / 抗性穿透 / 强化）----
+  critDamageDefaultMult: 1.5, // 塔未显式配置 critMult 时的兜底暴击倍率
+  // 抗性减伤公式（2026-09 定稿）：
+  //   有效抗性 = max(0, 敌人抗性 - 塔的穿透)
+  //   减伤比例 = 有效抗性 / (有效抗性 + armorK)
+  //   实际伤害 = 造成伤害 × (1 - 减伤比例)
+  // 递减曲线：抗性越高收益越低，永远不会免疫（抗性 200 时正好减伤 50%）
+  armorK: 200,
+  // ==========================================================================
+  // 塔强化（2026-09 二次重做）
+  // --------------------------------------------------------------------------
+  // 玩法：塔属性面板点「强化」→ 浮层确认 → 花金币把该塔的【专属特殊属性】抬一级。
+  //   · **不再发放任何攻击力加成**（旧版的"固定攻击力点数"已移除）
+  //   · 每塔只有一项特殊属性，逐级累加（取值 = base + per × 等级，见 ENHANCE_SPECIAL）
+  //   · 攻击力的成长仍由「合成进阶（等级/阶段）」与「图签」负责，两条线互不重叠
+  // 门槛：只有进阶到 minStage（3★封顶）的图形塔才能强化。
+  // ==========================================================================
+  enhance: {
+    maxLevel: 5,      // 最高强化等级（可购买次数）
+    minStage: 3,      // 需要进阶到几星才能强化（MAX_STAGE = 3★）
+    costRate: 0.9,    // 升到 L 级的造价 = 塔基础造价 × costRate × L（越强化越贵）
+  },
 };
 
 // ========== 阶段（进阶）系统 ==========
@@ -150,44 +247,77 @@ const CODEX = {
 // ----------------------------------------------------------------------------
 // 玩法：花"天赋点"逐级学习，影响玩家侧的各种功能（经济 / 生存 / 商店 / 图签）。
 // 天赋点来源见 TALENT_POINTS。
+//
+// 2026-09 重做：每级数值下调、可学习等级提高（长线成长），并补足经济类天赋：
+//   杀敌金币 / BOSS 悬赏 / 每秒金币 / 波次结余 / 暴利风险（负收益换金币）
+//
+// 2026-09 平衡性二次修正（按反馈"这几项每级属性太变态"）：
+//   点石成金 gold_gain   +4%/级 → +3%/级，上限 8 → 6，学习花费整体上调
+//   涓流金库 gold_per_sec +0.5/级 → +0.25/级（直接砍半），上限 6 → 5
+//   洞察先机 points_gain +10%/级 → +5%/级（直接砍半），上限 5 → 4
+//   波次结余 wave_bonus  +8/级 → +6/级，上限 6 → 5
+//   BOSS悬赏 boss_bounty +12%/级 → +10%/级
+// 三条"变态"项的 costs 全部上调，把"无脑点它就是最优解"改成"要攒天赋点才点得起"。
 const TALENTS = [
-  { id: 'gold_start',  name: '启动资金', desc: '开局金币 +60 / 级',        max: 3, costs: [1, 1, 2] },
-  { id: 'gold_gain',   name: '点石成金', desc: '击杀金币收益 +8% / 级',    max: 5, costs: [1, 1, 2, 2, 3] },
-  { id: 'points_gain', name: '洞察先机', desc: '特殊积分获取 +25% / 级',   max: 3, costs: [1, 2, 3] },
-  { id: 'lives_max',   name: '坚固防线', desc: '生存积分上限 +20 / 级',    max: 3, costs: [1, 2, 3] },
-  { id: 'build_cost',  name: '精打细算', desc: '图形塔造价 -5% / 级',      max: 4, costs: [1, 1, 2, 2] },
-  { id: 'codex_ease',  name: '图鉴学',   desc: '图签解锁/升级花费 -8% / 级', max: 3, costs: [2, 2, 3] },
+  { id: 'gold_start',  name: '启动资金', desc: '开局金币 +30 / 级',              max: 6, costs: [1, 1, 1, 2, 2, 3] },
+  { id: 'gold_gain',   name: '点石成金', desc: '击杀金币收益 +3% / 级',          max: 6, costs: [2, 2, 3, 3, 4, 4] },
+  { id: 'boss_bounty', name: 'BOSS悬赏', desc: '精英/BOSS 击杀金币 +10% / 级',   max: 5, costs: [2, 2, 3, 3, 4] },
+  { id: 'gold_per_sec',name: '涓流金库', desc: '每秒自动获得金币 +0.25 / 级',     max: 5, costs: [2, 3, 3, 4, 4] },
+  { id: 'wave_bonus',  name: '波次结余', desc: '每清空一波额外金币 +6 / 级',      max: 5, costs: [2, 2, 3, 3, 4] },
+  { id: 'points_gain', name: '洞察先机', desc: '特殊积分获取 +5% / 级',          max: 4, costs: [3, 3, 4, 4] },
+  { id: 'lives_max',   name: '坚固防线', desc: '生存积分上限 +10 / 级',          max: 5, costs: [1, 2, 2, 3, 3] },
+  { id: 'build_cost',  name: '精打细算', desc: '图形塔造价 -3% / 级',            max: 5, costs: [1, 1, 2, 2, 3] },
+  { id: 'codex_ease',  name: '图鉴学',   desc: '图签解锁/升级花费 -5% / 级',      max: 4, costs: [2, 2, 3, 3] },
+  { id: 'high_stakes', name: '暴利风险', desc: '特殊积分 -10%/级，击杀金币 +15%/级', max: 4, costs: [1, 2, 3, 3] },
 ];
 
 // 天赋点产出
 const TALENT_POINTS = {
-  perWaveGroup: { every: 5, amount: 1 }, // 每通过 5 波 +1
-  clearLevel: 3,                          // 通关一个关卡 +3
-  bossKill: 1,                            // 击杀 BOSS / 最终BOSS +1
+  perWaveGroup: { every: 4, amount: 1 }, // 每通过 4 波 +1
+  clearLevel: 5,                          // 通关一个关卡 +5
+  bossKill: 2,                            // 击杀 BOSS / 最终BOSS +2
 };
 
 // 天赋数值口径（供 game_core / shop / codex 统一取值，避免各处硬编码）
+// 只有 high_stakes 是"双向"天赋：perLevel 作用于特殊积分（负向），goldPerLevel 作用于击杀金币（正向）
 const TALENT_EFFECT = {
-  gold_start:  { perLevel: 60 },   // 绝对值
-  gold_gain:   { perLevel: 8 },    // 百分比
-  points_gain: { perLevel: 25 },   // 百分比
-  lives_max:   { perLevel: 20 },   // 绝对值
-  build_cost:  { perLevel: 5 },    // 百分比（减）
-  codex_ease:  { perLevel: 8 },    // 百分比（减）
+  gold_start:   { perLevel: 30 },   // 绝对值
+  gold_gain:    { perLevel: 3 },    // 百分比
+  boss_bounty:  { perLevel: 10 },   // 百分比
+  gold_per_sec: { perLevel: 0.25 }, // 绝对值（每秒）
+  wave_bonus:   { perLevel: 6 },    // 绝对值
+  points_gain:  { perLevel: 5 },    // 百分比
+  lives_max:    { perLevel: 10 },   // 绝对值
+  build_cost:   { perLevel: 3 },    // 百分比（减）
+  codex_ease:   { perLevel: 5 },    // 百分比（减）
+  high_stakes:  { perLevel: 10, goldPerLevel: 15, twoWay: true },
 };
 
 // ============================================================================
 // 关卡（Levels）
 // ----------------------------------------------------------------------------
-// 目前只做"关卡 1"（默认关卡 = 正在进行的那一关），其余占位待扩展。
-const LEVELS = [
-  { id: 1, name: '关卡 1', subtitle: '边境哨站', waves: 20, playable: true,  desc: '标准 20 波教学关卡，红方基地遭蓝色阵营试探性进攻。' },
-  { id: 2, name: '关卡 2', subtitle: '待扩展',   waves: 0,  playable: false, desc: '新地图与新的敌方阵容，开发中。' },
-  { id: 3, name: '关卡 3', subtitle: '待扩展',   waves: 0,  playable: false, desc: '开发中。' },
-  { id: 4, name: '关卡 4', subtitle: '待扩展',   waves: 0,  playable: false, desc: '开发中。' },
-  { id: 5, name: '关卡 5', subtitle: '待扩展',   waves: 0,  playable: false, desc: '开发中。' },
-  { id: 6, name: '关卡 6', subtitle: '待扩展',   waves: 0,  playable: false, desc: '开发中。' },
-];
+// 2026-09：天梯一次铺到【关卡 99】。目前只有关卡 1 可玩，关卡 2~99 全部是
+// 占位"待扩展"（列表一口气列全，避免以后每加一关都改一次表）。
+// 战前选关的天梯会自动滚动（内容高于视口就上下拖动，见 src/levels.js），
+// 默认贴底停在关卡 1。
+// ============================================================================
+const LEVELS = (() => {
+  const MAX_LEVEL = 99;
+  const list = [
+    { id: 1, name: '关卡 1', subtitle: '边境哨站', waves: 20, playable: true, desc: '标准 20 波教学关卡，红方基地遭蓝色阵营试探性进攻。' },
+  ];
+  for (let i = 2; i <= MAX_LEVEL; i++) {
+    list.push({
+      id: i,
+      name: '关卡 ' + i,
+      subtitle: '待扩展',
+      waves: 0,
+      playable: false,
+      desc: '开发中。',
+    });
+  }
+  return list;
+})();
 
 // ============================================================================
 // 商店（Shop）
@@ -218,6 +348,7 @@ module.exports = {
   TOWER_DEFS,
   TOWER_STATS,
   TOWER_ORDER,
+  ENHANCE_SPECIAL,
   SHOP_TOWERS,
   SHOP,
   RARITY,

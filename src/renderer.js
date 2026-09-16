@@ -2,7 +2,7 @@
 // 约定：每个绘制函数接收 game 实例，内部用 game.ctx / game.canvas；
 // drawTowerIcon 为纯函数，直接吃 ctx。
 const config = require('./config');
-const { TOWER_DEFS, LAYOUT, TOWER_STATS } = config;
+const { TOWER_DEFS, LAYOUT, TOWER_STATS, LEVELS, BALANCE } = config;
 const theme = require('./theme');
 const towerMod = require('./tower');
 const bonusStats = require('./bonusStats');
@@ -11,6 +11,8 @@ const nav = require('./nav');
 const codex = require('./codex');
 const talents = require('./talents');
 const levels = require('./levels');
+const gamemenu = require('./gamemenu');
+const enhanceMod = require('./enhance');
 const meta = require('./meta');
 const { anchorPointOf } = require('./geometry');
 
@@ -539,6 +541,7 @@ const PANEL_UI = {
   descLineH: 17,        // 攻击介绍行高
   descSize: 12.5,
   skillH: 24,
+  enhanceH: 52,         // 强化按钮区（含标签行）
   footerH: 24,
 };
 
@@ -550,6 +553,9 @@ const ROW_LABEL_COLOR = {
   auraPower: '#B388FF',
   range: THEME.text.secondary,
   hp: THEME.text.secondary,
+  critChance: THEME.accent.cyan,
+  critMult: THEME.accent.cyan,
+  penetration: THEME.accent.gold,
 };
 
 /**
@@ -607,7 +613,7 @@ function drawTowerPanel(game) {
   push({ type: 'desc', h: PANEL_UI.sectionTitleH + descLines.length * PANEL_UI.descLineH, lines: descLines });
 
   push({ type: 'divider', h: PANEL_UI.dividerH });
-  push({ type: 'skill', h: PANEL_UI.skillH });
+  push({ type: 'enhance', h: PANEL_UI.enhanceH });
 
   push({ type: 'footer', h: PANEL_UI.footerH });
   contentH += PANEL_UI.padBottom;
@@ -619,11 +625,12 @@ function drawTowerPanel(game) {
   const panelY = Math.max(PANEL_UI.screenMarginY, (H - panelH) / 2);
 
   // 背板 + 描边（同时建立裁剪区，超出屏幕的内容自动切掉而非糊出面板）
+  // 透明度取 0.96：再低会让战场上的"第 N 波"横幅、选中塔名称标签从面板中间透出来，很脏。
   ctx.save();
   ctx.beginPath();
   ctx.roundRect(panelX, panelY, panelW, panelH, PANEL_UI.radius);
   ctx.clip();
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.88)';
+  ctx.fillStyle = 'rgba(6, 8, 16, 0.96)';
   ctx.fill();
   ctx.restore();
 
@@ -649,13 +656,16 @@ function drawTowerPanel(game) {
       case 'attrs':   drawPanelAttrRows(ctx, block, panelX, y, panelW); break;
       case 'effects': drawPanelEffects(ctx, block, panelX, y, panelW); break;
       case 'desc':    drawPanelDescription(ctx, block, panelX, y, panelW, stats); break;
-      case 'skill':   drawPanelSkillSlot(ctx, block, panelX, y, panelW); break;
+      case 'enhance': drawPanelEnhance(ctx, block, panelX, y, panelW, game); break;
       case 'footer':  drawPanelFooter(ctx, block, cx, y); break;
       default: break;
     }
     y += block.h;
   }
   ctx.restore();
+
+  // 「强化」按钮的点击波纹（只画 panel 层的）
+  drawButtonFx(game, ctx, 'panel');
 }
 
 /** 标题区：塔图标 + 名称 + 阶段星 + 造价 */
@@ -818,26 +828,107 @@ function drawPanelDescription(ctx, block, panelX, y, panelW, stats) {
   }
 }
 
-/** 技能槽（预留）：虚线占位框 */
-function drawPanelSkillSlot(ctx, block, panelX, y, panelW) {
+/**
+ * 强化区：花金币提升该塔（局内，不跨局）。
+ * 2026-09 二次重做后的规则：
+ *   · 只有【进阶到 3★】的图形塔才能强化（橙色提示当前星级）
+ *   · 每次强化只把该塔的【专属特殊属性】抬一级，**不再发放任何攻击力加成**
+ *     （属性表见 config.ENHANCE_SPECIAL；当前取值在下方属性行里看）
+ * 商店预览（没有实体塔）时不可用，提示"放置后可强化"。
+ * 按钮矩形写入 game.panelEnhanceBtn，供输入层命中（渲染每帧刷新，永不失效）。
+ */
+function drawPanelEnhance(ctx, block, panelX, y, panelW, game) {
   const left = panelX + PANEL_UI.padX;
+  const right = panelX + panelW - PANEL_UI.padX;
+  const tower = game._currentPanelTower;
   const w = panelW - PANEL_UI.padX * 2;
-  const h = block.h - 6;
 
-  ctx.save();
-  ctx.setLineDash([4, 4]);
-  ctx.strokeStyle = THEME.border.subtle;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.roundRect(left, y + 3, w, h, THEME.radius.small);
-  ctx.stroke();
-  ctx.restore();
+  const btnW = Math.min(160, Math.round(w * 0.52));
+  const btnH = 34;
+  const btn = {
+    x: right - btnW,
+    y: y + Math.round((block.h - btnH) / 2),
+    w: btnW,
+    h: btnH,
+  };
 
-  ctx.textAlign = 'center';
+  // 没有实体塔（商店预览）→ 强化不可用
+  if (!tower) {
+    game.panelEnhanceBtn = null;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 13px Arial';
+    ctx.fillStyle = THEME.text.secondary;
+    ctx.fillText('强化', left, y + block.h / 2 - 8);
+    ctx.font = '10px Arial';
+    ctx.fillStyle = THEME.text.off;
+    ctx.fillText('放置到战场、并进阶到 ★★★ 后可花金币强化', left, y + block.h / 2 + 10);
+    return;
+  }
+
+  const maxLv = BALANCE.enhance.maxLevel;
+  const lv = tower.enhanceLevel || 0;
+  const stage = tower.stage || 0;
+  const needStage = BALANCE.enhance.minStage;
+  const stageReady = towerMod.isStageReady(tower);
+  const maxed = lv >= maxLv;
+  const cost = maxed ? Infinity : towerMod.getEnhanceCost(tower.type, lv);
+  const affordable = !maxed && game.gold >= cost;
+  const usable = stageReady && !maxed;
+
+  game.panelEnhanceBtn = btn;
+
+  // 左：当前强化等级 + 门槛/下一级收益
+  // 文案必须按左侧可用宽度裁剪（按钮从 right-btnW 开始，不能让文字压到按钮上）
+  const availW = Math.max(40, btn.x - left - 8);
+
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.font = '11px Arial';
-  ctx.fillStyle = THEME.text.off;
-  ctx.fillText('技能槽（未解锁）', panelX + panelW / 2, y + 3 + h / 2);
+  ctx.font = 'bold 13px Arial';
+  ctx.fillStyle = lv > 0 ? THEME.accent.green : THEME.text.primary;
+  ctx.fillText(`强化 Lv.${lv}/${maxLv}`, left, y + 20);
+
+  ctx.font = '10px Arial';
+  if (!stageReady) {
+    ctx.fillStyle = THEME.accent.gold;
+    ctx.fillText(ellipsize(ctx, `需进阶到 ★${'★'.repeat(needStage - 1)}（当前 ${stage}★）才能强化`, availW), left, y + 37);
+  } else if (maxed) {
+    ctx.fillStyle = THEME.text.off;
+    ctx.fillText('已满级：专属属性已达上限', left, y + 37);
+  } else {
+    const sp = towerMod.getSpecialDef(tower.type);
+    ctx.fillStyle = THEME.text.off;
+    ctx.fillText(
+      ellipsize(ctx, sp ? `每次强化 ${sp.name} +${sp.per}${sp.unit}` : '每次强化提升专属属性', availW),
+      left, y + 37
+    );
+  }
+
+  // 右：强化按钮
+  let top, bottom, stroke, label, labelColor;
+  if (!stageReady) {
+    top = THEME.track.soft; bottom = THEME.track.faint; stroke = THEME.border.subtle;
+    label = `需 ${needStage}★`; labelColor = THEME.text.off;
+  } else if (maxed) {
+    top = THEME.track.soft; bottom = THEME.track.faint; stroke = THEME.border.subtle;
+    label = '已满级'; labelColor = THEME.accent.gold;
+  } else if (affordable) {
+    top = 'rgba(129, 199, 132, 0.42)'; bottom = 'rgba(56, 142, 60, 0.26)';
+    stroke = 'rgba(129, 199, 132, 0.85)';
+    label = `强化 💰${cost}`; labelColor = THEME.text.primary;
+  } else {
+    top = THEME.track.soft; bottom = THEME.track.faint; stroke = THEME.border.subtle;
+    label = `强化 💰${cost}`; labelColor = THEME.text.off;
+  }
+  void usable;
+
+  drawButton(ctx, {
+    x: btn.x, y: btn.y, w: btn.w, h: btn.h,
+    top: top, bottom: bottom, stroke: stroke,
+    label: label, labelColor: labelColor,
+    fontSize: 14, radius: THEME.radius.medium,
+    pressed: isButtonPressed(game, 'tower:enhance'),
+  });
 }
 
 /** 底部提示 */
@@ -1173,17 +1264,17 @@ function drawTopBar(game) {
   const ctx = game.ctx;
   const width = game.canvas.width;
   const H = LAYOUT.topBarHeight;
-
   ctx.save();
   ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
   ctx.fillRect(0, 0, width, H);
 
-  // 左：关卡徽标（点击打开关卡选择浮层）
+  // 左：关卡徽标（纯展示，不可点击——选关已搬到战前居中面板）
   const badge = levels.getLevelBadgeRect(game);
   game.levelBadgeRect = badge;
+  const lvDef = LEVELS.filter((l) => l.id === game.currentLevel)[0];
   drawChip(ctx, {
     x: badge.x, y: badge.y, w: badge.w, h: badge.h,
-    text: `关卡 ${meta.getSelectedLevel()}`,
+    text: lvDef ? lvDef.name : `关卡 ${game.currentLevel}`,
     color: THEME.team.red.light, fontSize: 11,
     bg: 'rgba(229, 115, 115, 0.18)',
     stroke: 'rgba(229, 115, 115, 0.55)',
@@ -1196,11 +1287,14 @@ function drawTopBar(game) {
   ctx.fillStyle = THEME.text.primary;
   ctx.fillText(`❤️ ${game.lives}`, width / 2, H / 2);
 
-  // 右：金币
+  // 右：金币（展示）+ ☰ 游戏菜单按钮（顶栏唯一可点元素）
+  const menuRect = gamemenu.getMenuButtonRect(game);
   ctx.textAlign = 'right';
   ctx.font = 'bold 12px Arial';
   ctx.fillStyle = THEME.accent.gold;
-  ctx.fillText(`💰 ${game.gold}`, width - 12, H / 2);
+  ctx.fillText(`💰 ${game.gold}`, menuRect.x - 8, H / 2);
+
+  gamemenu.drawMenuButton(game);
 
   ctx.strokeStyle = THEME.border.subtle;
   ctx.lineWidth = 1;
@@ -1210,6 +1304,9 @@ function drawTopBar(game) {
   ctx.stroke();
 
   ctx.restore();
+
+  // ☰ 按钮的点击波纹（只画 topbar 层的，见 theme.drawButtonFx）
+  drawButtonFx(game, ctx, 'topbar');
 }
 
 function drawUI(game) {
@@ -1275,7 +1372,6 @@ function drawGameOver(game) {
   const showWin = !!game.gameWon;
   const showFail = game.lives <= 0 && !showWin;
   if (!showFail && !showWin) return;
-
   // 全屏遮罩
   ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
   ctx.fillRect(0, 0, width, height);
@@ -1338,7 +1434,6 @@ function drawGameOver(game) {
       label: '重新开始', labelColor: THEME.text.primary, fontSize: 18,
       pressed: isButtonPressed(game, 'restart'),
     });
-    drawButtonFx(game, ctx);
   } else if (game.watchingVideo) {
     // 失败 - 观看视频倒计时
     game.gameOverButtons = {};
@@ -1377,8 +1472,10 @@ function drawGameOver(game) {
       subLabel: `(${game.currentWave * 500} 金币)`, subColor: THEME.text.secondary,
       pressed: isButtonPressed(game, 'watchContinue'),
     });
-    drawButtonFx(game, ctx);
   }
+
+  // 结算按钮的点击波纹（只画 gameover 层的）
+  drawButtonFx(game, ctx, 'gameover');
 }
 
 /**
@@ -1543,10 +1640,13 @@ function drawProjectiles(game) {
         break;
 
       case 'square':
-        // 正方塔弹道：旋转的正方形
+        // 正方塔弹道：旋转的正方形（体积随"弹道体积"强化一起变大，命中范围同步）
         ctx.rotate(proj.rotationAngle || 0);
-        ctx.fillRect(-size, -size, size * 2, size * 2);
-        ctx.strokeRect(-size, -size, size * 2, size * 2);
+        {
+          const sq = Math.max(1.5, (proj.size || 10) * 0.3);
+          ctx.fillRect(-sq, -sq, sq * 2, sq * 2);
+          ctx.strokeRect(-sq, -sq, sq * 2, sq * 2);
+        }
         break;
     }
 
@@ -1656,17 +1756,27 @@ function render(game) {
     drawBattle(game);
   }
 
+  // 战前选关界面（战斗未开始时居中弹出；画在导航栏之下，导航仍可用）
+  if (scene === 'battle' && !game.battleStarted) {
+    levels.drawBattleReady(game);
+  }
+
   // 底部导航栏：在所有场景内容之上、所有浮层之下
   nav.drawNav(game);
 
-  // 关卡选择浮层（战斗场景顶部「关卡 N」徽标打开）
-  if (game.showLevels) {
-    levels.drawLevelSelect(game);
+  // 游戏中菜单（☰）：模态，必须盖住导航栏
+  if (scene === 'battle' && game.showMenu) {
+    gamemenu.drawGameMenu(game);
   }
 
   // 塔属性面板（仅战斗场景，最后绘制确保在最上层）
   if (game.showPanel && scene === 'battle') {
     drawTowerPanel(game);
+  }
+
+  // 强化「多选一」浮层：模态，必须盖住塔属性面板
+  if (game.enhancePicker && scene === 'battle') {
+    enhanceMod.drawEnhancePicker(game);
   }
 
   // 结算界面：必须盖住底部导航栏（否则玩家能在结算界面点导航溜走）

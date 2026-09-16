@@ -22,7 +22,7 @@
 
 const towerMod = require('./tower');
 const meta = require('./meta');
-const { CODEX } = require('./config');
+const { CODEX, BALANCE } = require('./config');
 
 // ---------- 属性键 ----------
 const ATTR = {
@@ -32,6 +32,15 @@ const ATTR = {
   AURA_POWER: 'auraPower',   // 辅助塔光环强度（虚拟属性，非 TOWER_STATS 原生字段）
   RANGE: 'range',
   HP: 'hp',
+  CRIT: 'critChance',        // 暴击率(%) —— 基础值 + 强化专属属性
+  CRIT_MULT: 'critMult',     // 暴击伤害倍率（1.5 = 150%）
+  PENETRATION: 'penetration', // 穿透（固定值）：抵扣敌人护甲
+  EXPLOSION_DAMAGE: 'explosionDamage', // 圆塔二段爆炸的溅射伤害比例(%)
+  EXPLOSION_RADIUS: 'explosionRadius', // 圆塔二段爆炸的覆盖半径
+  ELITE_MULT: 'eliteMult',             // 六边塔：对精英及以上的伤害倍数（×N）
+  PROJECTILE_SCALE: 'projectileScale', // 正方塔：弹道体积(%)（命中范围与之同步）
+  SECTOR_ANGLE: 'sectorAngle',         // 扇塔：扇形半张角(°)
+  STACK_MAX: 'stackMax',               // 长方塔：堆叠上限(层)
 };
 
 // ---------- 来源分类（决定颜色语义与明细前缀）----------
@@ -39,6 +48,7 @@ const SOURCE = {
   LEVEL: 'level',     // 等级加成（合成等级，每级 +10%）
   STAGE: 'stage',     // 阶段增幅（进阶 1/2/3 星）
   CODEX: 'codex',     // 图签等级加成（每级 +6%，跨局永久）
+  ENHANCE: 'enhance', // 塔强化（局内花金币，只抬该塔的专属特殊属性，不给伤害）
   AURA: 'aura',       // 光环增益（正值）
   DEBUFF: 'debuff',   // 负面效果（负值）
 };
@@ -47,6 +57,7 @@ const SOURCE_LABEL = {
   [SOURCE.LEVEL]: '等级',
   [SOURCE.STAGE]: '阶段',
   [SOURCE.CODEX]: '图签',
+  [SOURCE.ENHANCE]: '强化',
   [SOURCE.AURA]: '光环',
   [SOURCE.DEBUFF]: '负面',
 };
@@ -58,6 +69,33 @@ const BUFF_LABELS = {
   attackInterval:        { name: '攻击间隔', unit: '秒' },
   range:                 { name: '射程', unit: '' },
   hp:                    { name: '生命', unit: '' },
+  critChance:            { name: '暴击率', unit: '%' },
+  critMult:              { name: '暴击伤害', unit: '' },
+  penetration:           { name: '穿透', unit: '' },
+  explosionDamage:       { name: '二段爆炸伤害', unit: '%' },
+  explosionRadius:       { name: '爆炸范围', unit: '' },
+  auraPower:             { name: '光环强度', unit: '%' },
+  eliteMult:             { name: '精英伤害倍率', unit: '倍' },
+  projectileScale:       { name: '弹道体积', unit: '%' },
+  sectorAngle:           { name: '扇面张角', unit: '°' },
+  stackMax:              { name: '堆叠上限', unit: '层' },
+};
+
+// 强化专属属性 key → ATTR key（两者同名；这里显式列出，新增属性别漏登记）
+const ENHANCE_ATTR_MAP = {
+  critChance: ATTR.CRIT,
+  critMult: ATTR.CRIT_MULT,
+  penetration: ATTR.PENETRATION,
+  attackSpeedMultiplier: ATTR.ATTACK_SPEED,
+  range: ATTR.RANGE,
+  hp: ATTR.HP,
+  explosionDamage: ATTR.EXPLOSION_DAMAGE,
+  explosionRadius: ATTR.EXPLOSION_RADIUS,
+  auraPower: ATTR.AURA_POWER,
+  eliteMult: ATTR.ELITE_MULT,
+  projectileScale: ATTR.PROJECTILE_SCALE,
+  sectorAngle: ATTR.SECTOR_ANGLE,
+  stackMax: ATTR.STACK_MAX,
 };
 
 function buffMeta(key) {
@@ -183,6 +221,27 @@ function collectTowerStats(game, tower, stats, towerType) {
     }
   }
 
+  // 1.35 塔强化（局内花金币，需 3★）
+  //   2026-09 二次重做后：强化**不再给攻击力**，只把该塔的专属特殊属性往上推。
+  //   这里把「强化 Lv.N · 属性名」的增量登记成一条点值来源（绿字）。
+  //   注意：强化增量只在这条明细里出现，不会混进 base.damage（攻击力是白字原生值）。
+  const enhanceLv = (tower && tower.enhanceLevel > 0) ? tower.enhanceLevel : 0;
+  const enhanceAttrs = (tower && tower.enhanceAttrs) ? tower.enhanceAttrs : null;
+  if (enhanceLv > 0 && enhanceAttrs) {
+    for (const key of Object.keys(enhanceAttrs)) {
+      const v = enhanceAttrs[key];
+      if (!v) continue;
+      const attr = ENHANCE_ATTR_MAP[key] || key;
+      pushSource(sources, {
+        attr: attr,
+        source: SOURCE.ENHANCE,
+        label: '强化 Lv.' + enhanceLv + ' · ' + buffMeta(key).name,
+        kind: 'points',
+        value: v,
+      });
+    }
+  }
+
   // 1.4 光环（增益 / 减益）：来自 auraManager，数值为负即负面效果
   const auras = collectAuras(game, tower);
   for (const aura of auras) {
@@ -201,6 +260,7 @@ function collectTowerStats(game, tower, stats, towerType) {
   }
 
   // ================= 2. 原生值 =================
+  // 强化不参与原生值（它只抬专属特殊属性，见上方 1.35），所以攻击力就是纯 TOWER_STATS。
   const base = {
     damage: st.damage || 0,
     attackSpeedMultiplier: st.attackSpeedMultiplier || 0,
@@ -208,6 +268,15 @@ function collectTowerStats(game, tower, stats, towerType) {
     range: st.range || 0,
     hp: st.hp || 0,
     auraPower: (st.supportBuff && st.supportBuff.attackSpeedMultiplier) || 0,
+    critChance: st.critChance || 0,
+    critMult: st.critMult || BALANCE.critDamageDefaultMult,
+    penetration: st.penetration || 0,
+    explosionDamage: st.explosionRatio || 0,
+    explosionRadius: st.explosionRadius || 0,
+    eliteMult: st.eliteMult || 0,
+    projectileScale: st.projectileScale || 0,
+    sectorAngle: st.sectorHalfAngle || 0,
+    stackMax: st.stackMax || 0,
   };
 
   // ================= 3. 最终值 =================
@@ -221,15 +290,46 @@ function collectTowerStats(game, tower, stats, towerType) {
     ? base.attackInterval / (finalSpeed / 100)
     : base.attackInterval;
 
+  // 光环强度：原生值 + 强化点值（专属属性），再整体乘阶段/图签倍率
+  // 与 game_core.applyTrapezoidAuras 同口径：(25 + 5×强化等级) × (1 + 阶段) × 图签倍率
+  const auraPoints = pointsSum(sources, ATTR.AURA_POWER);
   const auraMult = percentMultiplier(sources, ATTR.AURA_POWER);
+
+  // 暴击率 / 穿透：点值相加（可为负 = 负面效果）
+  const finalCrit = Math.max(0, base.critChance + pointsSum(sources, ATTR.CRIT));
+  const finalPen = Math.max(0, base.penetration + pointsSum(sources, ATTR.PENETRATION));
+  // 暴击伤害：倍率 × Π(1 + 百分比来源/100)
+  const finalCritMult = Math.max(1, base.critMult * percentMultiplier(sources, ATTR.CRIT_MULT));
+  // 射程 / 生命：点值相加
+  const finalRange = Math.max(0, base.range + pointsSum(sources, ATTR.RANGE));
+  const finalHp = Math.max(1, base.hp + pointsSum(sources, ATTR.HP));
+  // 圆塔二段爆炸：伤害比例与范围都是点值相加
+  const finalExplDmg = Math.max(0, base.explosionDamage + pointsSum(sources, ATTR.EXPLOSION_DAMAGE));
+  const finalExplRadius = base.explosionRadius > 0
+    ? Math.max(0, base.explosionRadius + pointsSum(sources, ATTR.EXPLOSION_RADIUS))
+    : 0;
+  // 四项"强化专属"属性（六边塔/正方塔/扇塔/长方塔）：同样是点值相加
+  const finalElite = Math.max(0, base.eliteMult + pointsSum(sources, ATTR.ELITE_MULT));
+  const finalProjScale = Math.max(0, base.projectileScale + pointsSum(sources, ATTR.PROJECTILE_SCALE));
+  const finalSectorAngle = Math.max(0, base.sectorAngle + pointsSum(sources, ATTR.SECTOR_ANGLE));
+  const finalStackMax = Math.max(0, base.stackMax + pointsSum(sources, ATTR.STACK_MAX));
 
   const final = {
     damage: finalDamage,
     attackSpeedMultiplier: finalSpeed,
     attackInterval: finalInterval,
-    range: base.range,
-    hp: base.hp,
-    auraPower: base.auraPower * auraMult,
+    range: finalRange,
+    hp: finalHp,
+    auraPower: (base.auraPower + auraPoints) * auraMult,
+    critChance: finalCrit,
+    critMult: finalCritMult,
+    penetration: finalPen,
+    explosionDamage: finalExplDmg,
+    explosionRadius: finalExplRadius,
+    eliteMult: finalElite,
+    projectileScale: finalProjScale,
+    sectorAngle: finalSectorAngle,
+    stackMax: finalStackMax,
   };
 
   // ================= 4. 附加值（绿字/红字的那一半）=================
@@ -238,8 +338,17 @@ function collectTowerStats(game, tower, stats, towerType) {
     attackSpeedMultiplier: final.attackSpeedMultiplier - base.attackSpeedMultiplier,
     attackInterval: final.attackInterval - base.attackInterval,
     auraPower: final.auraPower - base.auraPower,
-    range: 0,
-    hp: 0,
+    range: final.range - base.range,
+    hp: final.hp - base.hp,
+    critChance: final.critChance - base.critChance,
+    critMult: final.critMult - base.critMult,
+    penetration: final.penetration - base.penetration,
+    explosionDamage: final.explosionDamage - base.explosionDamage,
+    explosionRadius: final.explosionRadius - base.explosionRadius,
+    eliteMult: final.eliteMult - base.eliteMult,
+    projectileScale: final.projectileScale - base.projectileScale,
+    sectorAngle: final.sectorAngle - base.sectorAngle,
+    stackMax: final.stackMax - base.stackMax,
   };
 
   // ================= 5. 面板行（渲染就绪，渲染层不再算数）=================
@@ -311,9 +420,59 @@ function buildRows(ctx) {
         parts: [],
       });
     }
+
+    // 暴击率：25%+5%（+5% 来自强化等级）
+    rows.push({
+      key: ATTR.CRIT,
+      label: '暴击率',
+      baseText: `${round2(base.critChance)}%`,
+      bonusText: signed(bonus.critChance, '%'),
+      sign: Math.sign(bonus.critChance),
+      parts: pointParts(sources, ATTR.CRIT),
+    });
+
+    // 暴击伤害：暴击时的伤害倍率（1.5 → 150%）；强化可把它按百分比放大
+    rows.push({
+      key: ATTR.CRIT_MULT,
+      label: '暴击伤害',
+      baseText: `${Math.round(base.critMult * 100)}%`,
+      bonusText: signed(bonus.critMult * 100, '%'),
+      sign: Math.sign(bonus.critMult),
+      parts: percentParts(sources, ATTR.CRIT_MULT),
+    });
+
+    // 穿透：固定值，抵扣敌人护甲
+    rows.push({
+      key: ATTR.PENETRATION,
+      label: '穿透',
+      baseText: `${round2(base.penetration)}`,
+      bonusText: signed(bonus.penetration, ''),
+      sign: Math.sign(bonus.penetration),
+      parts: pointParts(sources, ATTR.PENETRATION),
+    });
+
+    // 二段爆炸（圆塔专属；强化"二段爆炸伤害 / 爆炸范围"在此显示）
+    if (base.explosionRadius > 0) {
+      rows.push({
+        key: ATTR.EXPLOSION_DAMAGE,
+        label: '二段爆炸伤害',
+        baseText: `${round2(base.explosionDamage)}%`,
+        bonusText: signed(bonus.explosionDamage, '%'),
+        sign: Math.sign(bonus.explosionDamage),
+        parts: pointParts(sources, ATTR.EXPLOSION_DAMAGE),
+      });
+      rows.push({
+        key: ATTR.EXPLOSION_RADIUS,
+        label: '爆炸范围',
+        baseText: `${round2(base.explosionRadius)}`,
+        bonusText: signed(bonus.explosionRadius, ''),
+        sign: Math.sign(bonus.explosionRadius),
+        parts: pointParts(sources, ATTR.EXPLOSION_RADIUS),
+      });
+    }
   }
 
-  // 光环强度（辅助塔）：25+50，阶段每星 +100%
+  // 光环强度（辅助塔）：25+50，阶段每星 +100%，强化再加点值
   if (base.auraPower > 0) {
     rows.push({
       key: ATTR.AURA_POWER,
@@ -321,28 +480,60 @@ function buildRows(ctx) {
       baseText: `${round2(base.auraPower)}%`,
       bonusText: signed(bonus.auraPower, '%'),
       sign: Math.sign(bonus.auraPower),
-      parts: percentParts(sources, ATTR.AURA_POWER),
+      parts: percentParts(sources, ATTR.AURA_POWER).concat(pointParts(sources, ATTR.AURA_POWER)),
     });
   }
 
-  // 原生属性（无敌我时统称，作为兜底信息展示）
+  // 射程 / 光环范围
   if (isSupport) {
     rows.push({
       key: ATTR.RANGE, label: '光环范围',
-      baseText: `${round2(base.range)}`, bonusText: '', sign: 0, parts: [],
+      baseText: `${round2(base.range)}`,
+      bonusText: signed(bonus.range, ''), sign: Math.sign(bonus.range),
+      parts: pointParts(sources, ATTR.RANGE),
     });
   } else {
     rows.push({
       key: ATTR.RANGE, label: '射程',
-      baseText: `${round2(base.range)}`, bonusText: '', sign: 0, parts: [],
+      baseText: `${round2(base.range)}`,
+      bonusText: signed(bonus.range, ''), sign: Math.sign(bonus.range),
+      parts: pointParts(sources, ATTR.RANGE),
     });
   }
   rows.push({
     key: ATTR.HP, label: '生命',
-    baseText: `${round2(base.hp)}`, bonusText: '', sign: 0, parts: [],
+    baseText: `${round2(base.hp)}`,
+    bonusText: signed(bonus.hp, ''), sign: Math.sign(bonus.hp),
+    parts: pointParts(sources, ATTR.HP),
   });
 
+  // ---- 强化专属属性行：原生值或强化增量只要有一项非 0 就显示 ----
+  // （避免了给 16 种塔都塞 4 行 "0倍 / 0° / 0层" 的噪音）
+  pushSpecialRow(rows, sources, { key: ATTR.ELITE_MULT, label: '精英伤害倍率', unit: '倍', base: base.eliteMult, bonus: bonus.eliteMult });
+  pushSpecialRow(rows, sources, { key: ATTR.PROJECTILE_SCALE, label: '弹道体积', unit: '%', base: base.projectileScale, bonus: bonus.projectileScale });
+  pushSpecialRow(rows, sources, { key: ATTR.SECTOR_ANGLE, label: '扇面张角', unit: '°', base: base.sectorAngle, bonus: bonus.sectorAngle });
+  pushSpecialRow(rows, sources, { key: ATTR.STACK_MAX, label: '堆叠上限', unit: '层', base: base.stackMax, bonus: bonus.stackMax });
+
   return rows;
+}
+
+/** 专属属性行（基础值白字 + 强化增量绿字 + 来源明细） */
+function pushSpecialRow(rows, sources, cfg) {
+  if (!cfg.base && !cfg.bonus) return;
+  rows.push({
+    key: cfg.key,
+    label: cfg.label,
+    baseText: `${round2(cfg.base)}${cfg.unit}`,
+    bonusText: signedNum(cfg.bonus, cfg.unit),
+    sign: Math.sign(cfg.bonus),
+    parts: pointParts(sources, cfg.key),
+  });
+}
+
+/** 带符号的数值文本（0 返回空串；用于"基础值+加值"的加值一侧） */
+function signedNum(v, unit) {
+  if (!v) return '';
+  return `${v > 0 ? '+' : ''}${round2(v)}${unit || ''}`;
 }
 
 /** 把百分比来源整理成明细子行 */
@@ -376,6 +567,7 @@ module.exports = {
   SOURCE,
   SOURCE_LABEL,
   BUFF_LABELS,
+  ENHANCE_ATTR_MAP,
   buffMeta,
   stageText,
   collectTowerStats,

@@ -1,0 +1,42 @@
+﻿FOUND: C:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat
+no:    C:\Program Files\Tencent\微信开发者工具\cli.bat
+no:    C:\Program Files (x86)\Tencent\微信开发者工具\cli.bat
+no:    C:\Users\Administrator.WIN-CF4N027LCCI\AppData\Local\微信开发者工具\cli.bat
+no:    C:\Users\Administrator.WIN-CF4N027LCCI\AppData\Roaming\Tencent\微信开发者工具\cli.bat
+--- search Tencent dirs ---
+C:\Program Files (x86)\Tencent\QQPCMgr
+C:\Program Files (x86)\Tencent\微信web开发者工具
+C:\Program Files\Tencent\Marvis
+C:\Program Files\Tencent\MarvisData
+C:\Program Files\Tencent\QQNT
+C:\Program Files\Tencent\TDSData
+C:\Users\Administrator.WIN-CF4N027LCCI\AppData\Local\Programs\Common
+C:\Users\Administrator.WIN-CF4N027LCCI\AppData\Local\Programs\Cua
+C:\Users\Administrator.WIN-CF4N027LCCI\AppData\Local\Programs\DockerDesktop
+C:\Users\Administrator.WIN-CF4N027LCCI\AppData\Local\Programs\Quark
+C:\Users\Administrator.WIN-CF4N027LCCI\AppData\Local\Programs\Trae CN
+C:\Users\Administrator.WIN-CF4N027LCCI\AppData\Local\Programs\TRAE SOLO CN
+--- running processes ---
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
+微信开发者工具
