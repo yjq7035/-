@@ -112,7 +112,7 @@ let bootStep = 'init';         // 当前正处在哪一步（报错时精确定�
 //   · 3 = 推荐。覆盖当前绝大多数真机的 DPR（2x ~ 3x），画质明显提升。
 //         塔防游戏矢量绘制为主，9 倍像素量帧率无感；只有极低端安卓可能掉帧。
 //   · 4+ = 极端。目前没有手机 DPR 到 4，保留给未来。
-const MAX_RENDER_SCALE = 1;
+const MAX_RENDER_SCALE = 3;
 
 let renderScale = 0;           // 标定结果：只在首次成功拿到画布后算一次（重试复用，避免翻倍）
 let platformBaseW = 0;         // createCanvas 返回时的**原始**画布宽（平台的默认基准，只读一次）
