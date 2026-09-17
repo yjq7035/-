@@ -573,6 +573,11 @@ function drawSheet(game, L) {
     lineLabel = '需先解锁';
     lineEnabled = false;
     lineTop = THEME.track.soft; lineBottom = THEME.track.faint; lineStroke = THEME.border.subtle;
+  } else if (game.battleStarted) {
+    // 战斗内：登场/下架按钮置灰，不可操作
+    lineLabel = '战斗中不可';
+    lineEnabled = false;
+    lineTop = THEME.track.soft; lineBottom = THEME.track.faint; lineStroke = THEME.border.subtle;
   } else if (onLineup) {
     lineLabel = '下架';
     lineEnabled = true;
@@ -638,7 +643,7 @@ function actCodex(game, action, type) {
       };
     } else {
       const msg = res.reason === 'full' ? `登场池已满（${CODEX.lineupMax}）`
-        : (res.reason === 'last' ? '至少保留 1 个登场图形塔' : '需先解锁');
+        : (res.reason === 'min6' ? `至少需要 ${CODEX.lineupMin} 个登场图形塔（当前 ${res.count}）` : '需先解锁');
       game.toast = { text: msg, color: THEME.accent.danger, t0: Date.now() };
     }
     return res;

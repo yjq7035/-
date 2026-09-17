@@ -670,6 +670,16 @@ class Game {
     this.triggerDamage(source, dmg, enemy);
 
     enemy.hp -= dmg;
+    // 记录 BOSS 掉血缓冲（白色条）：仅 tier>=4 的 BOSS 记录
+    if (enemy.tier >= 4 && dmg > 0) {
+      const now = Date.now() / 1000;
+      enemy._dmgBuf = enemy._dmgBuf || [];
+      enemy._dmgBuf.push({ v: dmg, t: now });
+      // 清理 8 秒前的记录，保持轻量
+      while (enemy._dmgBuf.length > 0 && (now - enemy._dmgBuf[0].t) > 8) {
+        enemy._dmgBuf.shift();
+      }
+    }
     let killed = false;
     if (enemy.hp <= 0) {
       enemy.alive = false;
@@ -1712,9 +1722,9 @@ class Game {
     // 表现就是"画面定格 + 所有动画/按压反馈/波纹消失 = 整个界面点不动"，
     // 而且日志里只会看到一次异常，很难和生产事故对上号。
     try {
-      // 游戏进行中 + 停留在战斗场景 + 已点过「开始游戏」+ 没开着菜单 → 正常逻辑更新
-      // （战前选关界面 / 游戏中菜单 / 切到图签天赋 都冻结世界，回来接着打）
-      if (this.isRunning && this.scene === 'battle' && this.battleStarted && !this.showMenu) {
+      // 游戏进行中 + 已点过「开始游戏」+ 没开着菜单 → 正常逻辑更新
+      // （战前选关界面 / 游戏中菜单 冻结世界，切到图签天赋 不冻结，回来接着打）
+      if (this.isRunning && this.battleStarted && !this.showMenu) {
         this.update(dt);
       } else if (this.watchingVideo) {
         // 结算界面观看视频：世界冻结，仅推进视频倒计时

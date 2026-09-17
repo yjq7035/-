@@ -237,7 +237,8 @@ const CODEX = {
   maxLevel: 5,            // 图签最高等级（解锁即为 Lv.1）
   bonusPerLevel: 6,       // 每级 +6% 攻击力（Lv.1 = +6%，Lv.5 = +30%）
   upgradeCostRate: 0.6,   // 升级花费 = 解锁价 × 0.6 × 目标等级
-  lineupMax: 6,           // 登场池容量上限
+  lineupMin: 6,           // 登场池容量下限（战斗内不可低于 6 个）
+  lineupMax: 8,           // 登场池容量上限
   // 解锁价（按稀有度）
   unlockCost: { 1: 120, 2: 220, 3: 360 },
 };

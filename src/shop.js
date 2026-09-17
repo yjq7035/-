@@ -144,11 +144,83 @@ function drawRefreshGlyph(ctx, cx, cy, r, color) {
 }
 
 /**
+ * 绘制垃圾桶（出售）图标
+ * @param {string} color 颜色（暗灰=未激活，红色=激活发光）
+ * @param {boolean} active 是否激活（发光呼吸）
+ * @param {number} t 当前时间（秒），用于呼吸动画
+ */
+function drawTrashIcon(ctx, x, y, color, active, t) {
+  const w = 14, h = 16;
+  const rx = x - w / 2, ry = y - h / 2;
+
+  if (active) {
+    // 红色呼吸光晕
+    const pulse = 0.5 + 0.5 * Math.sin(t * 5);
+    const glow = ctx.createRadialGradient(x, y, 2, x, y, 22);
+    glow.addColorStop(0, `rgba(255, 68, 68, ${0.45 + 0.2 * pulse})`);
+    glow.addColorStop(1, 'rgba(255, 68, 68, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(x, y, 22, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 外圈红色描边
+    ctx.strokeStyle = `rgba(255, 68, 68, ${0.5 + 0.3 * pulse})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(rx, ry, w, h);
+    ctx.stroke();
+  } else {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.rect(rx, ry, w, h);
+    ctx.stroke();
+  }
+
+  // 桶身竖线
+  ctx.strokeStyle = color;
+  ctx.lineWidth = active ? 1.5 : 1;
+  for (let i = 1; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(rx + i * (w / 4), ry);
+    ctx.lineTo(rx + i * (w / 4), ry + h);
+    ctx.stroke();
+  }
+
+  // 桶盖（顶部加粗横线和两侧小竖线）
+  ctx.lineWidth = active ? 2 : 1.5;
+  ctx.beginPath();
+  ctx.moveTo(rx, ry + 3);
+  ctx.lineTo(rx + w, ry + 3);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(rx + 3, ry);
+  ctx.lineTo(rx + 3, ry + 3);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(rx + w - 3, ry);
+  ctx.lineTo(rx + w - 3, ry + 3);
+  ctx.stroke();
+
+  // 内部叉号（销毁标识）
+  ctx.strokeStyle = active ? '#fff' : color;
+  ctx.lineWidth = 1.5;
+  const cx1 = rx + w * 0.3, cy1 = ry + h * 0.55;
+  const cx2 = rx + w * 0.7, cy2 = cy1;
+  ctx.beginPath();
+  ctx.moveTo(cx1, cy1);
+  ctx.lineTo(cx2, cy2);
+  ctx.stroke();
+}
+
+/**
  * 绘制商店面板（含标题栏 / 特殊积分 / 刷新按钮 / 塔卡）
  */
 function drawShop(game) {
   const ctx = game.ctx;
   const L = getShopLayout(game);
+  const t = Date.now() / 1000;
 
   // ---- 面板底 + 顶部发丝描边 ----
   ctx.save();
@@ -172,6 +244,12 @@ function drawShop(game) {
     text: '商店', icon: '🛒', color: THEME.text.primary, fontSize: 11,
     bg: THEME.track.soft, stroke: THEME.border.normal,
   });
+
+  // ---- 出售图标（垃圾桶）：拖放中从放置槽拖塔 → 发光呼吸；否则暗灰 ----
+  const isSellActive = game.dragging && game.draggingFromSlot && game.draggingFromSlot.occupied;
+  const trashX = L.brand.x + L.brand.w + 12;
+  const trashY = L.brand.y + L.brand.h / 2;
+  drawTrashIcon(ctx, trashX, trashY, isSellActive ? THEME.accent.danger : THEME.text.dim, isSellActive, t);
 
   // 特殊积分（图签货币，顺手在商店也能看到余额）
   const m = meta.get();

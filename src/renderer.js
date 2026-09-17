@@ -385,13 +385,25 @@ function drawBossHealthBar(ctx, boss, cx, cy, team, maxW) {
   ctx.save();
 
   // 呼吸光晕（BOSS 专属，强调"大血条"存在感）
+  // 优化：双层径向渐变 + 软调，外圈收窄，不再糊一圈
   const t = Date.now() / 1000;
   const pulse = 0.5 + 0.5 * Math.sin(t * 2.0);
-  const glowR = h * (2.2 + 0.8 * pulse);
-  const glow = ctx.createRadialGradient(cx, cy, h * 0.5, cx, cy, Math.max(w / 2, glowR * 2));
-  glow.addColorStop(0, shade(main, 0.1, 0.35 + 0.2 * pulse));
-  glow.addColorStop(1, shade(main, 0.1, 0));
-  ctx.fillStyle = glow;
+  const innerR = h * (0.8 + 0.3 * pulse);
+  const outerR = h * (1.6 + 0.4 * pulse);
+  const glowR = Math.max(w / 2 * 0.4, outerR);
+  // 内圈亮色（紧贴血条）
+  const glowInner = ctx.createRadialGradient(cx, cy, innerR * 0.5, cx, cy, glowR * 0.7);
+  glowInner.addColorStop(0, shade(main, 0.15, 0.25 + 0.15 * pulse));
+  glowInner.addColorStop(1, shade(main, 0.15, 0));
+  ctx.fillStyle = glowInner;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, w / 2 + 8, glowR * 0.7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 外圈暗光（柔化过渡）
+  const glowOuter = ctx.createRadialGradient(cx, cy, glowR * 0.3, cx, cy, glowR);
+  glowOuter.addColorStop(0, shade(main, 0.1, 0.15 + 0.1 * pulse));
+  glowOuter.addColorStop(1, shade(main, 0.1, 0));
+  ctx.fillStyle = glowOuter;
   ctx.beginPath();
   ctx.ellipse(cx, cy, w / 2 + 12, glowR, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -802,26 +814,26 @@ function drawPanelHeader(ctx, block, panelX, y, panelW, towerDef, towerType, tow
     ctx.fillText('未进阶', nameX, y + 36);
   }
 
-  // 造价（右上角，金币色）
-  ctx.textAlign = 'right';
-  ctx.fillStyle = THEME.text.dim;
-  ctx.font = '11px Arial';
-  ctx.fillText('造价', right, y + 14);
-  ctx.fillStyle = THEME.accent.gold;
-  ctx.font = 'bold 16px Arial';
-  ctx.fillText(`${towerDef.cost}`, right, y + 34);
-
-  // 累计投入（只有已放置的塔才显示）
+  // 造价/价值（右上角）
   if (tower && tower._cumulativeGold > 0) {
+    // 已放置的塔：显示"价值"（出售返还 70%），替代原来的"造价"
     ctx.textAlign = 'right';
-    ctx.fillStyle = THEME.accent.gold;
-    ctx.font = 'bold 11px Arial';
-    ctx.fillText(`累计投入：${tower._cumulativeGold}`, right - PANEL_UI.padX - 120, y + 14);
-    // 出售返还 70%（灰色提示）
-    const refund = Math.round(tower._cumulativeGold * 0.7);
     ctx.fillStyle = THEME.text.dim;
-    ctx.font = '10px Arial';
-    ctx.fillText(`出售返还 70%：${refund}`, right - PANEL_UI.padX - 120, y + 30);
+    ctx.font = '11px Arial';
+    ctx.fillText('价值', right, y + 14);
+    ctx.fillStyle = THEME.accent.gold;
+    ctx.font = 'bold 16px Arial';
+    const refund = Math.round(tower._cumulativeGold * 0.7);
+    ctx.fillText(`${refund}`, right, y + 34);
+  } else {
+    // 商店/图签预览：显示"造价"（未放置，无价值）
+    ctx.textAlign = 'right';
+    ctx.fillStyle = THEME.text.dim;
+    ctx.font = '11px Arial';
+    ctx.fillText('造价', right, y + 14);
+    ctx.fillStyle = THEME.accent.gold;
+    ctx.font = 'bold 16px Arial';
+    ctx.fillText(`${towerDef.cost}`, right, y + 34);
   }
 }
 

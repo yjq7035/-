@@ -260,7 +260,7 @@ function toggleLineup(type) {
 
   const idx = m.lineup.indexOf(type);
   if (idx >= 0) {
-    if (m.lineup.length <= 1) return { ok: false, reason: 'last' };
+    if (m.lineup.length <= CODEX.lineupMin) return { ok: false, reason: 'min6', count: m.lineup.length };
     m.lineup.splice(idx, 1);
     save(true);
     return { ok: true, on: false };
