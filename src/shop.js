@@ -199,7 +199,7 @@ function drawShop(game) {
   ctx.textBaseline = 'middle';
   ctx.font = 'bold 11px Arial';
   ctx.fillStyle = canRefresh ? THEME.accent.gold : THEME.accent.danger;
-  ctx.fillText(`${rc}`, refreshRect.x + 26, refreshRect.y + refreshRect.h / 2 + 0.5);
+  ctx.fillText(`${rc}/${game.gold}`, refreshRect.x + 26, refreshRect.y + refreshRect.h / 2 + 0.5);
 
   // ---- 塔卡 ----
   for (const card of L.cards) {

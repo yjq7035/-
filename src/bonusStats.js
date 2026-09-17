@@ -31,10 +31,11 @@ const ATTR = {
   ATTACK_INTERVAL: 'attackInterval',
   AURA_POWER: 'auraPower',   // 辅助塔光环强度（虚拟属性，非 TOWER_STATS 原生字段）
   RANGE: 'range',
-  HP: 'hp',
+  HP: null, // 已移除：图形塔无敌，不再显示生命
   CRIT: 'critChance',        // 暴击率(%) —— 基础值 + 强化专属属性
   CRIT_MULT: 'critMult',     // 暴击伤害倍率（1.5 = 150%）
   PENETRATION: 'penetration', // 穿透（固定值）：抵扣敌人护甲
+  BREAK: 'break',             // 破解（固定值）：额外抵消敌人抗性（箭形塔专属）
   EXPLOSION_DAMAGE: 'explosionDamage', // 圆塔二段爆炸的溅射伤害比例(%)
   EXPLOSION_RADIUS: 'explosionRadius', // 圆塔二段爆炸的覆盖半径
   ELITE_MULT: 'eliteMult',             // 六边塔：对精英及以上的伤害倍数（×N）
@@ -68,10 +69,11 @@ const BUFF_LABELS = {
   damage:                { name: '攻击力', unit: '' },
   attackInterval:        { name: '攻击间隔', unit: '秒' },
   range:                 { name: '射程', unit: '' },
-  hp:                    { name: '生命', unit: '' },
+  // hp:                  { name: '生命', unit: '' },  // 已移除
   critChance:            { name: '暴击率', unit: '%' },
   critMult:              { name: '暴击伤害', unit: '' },
   penetration:           { name: '穿透', unit: '' },
+  break:                { name: '破解', unit: '' },
   explosionDamage:       { name: '二段爆炸伤害', unit: '%' },
   explosionRadius:       { name: '爆炸范围', unit: '' },
   auraPower:             { name: '光环强度', unit: '%' },
@@ -86,9 +88,10 @@ const ENHANCE_ATTR_MAP = {
   critChance: ATTR.CRIT,
   critMult: ATTR.CRIT_MULT,
   penetration: ATTR.PENETRATION,
+  break: ATTR.BREAK,
   attackSpeedMultiplier: ATTR.ATTACK_SPEED,
   range: ATTR.RANGE,
-  hp: ATTR.HP,
+  // hp: ATTR.HP,  // 已移除
   explosionDamage: ATTR.EXPLOSION_DAMAGE,
   explosionRadius: ATTR.EXPLOSION_RADIUS,
   auraPower: ATTR.AURA_POWER,
@@ -323,7 +326,7 @@ function collectTowerStats(game, tower, stats, towerType) {
     attackSpeedMultiplier: finalSpeed,
     attackInterval: finalInterval,
     range: finalRange,
-    hp: finalHp,
+  // hp: finalHp,  // 已移除：图形塔无敌，不再显示
     auraPower: (base.auraPower + auraPoints) * auraMult,
     critChance: finalCrit,
     critMult: finalCritMult,
@@ -343,7 +346,7 @@ function collectTowerStats(game, tower, stats, towerType) {
     attackInterval: final.attackInterval - base.attackInterval,
     auraPower: final.auraPower - base.auraPower,
     range: final.range - base.range,
-    hp: final.hp - base.hp,
+    // hp: final.hp - base.hp,  // 已移除
     critChance: final.critChance - base.critChance,
     critMult: final.critMult - base.critMult,
     penetration: final.penetration - base.penetration,
@@ -504,12 +507,12 @@ function buildRows(ctx) {
       parts: pointParts(sources, ATTR.RANGE),
     });
   }
-  rows.push({
-    key: ATTR.HP, label: '生命',
-    baseText: `${round2(base.hp)}`,
-    bonusText: signed(bonus.hp, ''), sign: Math.sign(bonus.hp),
-    parts: pointParts(sources, ATTR.HP),
-  });
+  // rows.push({  // 已移除：图形塔无敌，不再显示生命
+  //   key: ATTR.HP, label: '生命',
+  //   baseText: `${round2(base.hp)}`,
+  //   bonusText: signed(bonus.hp, ''), sign: Math.sign(bonus.hp),
+  //   parts: pointParts(sources, ATTR.HP),
+  // });
 
   // ---- 强化专属属性行：原生值或强化增量只要有一项非 0 就显示 ----
   // （避免了给 16 种塔都塞 4 行 "0倍 / 0° / 0层" 的噪音）

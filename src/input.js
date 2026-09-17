@@ -180,14 +180,21 @@ function handleTouchStart(game, e) {
     return;
   }
 
-  // 塔属性面板：先判断是否点在「强化」按钮上，其余位置一律关闭面板
+  // 塔属性面板：先判断是否点在面板内（在面板内允许滚动，不直接关闭）
   if (game.showPanel) {
-    if (game.panelEnhanceBtn && isPointInRect(pos, game.panelEnhanceBtn)) {
-      pressButton(game, 'tower:enhance');
-      game._panelBtnTouch = true;
-      game.touchStartPos = null;
+    const panelRect = game._panelRect;
+    if (panelRect && isPointInRect(pos, panelRect)) {
+      game.touchStartPos = { x: pos.x, y: pos.y };
+      game.panelScrolling = false;
+      // 强化按钮优先（点在按钮上直接关闭面板并处理点击）
+      if (game.panelEnhanceBtn && isPointInRect(pos, game.panelEnhanceBtn)) {
+        pressButton(game, 'tower:enhance');
+        game._panelBtnTouch = true;
+        game.touchStartPos = null;
+      }
       return;
     }
+    // 点在面板外 → 关闭
     game.showPanel = false;
     game.panelTowerType = null;
     game.selectedTower = null;
@@ -300,6 +307,21 @@ function handleTouchMove(game, e) {
       levels.setLevelScroll(game, L.scroll - dy);
       game.touchStartPos = { x: pos.x, y: pos.y };
       game._readyTap = null;          // 滚过了就不算点按
+      releaseButton(game);
+    }
+    return;
+  }
+
+  // ========== 塔属性面板滚动 ==========
+  if (game.showPanel && game.panelScrollMax > 0 &&
+      game.touchStartPos && !game.pendingDrag) {
+    const pos = getTouchPos(e);
+    const dy = pos.y - game.touchStartPos.y;
+    if (Math.abs(dy) >= 6) {
+      game.panelScrolling = true;
+      game.panelScrollOffset = Math.max(0, Math.min(game.panelScrollMax,
+        (game.panelScrollOffset || 0) - dy));
+      game.touchStartPos = { x: pos.x, y: pos.y };
       releaseButton(game);
     }
     return;

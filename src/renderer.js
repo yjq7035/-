@@ -687,6 +687,8 @@ function drawTowerPanel(game) {
   const panelH = Math.min(contentH, availH);
   const panelX = (W - panelW) / 2;
   const panelY = Math.max(PANEL_UI.screenMarginY, (H - panelH) / 2);
+  // 给输入层用（判断触摸是否在面板内、面板大小）
+  game._panelRect = { x: panelX, y: panelY, w: panelW, h: panelH };
 
   // ---------- 滚动支持 ----------
   // 内容总高 - 面板高 = 可滚动距离
@@ -1400,20 +1402,8 @@ function drawTopBar(game) {
     stroke: 'rgba(229, 115, 115, 0.55)',
   });
 
-  // 中：生存积分
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = 'bold 12px Arial';
-  ctx.fillStyle = THEME.text.primary;
-  ctx.fillText(`❤️ ${game.lives}`, width / 2, H / 2);
-
-  // 右：金币（展示）+ ☰ 游戏菜单按钮（顶栏唯一可点元素）
+  // 右：☰ 游戏菜单按钮（顶栏唯一可点元素）
   const menuRect = gamemenu.getMenuButtonRect(game);
-  ctx.textAlign = 'right';
-  ctx.font = 'bold 12px Arial';
-  ctx.fillStyle = THEME.accent.gold;
-  ctx.fillText(`💰 ${game.gold}`, menuRect.x - 8, H / 2);
-
   gamemenu.drawMenuButton(game);
 
   ctx.strokeStyle = THEME.border.subtle;
@@ -1654,7 +1644,7 @@ function drawBattle(game) {
   // 绘制弹道
   drawProjectiles(game);
 
-  // 绘制激光效果（半圆塔）
+  // 绘制激光效果（半圆塔 / 正方塔）
   for (const effect of game.effects) {
     if (effect.type === 'laser') {
       const alpha = effect.life / effect.maxLife;
@@ -1664,6 +1654,30 @@ function drawBattle(game) {
       ctx.lineWidth = 1.5; // 减少厚度
       ctx.shadowColor = effect.color;
       ctx.shadowBlur = 4; // 削弱发光
+      ctx.beginPath();
+      ctx.moveTo(effect.x1, effect.y1);
+      ctx.lineTo(effect.x2, effect.y2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (effect.type === 'square_laser') {
+      const alpha = effect.life / effect.maxLife;
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.85;
+      // 激光管：粗线 + 外发光
+      ctx.lineWidth = 16;
+      ctx.strokeStyle = effect.color;
+      ctx.shadowColor = effect.color;
+      ctx.shadowBlur = 20;
+      ctx.beginPath();
+      ctx.moveTo(effect.x1, effect.y1);
+      ctx.lineTo(effect.x2, effect.y2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      // 中心高亮白线
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#fff';
+      ctx.globalAlpha = alpha * 0.9;
       ctx.beginPath();
       ctx.moveTo(effect.x1, effect.y1);
       ctx.lineTo(effect.x2, effect.y2);

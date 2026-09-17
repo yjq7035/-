@@ -656,20 +656,14 @@ class Game {
       }
     }
 
-    // ②③ 抗性 / 穿透 + 递减减伤
+    // ②③ 抗性 / 穿透 + 破解 + 递减减伤
     const pen = sourceTower ? towerMod.getAttackProfile(sourceTower).penetration : 0;
+    const brk = sourceTower ? (sourceTower.type === 'arrow' ? towerMod.getAttackProfile(sourceTower).break : 0) : 0;
     const armor = enemy.armor || 0;
-    const effectiveArmor = Math.max(0, armor - pen);
+    const effectiveArmor = Math.max(0, armor - pen - brk);
     if (effectiveArmor > 0 && dmg > 0) {
       const reduce = effectiveArmor / (effectiveArmor + BALANCE.armorK);
       dmg = Math.max(1, dmg * (1 - reduce));
-    }
-
-    // 箭形塔碎甲debuff：命中时破坏目标抗性
-    if (sourceTower && sourceTower.type === 'arrow' && enemy.alive) {
-      const armorDebuff = 3 + (sourceTower.enhanceLevel || 0) * 0; // 基础破坏3点，强化选项[碎甲]由描述体现，实际数值可通过增强等级扩展
-      // 这里简化为固定3点破坏，强化等级可扩展
-      enemy.armor = Math.max(0, (enemy.armor || 0) - 3);
     }
 
     this.triggerHit(enemy, source, dmg);
@@ -1202,35 +1196,89 @@ class Game {
   }
 
   /**
-   * 正方塔：旋转弹道直线冲锋
-   * 弹道从塔向目标方向直线冲锋，弹道自身旋转，对经过的敌人造成单次伤害，出屏幕时销毁
+   * 正方塔：攻击瞬间沿目标方向发射激光，对路径上所有敌人造成单次伤害
+   * projectileScale（弹道体积）控制激光射程：基础射程 = tower.range * projectileScale/100
    */
   fireSquareProjectile(tower, target) {
     const towerDef = TOWER_DEFS[tower.type];
     const towerStats = towerMod.getTowerRuntimeStats(tower);
     const damage = this.towerDamage(tower, towerStats.damage);
-    
+
     // 计算从塔到目标的方向
     const dx = target.x - tower.x;
     const dy = target.y - tower.y;
     const angle = Math.atan2(dy, dx);
-    
+
+    // 激光射程 = 塔射程 × projectileScale 百分比
+    const laserRange = (towerStats.range || 200) * (towerStats.projectileScale || 200) / 100;
+
+    // 激光线起点和终点（屏幕坐标）
+    const lx = tower.x + Math.cos(angle) * laserRange;
+    const ly = tower.y + Math.sin(angle) * laserRange;
+
+    // 激光首次命中（伤害在每帧的 fireLaserOnPathEachFrame 中持续结算）
+    const laserDuration = 0.8;
+    this.effects.push({
+      type: 'square_laser',
+      x1: tower.x, y1: tower.y,
+      x2: lx, y2: ly,
+      color: towerDef.color,
+      life: laserDuration,
+      maxLife: laserDuration,
+    });
+
+    // 创建一条'弹道'供视觉层绘制（仅视觉）
     this.projectiles.push({
       x: tower.x,
       y: tower.y,
-      angle: angle, // 冲锋方向
-      rotationAngle: 0, // 弹道自身旋转角度
+      angle: angle,
       sourceTower: tower,
-      speed: 500, // 冲锋速度
-      damage: damage,
+      damage: 0,
+      laserDamage: damage,
       type: 'square',
       color: towerDef.color,
-      size: 10, // 弹道大小（原20，减小50%）
+      size: 10,
       alive: true,
-      hitEnemies: new Set(), // 已造成伤害的敌人，避免重复伤害
+      isVisualOnly: true,  // 仅视觉，不参与移动和碰撞
+      laserEndX: lx,
+      laserEndY: ly,
+      laserRange: laserRange,
+      hitEnemies: new Set(),
+      laserLife: laserDuration,
     });
-    
+
     tower.attackAngle = angle;
+  }
+
+  /**
+   * 在直线路径上对敌人造成伤害（正方塔激光专用）—— 每次调用都重新扫一遍路径，
+   * 返回 damage[] 数组（仅包含本帧新命中、未被 hitEnemies 收录的敌人），
+   * 调用方负责统一 applyDamage。
+   */
+  fireLaserOnPathEachFrame(sourceTower, x1, y1, x2, y2, maxRange, damage, hitEnemies) {
+    const ABx = x2 - x1, ABy = y2 - y1;
+    const ABlen2 = ABx * ABx + ABy * ABy;
+    if (ABlen2 <= 0) return [];
+    const laserWidth = 12;
+    const newDamage = [];
+    for (const enemy of this.enemies) {
+      if (!enemy.alive) continue;
+      if (hitEnemies.has(enemy)) continue;
+      const AE = { x: enemy.x - x1, y: enemy.y - y1 };
+      const t = (AE.x * ABx + AE.y * ABy) / ABlen2;
+      if (t < 0 || t > 1) continue;
+      const closestX = x1 + ABx * t;
+      const closestY = y1 + ABy * t;
+      const perpDist = Math.sqrt((enemy.x - closestX) ** 2 + (enemy.y - closestY) ** 2);
+      if (perpDist <= laserWidth) {
+        const result = this.applyDamage(sourceTower, enemy, damage, { source: { type: 'square_laser' } });
+        if (result.damage > 0) {
+          hitEnemies.add(enemy);
+          newDamage.push(enemy);
+        }
+      }
+    }
+    return newDamage;
   }
 
   /**
@@ -1492,40 +1540,26 @@ class Game {
         continue;
       }
 
-      // 处理正方塔弹道：旋转弹道直线冲锋
+      // 处理正方塔弹道：激光持续照射
       if (proj.type === 'square') {
-        // 旋转弹道自身
-        proj.rotationAngle += dt * 8; // 每秒旋转8弧度
-        
-        // 沿冲锋方向移动
-        proj.x += Math.cos(proj.angle) * proj.speed * dt;
-        proj.y += Math.sin(proj.angle) * proj.speed * dt;
-        
-        // 检查是否出屏幕（用逻辑视口尺寸：this.W/H，不是物理像素的 canvas 尺寸）
-        const w = this.W;
-        const h = this.H;
-        if (proj.x < -50 || proj.x > w + 50 || proj.y < -50 || proj.y > h + 50) {
-          proj.alive = false;
-          continue;
-        }
-        
-        // 检测对路径上的敌人造成伤害
-        for (const enemy of this.enemies) {
-          if (!enemy.alive) continue;
-          if (proj.hitEnemies.has(enemy)) continue;
-          
-          const dx = enemy.x - proj.x;
-          const dy = enemy.y - proj.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          
-          if (dist < proj.size / 2 + enemy.size / 2) {
-            // 造成伤害：走统一结算入口（暴击 + 穿透 + 抗性减伤）
-            this.applyDamage(proj.sourceTower, enemy, proj.damage, { source: proj });
-            proj.hitEnemies.add(enemy);
-            break;
+        // 旋转弹道自身（仅视觉）
+        proj.rotationAngle += dt * 8;
+
+        // 激光持续时间递减，到 0 则停止照射
+        if (proj.laserLife !== undefined) {
+          proj.laserLife -= dt;
+          if (proj.laserLife <= 0) {
+            proj.alive = false;
+            continue;
           }
         }
-        
+
+        // 激光管沿固定线段扫掠，每帧重新判定新进入的敌人（首次命中后不再重复）
+        const hitSet = proj.hitEnemies;
+        if (hitSet && proj.laserEndX !== undefined && proj.laserEndY !== undefined) {
+          this.fireLaserOnPathEachFrame(proj.sourceTower, proj.x, proj.y, proj.laserEndX, proj.laserEndY, proj.laserRange || 300, proj.laserDamage || 0, hitSet);
+        }
+
         continue;
       }
 

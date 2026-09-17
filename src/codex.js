@@ -517,7 +517,7 @@ function drawSheet(game, L) {
   ctx.fillStyle = THEME.text.dim;
   ctx.fillText(attrText, sheet.x + 14, attrY);
   ctx.fillText(`射程 ${stats.range}`, sheet.x + 14 + colW, attrY);
-  ctx.fillText(`生命 ${stats.hp}`, sheet.x + 14 + colW * 2, attrY);
+  // ctx.fillText(`生命 ${stats.hp}`, sheet.x + 14 + colW * 2, attrY);  // 已移除
 
   // 第二属性行：暴击率 / 暴击伤害 / 穿透（辅助塔无此三项）
   if (!isSupport) {

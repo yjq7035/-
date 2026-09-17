@@ -289,6 +289,7 @@ function getAttackProfile(tower) {
     critChance: Math.max(0, (st.critChance || 0) + getEnhanceAttr(tower, 'critChance')),
     critMult: Math.max(1, (st.critMult || BALANCE.critDamageDefaultMult) * (1 + critMultPct / 100)),
     penetration: Math.max(0, (st.penetration || 0) + getEnhanceAttr(tower, 'penetration')),
+    break:       Math.max(0, (st.break || 0) + getEnhanceAttr(tower, 'break')),
   };
 }
 
@@ -309,9 +310,10 @@ function getTowerRuntimeStats(tower) {
   const out = Object.assign({}, st);
   const add = (key) => getEnhanceAttr(tower, key);
   out.range = (st.range || 0) + add('range');
-  out.hp = (st.hp || 0) + add('hp');
+  // out.hp = (st.hp || 0) + add('hp');  // 已移除：图形塔无敌
   out.attackSpeedMultiplier = (st.attackSpeedMultiplier || 0) + add('attackSpeedMultiplier');
   out.penetration = (st.penetration || 0) + add('penetration');
+  out.break = (st.break || 0) + add('break');
   out.critChance = (st.critChance || 0) + add('critChance');
   out.critMult = (st.critMult || BALANCE.critDamageDefaultMult) * (1 + add('critMult') / 100);
   if (st.isSupport) {
