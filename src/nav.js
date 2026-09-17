@@ -23,7 +23,7 @@ const NAV_ITEMS = [
   { id: 'codex',   scene: 'codex',   icon: '📖',  label: '图签' },
   { id: 'battle',  scene: 'battle',  icon: '⚔️',  label: '战斗' },
   { id: 'talents', scene: 'talents', icon: '✨',  label: '天赋' },
-  { id: 'nav5',    scene: null,      icon: null,  label: '待扩展', disabled: true },
+  { id: 'bag',     scene: 'bag',     icon: '🎒',  label: '背包' },
 ];
 
 const NAV_UI = {
@@ -181,6 +181,9 @@ function drawNav(game) {
     } else if (it.id === 'talents') {
       // 天赋：矢量四角星
       drawSpark(ctx, cx, iconCY, 10, iconColor);
+    } else if (it.id === 'bag') {
+      // 背包：矢量挎包（不依赖 emoji 字体，任何设备都稳定出图形）
+      drawBackpack(ctx, cx, iconCY, 10, iconColor);
     } else if (it.icon) {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -287,6 +290,53 @@ function drawSpark(ctx, cx, cy, r, color) {
   ctx.closePath();
   ctx.fillStyle = color;
   ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * 矢量背包图标（背包）
+ * 造型：上提手 + 梯形包体 + 前袋 + 中缝扣带，纯路径绘制。
+ */
+function drawBackpack(ctx, cx, cy, r, color) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  const w = r * 1.62;   // 包体宽
+  const h = r * 1.58;   // 包体高
+  const bx = cx - w / 2;
+  const by = cy - h * 0.32;
+
+  // 提手（包体上方的半圆）
+  ctx.lineWidth = Math.max(1.2, r * 0.16);
+  ctx.beginPath();
+  ctx.arc(cx, by, r * 0.42, Math.PI * 1.12, Math.PI * 1.88);
+  ctx.stroke();
+
+  // 包体
+  ctx.beginPath();
+  ctx.moveTo(bx, by + r * 0.30);
+  ctx.lineTo(bx + w * 0.10, by + h);
+  ctx.lineTo(bx + w * 0.90, by + h);
+  ctx.lineTo(bx + w, by + r * 0.30);
+  ctx.closePath();
+  ctx.fill();
+
+  // 前袋（在包体上压一层暗色，形成"口袋"的观感）
+  // ⚠️ 不要用 destination-out 挖洞：那会连导航栏底一起挖穿，露出页面底色。
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+  ctx.fillRect(bx + w * 0.22, by + h * 0.62, w * 0.56, h * 0.30);
+  ctx.fillStyle = color;
+
+  // 扣带
+  ctx.lineWidth = Math.max(1.1, r * 0.14);
+  ctx.beginPath();
+  ctx.moveTo(bx + w * 0.30, by + h * 0.44);
+  ctx.lineTo(bx + w * 0.70, by + h * 0.44);
+  ctx.stroke();
+
   ctx.restore();
 }
 

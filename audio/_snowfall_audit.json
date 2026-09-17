@@ -1,0 +1,22 @@
+{
+  "file": "snowfall.mp3",
+  "mp3_bytes": 313964,
+  "sample_rate": 32000,
+  "decoded_samples": 1001739,
+  "expected_samples": 1001739,
+  "extra_samples_encoder_delay": 0,
+  "duration_sec": 31.3043,
+  "body_rms_dbfs": -16.67,
+  "head_rms_dbfs": -24.62,
+  "tail_rms_dbfs": -30.22,
+  "seam_diff1": 0.001083,
+  "seam_diff1_pct_rank": 22.62,
+  "seam_diff2": 0.001185,
+  "seam_diff2_pct_rank": 62.65,
+  "p99_diff1": 0.030026,
+  "p995_diff2": 0.004363,
+  "PASS_diff1": true,
+  "PASS_diff2": true,
+  "PASS_edge_not_silent": true,
+  "PASS": true
+}

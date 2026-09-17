@@ -1,10 +1,11 @@
 // ============================================================================
 // 整机冒烟 —— .workbuddy/tmp/smoke.js
 // ----------------------------------------------------------------------------
-// 直接跑 renderer.render(game) 的完整管线（不是单函数），覆盖 5 个场景：
-//   battle / battle+属性面板 / codex / codex+详情面板 / talents
+// 直接跑 renderer.render(game) 的完整管线（不是单函数），覆盖 7 个场景：
+//   battle / battle+属性面板 / codex / codex+详情面板 / codex+选宝石浮层 /
+//   talents / bag
 // 断言：① 不抛异常；② 绘制指令数 > 40（空屏探测器）。
-// 顺带跑一遍"真实点击"链路，确认两个历史 bug 都不会回来。
+// 顺带跑一遍"真实点击"链路，确认历史 bug 都不会回来。
 // ============================================================================
 const path = require('path');
 const fs = require('fs');
@@ -21,12 +22,15 @@ const ok = (name, cond, detail) => {
   out.push(`${cond ? '  ok  ' : ' FAIL '} ${name}${detail ? '  → ' + detail : ''}`);
 };
 
-let Game, renderer, input, codex, config;
+let Game, renderer, input, codex, bag, nav, meta, config;
 try {
   Game = require(path.join(ROOT, 'src', 'game_core'));
   renderer = require(path.join(ROOT, 'src', 'renderer'));
   input = require(path.join(ROOT, 'src', 'input'));
   codex = require(path.join(ROOT, 'src', 'codex'));
+  bag = require(path.join(ROOT, 'src', 'bag'));
+  nav = require(path.join(ROOT, 'src', 'nav'));
+  meta = require(path.join(ROOT, 'src', 'meta'));
   config = require(path.join(ROOT, 'src', 'config'));
 } catch (e) {
   fs.writeFileSync(path.join(__dirname, '_smoke_error.txt'), (e && e.stack) || String(e), 'utf8');
@@ -57,7 +61,12 @@ for (const [W, H] of RES) {
     ['战斗 + 属性面板', () => { g.scene = 'battle'; g.panelTowerType = 'arrow'; g.showPanel = true; }],
     ['图签（无选中）', () => { g.scene = 'codex'; g.showPanel = false; g.codexSelected = null; }],
     ['图签 + 详情面板', () => { g.scene = 'codex'; g.codexSelected = 'arrow'; }],
-    ['天赋', () => { g.scene = 'talents'; g.codexSelected = null; }],
+    ['图签 + 选宝石浮层', () => {
+      g.scene = 'codex'; g.codexSelected = 'arrow';
+      codex.openGemPicker(g, 'arrow', 0);
+    }],
+    ['天赋', () => { g.scene = 'talents'; g.codexSelected = null; g.gemPicker = null; }],
+    ['背包', () => { g.scene = 'bag'; g.gemPicker = null; }],
   ];
 
   for (const [name, setup] of scenarios) {
@@ -74,6 +83,7 @@ for (const [W, H] of RES) {
   g.scene = 'codex';
   g.codexSelected = null;
   g.codexScroll = 0;
+  g.gemPicker = null;
   const L = codex.getCodexLayout(g);
   const c0 = L.grid[0];
   tapAt(g, c0.x + c0.w / 2, c0.y + c0.h / 2);
@@ -88,6 +98,23 @@ for (const [W, H] of RES) {
   tapAt(g, W / 2, L.viewport.y + 2);
   ok('图签：点空白收面板', g.codexSelected === null, `codexSelected=${g.codexSelected}`);
 
+  // ---- 背包：导航第 5 格能进去 ----
+  g.scene = 'battle';
+  g.gemPicker = null;
+  const navL = nav.getNavLayout(g);
+  const bagItem = navL.items[4];
+  const before = navItemScene(bagItem);
+  tapAt(g, bagItem.x + bagItem.w / 2, bagItem.y + bagItem.h / 2);
+  ok('导航第 5 格 = 背包（真实点按可进入）', g.scene === 'bag' && before === 'bag',
+    `第5格 scene=${before} → game.scene=${g.scene}`);
+
+  // 背包解锁按钮：AD.enabled=false 时必须被拦下（与「再次挑战」同款），绝不假解锁
+  const beforeSlots = meta.bagSlots();
+  const r = bag.actExpandBag(g);
+  ok('背包：广告未开放时拒绝解锁（不假解锁）',
+    (!config.AD.enabled) ? (r.ok === false && meta.bagSlots() === beforeSlots) : true,
+    `AD.enabled=${config.AD.enabled} → ${JSON.stringify(r)} slots ${beforeSlots}→${meta.bagSlots()}`);
+
   // 战斗场景点顶栏 ☰ 不应抛异常
   g.scene = 'battle';
   let menuErr = null;
@@ -95,7 +122,11 @@ for (const [W, H] of RES) {
   ok('战斗：点顶栏不抛异常', !menuErr, menuErr ? menuErr.message : 'ok');
 }
 
+function navItemScene(item) {
+  return item ? item.scene : null;
+}
+
 out.push('');
-out.push(`=== 冒烟汇总：${RES.length} 分辨率 × 5 场景，失败 ${fails} 条 ===`);
+out.push(`=== 冒烟汇总：${RES.length} 分辨率 × 7 场景，失败 ${fails} 条 ===`);
 out.push(`=== 判据戳：TOWER_ORDER=${config.TOWER_ORDER.length} / ${new Date().toISOString()} ===`);
 fs.writeFileSync(path.join(__dirname, '_smoke.txt'), out.join('\n'), 'utf8');

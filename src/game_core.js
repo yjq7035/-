@@ -14,10 +14,11 @@ const AuraManager = require('./auraManager');
 const meta = require('./meta');
 const levelsMod = require('./levels');
 const ads = require('./ads');
+const gems = require('./gems');
 
 const {
   LAYOUT, BALANCE, TOWER_DEFS, PLAYER, ATTACK_SPEED_BASE, MAX_STAGE, AURA_DURATION,
-  POINTS, TALENT_POINTS, LEVELS, SHOP,
+  POINTS, TALENT_POINTS, LEVELS, SHOP, GEM,
 } = config;
 
 // 「再次挑战（看广告复活）」复活后回满的生命比例。
@@ -106,6 +107,9 @@ class Game {
     this.showMenu = false;        // 顶栏 ☰ 打开的游戏中菜单（返回战斗 / 放弃结束）
     this.codexSelected = null;    // 图签界面当前选中的塔类型
     this.codexScroll = 0;         // 图签格网的上下滚动量（0 = 顶部）
+    this.codexSheetScroll = 0;    // 图签【详情面板内部】的上下滚动量（0 = 顶部）
+    this.gemPicker = null;        // 图签"选宝石嵌入"浮层：null=关闭，否则 { type, index }
+    this.bagScroll = 0;           // 背包格网的上下滚动量（0 = 顶部）
     this.talentScroll = 0;        // 天赋列表的上下滚动量（0 = 顶部）
     this.levelScroll = null;      // 选关天梯的上下滚动量（null = 尚未初始化，默认贴底看关卡1）
     this.enhancePicker = null;    // 强化「多选一」浮层：null=关闭，否则 { tower }
@@ -497,6 +501,9 @@ class Game {
     this.toast = null;
     this.codexSelected = null;
     this.codexScroll = 0;
+    this.codexSheetScroll = 0;
+    this.gemPicker = null;
+    this.bagScroll = 0;
     this.talentScroll = 0;
     // levelScroll 不在 restart 里重置：保留用户滚动位置，让选关界面回到原来的位置
     // （startLevel 会显式设置到目标关卡，abandonRun 保留上次滚动）
@@ -587,7 +594,7 @@ class Game {
     this.gold += Math.max(0, Math.round((amount || 0) * mult));
   }
 
-  /** 击杀结算：金币 + 特殊积分 +（BOSS 及以上）天赋点 */
+  /** 击杀结算：金币 + 特殊积分 +（BOSS 及以上）天赋点 + 精英/BOSS 宝石掉落 */
   grantKillReward(enemy) {
     if (!enemy) return;
     const tier = enemy.tier || 0;
@@ -600,26 +607,32 @@ class Game {
     else if (tier >= 3) pts = POINTS.tier3;
     if (pts > 0) meta.grantPoints(pts);
     if (tier >= 4) meta.grantTalentPoints(TALENT_POINTS.bossKill);
+    // 宝石掉落：精英 / BOSS / 最终BOSS 按 tier 概率掉落（越硬越容易掉）
+    const chance = (GEM.dropTierChance || {})[tier];
+    if (chance && Math.random() < chance) {
+      this.dropGem(enemy.tier >= 4 ? 'BOSS 掉落' : '精英掉落');
+    }
   }
 
   /** 图签加成后的最终攻击力（战斗与属性面板同口径）
-   *  攻击力三条线：
-   *    ① 3★ 阶段强化塔 → 基础攻击力 +5%/级（白字，受等级/阶段/图签绿字加成影响）
+   *  攻击力四条线：
+   *    ① 3★ 阶段强化塔 → 基础攻击力 +5%/级（白字，受等级/阶段/图签/宝石加成影响）
    *    ② 合成进阶（等级/阶段）—— 绿字
    *    ③ 图签 —— 绿字
+   *    ④ 宝石（红宝石等）—— 绿字，乘算
    */
   towerDamage(tower, baseDamage) {
     // ① 3★ 阶段强化塔的白字加成：每次强化 +5% 基础攻击力
     let whiteBonus = baseDamage;
     const stage = tower && tower.stage ? tower.stage : 0;
-    const enhanceLv = tower && tower.enhanceLevel ? tower.enhanceLevel : 0;
+    const enhanceLv = tower ? towerMod.getEffectiveSkillLevel(tower) : 0;
     if (stage >= BALANCE.enhance.minStage && enhanceLv > 0) {
       whiteBonus = baseDamage * (1 + enhanceLv * 0.05);
     }
     const dmg = towerMod.calculateFinalDamage(
       whiteBonus, tower.level, tower.attackPowerBoost
     );
-    return dmg * meta.codexDamageMultiplier(tower.type);
+    return dmg * meta.codexDamageMultiplier(tower.type) * towerMod.getGemDamageMultiplier(tower.type);
   }
 
   /**
@@ -670,16 +683,9 @@ class Game {
     this.triggerDamage(source, dmg, enemy);
 
     enemy.hp -= dmg;
-    // 记录 BOSS 掉血缓冲（白色条）：仅 tier>=4 的 BOSS 记录
-    if (enemy.tier >= 4 && dmg > 0) {
-      const now = Date.now() / 1000;
-      enemy._dmgBuf = enemy._dmgBuf || [];
-      enemy._dmgBuf.push({ v: dmg, t: now });
-      // 清理 8 秒前的记录，保持轻量
-      while (enemy._dmgBuf.length > 0 && (now - enemy._dmgBuf[0].t) > 8) {
-        enemy._dmgBuf.shift();
-      }
-    }
+    // 注：BOSS 大血条的"白色缓冲条"不再由战斗层记账 ——
+    // 渲染层直接用单位自己的 _hpGhost 按帧向下追平真实血量（见 renderer.updateHpGhost），
+    // 少一份跨层状态就少一处不一致。
     let killed = false;
     if (enemy.hp <= 0) {
       enemy.alive = false;
@@ -689,6 +695,28 @@ class Game {
       this.triggerDeath(enemy, source);
     }
     return { damage: dmg, crit: crit, killed: killed };
+  }
+
+  /**
+   * 掉落一颗随机宝石到背包。
+   * 背包满就不再掉（并把结果如实返回）—— 绝不"掉了但看不见"。
+   * @param {string} [reason] 文案前缀（用于提示，如 '精英掉落'）
+   */
+  dropGem(reason) {
+    const kind = gems.randomKind();
+    if (!kind) return { ok: false, reason: 'nokind' };
+    const res = meta.addGem(kind);
+    if (res.ok) {
+      const def = gems.gemDef(kind);
+      this.toast = {
+        text: (reason ? reason + '：' : '') + (def ? `${def.name}（${def.desc}）` : '获得宝石'),
+        color: def ? def.color : THEME.accent.violet,
+        t0: Date.now(),
+      };
+    } else if (res.reason === 'full') {
+      this.toast = { text: '背包已满，宝石未能拾取（去背包解锁格子）', color: THEME.accent.danger, t0: Date.now() };
+    }
+    return res;
   }
 
   /** 清空一波：特殊积分 + 波次结余金币；每 N 波给天赋点；记录最高波次 */
@@ -701,6 +729,11 @@ class Game {
     const every = TALENT_POINTS.perWaveGroup.every;
     if (every > 0 && this.currentWave % every === 0) {
       meta.grantTalentPoints(TALENT_POINTS.perWaveGroup.amount);
+    }
+    // 宝石掉落：每 dropEveryWaves 波必掉 1 颗（宝石的稳定来源）
+    const gemEvery = GEM.dropEveryWaves || 0;
+    if (gemEvery > 0 && this.currentWave % gemEvery === 0) {
+      this.dropGem(`第 ${this.currentWave} 波`);
     }
   }
 
@@ -729,6 +762,9 @@ class Game {
     if (scene === this.scene) return;
     this.scene = scene;
     this.codexSelected = null;
+    this.codexSheetScroll = 0;
+    this.gemPicker = null;      // 图签的选宝石浮层是模态，切场景必须收掉
+    this.bagScroll = 0;
     this.showMenu = false;
     this.enhancePicker = null;   // 强化浮层是战斗内模态，切场景必须收掉
     this.dragging = false;
@@ -814,10 +850,12 @@ class Game {
 
   // ========== 塔强化（局内花金币：只抬该塔的专属特殊属性，不给伤害）==========
 
-  /** 强化到下一级的花费；已满级返回 Infinity */
+  /** 强化到下一级的花费；已满级返回 Infinity
+   *  等级走 towerMod.getEffectiveSkillLevel（强化 + 宝石），不然嵌了技能宝石的塔
+   *  会按更低的等级报价 —— 越强化越便宜，属于送钱。 */
   enhanceCost(tower) {
     if (!tower) return Infinity;
-    return towerMod.getEnhanceCost(tower.type, tower.enhanceLevel || 0);
+    return towerMod.getEnhanceCost(tower.type, towerMod.getEffectiveSkillLevel(tower));
   }
 
   /** 该塔能否在属性面板里强化（需 3★ + 未满级 + 有实体塔） */
@@ -859,17 +897,21 @@ class Game {
     towerMod.applyEnhanceAttrs(tower);
     tower.enhancePicks = tower.enhancePicks || [];
     tower.enhancePicks.push(opt.key);
+    // 展示口径同样走【有效技能等级】（强化 + 宝石），否则嵌了技能宝石的塔
+    // 会报出"强化到 Lv.1"这种和面板 Lv.3 对不上的数字。
+    const effLv = towerMod.getEffectiveSkillLevel(tower);
     return {
       ok: true,
       level: tower.enhanceLevel,
+      effectiveLevel: effLv,
       cost: cost,
       option: opt,
       special: {
         name: opt.name,
         gain: opt.perLevel,
         unit: opt.unit,
-        value: towerMod.getSpecialValue(tower.type, tower.enhanceLevel),
-        text: towerMod.specialText(tower.type, tower.enhanceLevel),
+        value: towerMod.getSpecialValue(tower.type, effLv),
+        text: towerMod.specialText(tower.type, effLv),
       },
     };
   }
@@ -1076,6 +1118,69 @@ class Game {
         continue;
       }
 
+      // 平行塔（固有技能「连续射击」）：每次攻击必定切换不同目标；
+      // 被迫命中同一目标时叠加攻击速度（白字），上限由"叠加上限"决定
+      // （原生 100%，强化每级 +20%，取值见 tower.getInnateStackCap）。
+      if (tower.type === 'parallel') {
+        const towerStats = towerMod.getTowerRuntimeStats(tower);
+        const stackCap = towerMod.getInnateStackCap(tower);
+        const stackStep = towerMod.getInnateStackStep(tower);
+        // 固有攻速：基础 + 叠层（白字，不参与强化/图签/光环）
+        const innateStack = Math.min(stackCap, tower._innateStack || 0);
+        const innateSpeed = towerStats.attackSpeedMultiplier + innateStack;
+
+        tower.attackTimer -= dt;
+        if (tower.attackTimer > 0) continue;
+
+        // 索敌：过滤掉上次攻击的目标（避免连续两次打同一怪）
+        const range = towerStats.range || 200;
+        let target;
+        const allTargets = [];
+        const availableTargets = [];
+        for (const enemy of this.enemies) {
+          if (!enemy.alive) continue;
+          const dx = enemy.x - tower.x;
+          const dy = enemy.y - tower.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist <= range) {
+            allTargets.push(enemy);
+            if (enemy !== tower._lastInnateTarget) {
+              availableTargets.push(enemy);
+            }
+          }
+        }
+
+        if (availableTargets.length > 0) {
+          // 能选不同目标就选
+          target = null;
+          let closestDist = Infinity;
+          for (const t of availableTargets) {
+            const d = Math.sqrt((t.x - tower.x)**2 + (t.y - tower.y)**2);
+            if (d < closestDist) { closestDist = d; target = t; }
+          }
+          tower._innateStack = 0; // 换目标 → 重置叠层
+        } else {
+          // 被迫打同一目标 → 叠攻速
+          target = null;
+          let closestDist = Infinity;
+          for (const t of allTargets) {
+            const d = Math.sqrt((t.x - tower.x)**2 + (t.y - tower.y)**2);
+            if (d < closestDist) { closestDist = d; target = t; }
+          }
+          if (target && target.alive) {
+            tower._innateStack = Math.min(stackCap, (tower._innateStack || 0) + stackStep);
+          }
+        }
+        tower._lastInnateTarget = target;
+
+        if (target && target.alive) {
+          const effectiveInterval = towerStats.attackInterval / (innateSpeed / 100);
+          tower.attackTimer = effectiveInterval;
+          this.fireProjectile(tower, target, this.towerDamage(tower, towerStats.damage));
+        }
+        continue;
+      }
+
       // 普通塔：单体攻击
       if (nearestTarget) {
         // 长方塔：堆叠伤害机制
@@ -1219,8 +1324,10 @@ class Game {
     const dy = target.y - tower.y;
     const angle = Math.atan2(dy, dx);
 
-    // 激光射程 = 塔射程 × projectileScale 百分比
-    const laserRange = (towerStats.range || 200) * (towerStats.projectileScale || 200) / 100;
+    // 激光射程 = 塔射程 × 弹道体积(projectileScale，含强化增量)
+    const laserRange = (towerStats.range || 200) * towerMod.getProjectileScale(tower);
+    // 激光宽度（命中/绘制）：原生弹道体积即更粗，强化后同步变宽
+    const laserWidth = towerMod.getProjectileSize(tower);
 
     // 激光线起点和终点（屏幕坐标）
     const lx = tower.x + Math.cos(angle) * laserRange;
@@ -1233,6 +1340,7 @@ class Game {
       x1: tower.x, y1: tower.y,
       x2: lx, y2: ly,
       color: towerDef.color,
+      width: laserWidth,
       life: laserDuration,
       maxLife: laserDuration,
     });
@@ -1248,6 +1356,7 @@ class Game {
       type: 'square',
       color: towerDef.color,
       size: 10,
+      width: laserWidth,
       alive: true,
       isVisualOnly: true,  // 仅视觉，不参与移动和碰撞
       laserEndX: lx,
@@ -1269,7 +1378,8 @@ class Game {
     const ABx = x2 - x1, ABy = y2 - y1;
     const ABlen2 = ABx * ABx + ABy * ABy;
     if (ABlen2 <= 0) return [];
-    const laserWidth = 12;
+    // 命中宽度跟随弹道体积（原生更粗，强化后变宽）；0.6 是原生 200% 体积下与旧值 12 对齐的系数
+    const laserWidth = towerMod.getProjectileSize(sourceTower) * 0.6;
     const newDamage = [];
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
@@ -1710,6 +1820,9 @@ class Game {
     this.lastTime = now;
 
     const dt = Math.min(deltaTime, 0.1);
+    // 本帧时间步长暴露给渲染层：血条"白色缓冲条"的追赶动画必须按真实帧间隔推进，
+    // 否则帧率高低会让白条缩得快慢不一（渲染层不能自己算 dt，它拿不到上一帧时间）。
+    this.dt = dt;
 
     // 帧计数：只用来区分"首帧就炸"和"后面某帧炸"。
     // 首帧就抛异常 = 屏幕上连一个像素都没有 → 真机表现是「卡在原生启动页」，

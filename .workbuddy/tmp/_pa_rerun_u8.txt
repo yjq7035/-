@@ -1,0 +1,139 @@
+[audio] 鍒濆鍖栧畬鎴愶細audio/snowfall.mp3锛坴olume=0.55, loop=true锛?[audio] BGM 寮€濮嬫挱鏀撅細audio/snowfall.mp3
+[audio] BGM 寮€濮嬫挱鏀撅細audio/snowfall.mp3
+[audio] BGM 寮€濮嬫挱鏀撅細audio/snowfall.mp3
+node.exe : [audio] 鎾斁鍑洪敊锛堟父鎴忕户缁紝闊充箰闈欓煶锛夛細 decode fail
+所在位置 行:447 字符: 1
++ & $n ".workbuddy\tools\probe-audio.js" *> $out
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([audio] 鎾斁鍑洪敊锛...锛夛細 decode fail 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[audio] BGM 寮€濮嬫挱鏀撅細audio/snowfall.mp3
+[audio] BGM 寮€濮嬫挱鏀撅細audio/snowfall.mp3
+[audio] 鍒濆鍖栧畬鎴愶細audio/snowfall.mp3锛坴olume=0.55, loop=true锛?[audio] 鍒濆鍖栧畬鎴愶細audio/snowfall.mp3锛坴olume=0.55, loop=true锛?[audio] BGM 寮€濮嬫挱鏀撅細audio/snowfall.mp3
+[audio] 闈炲井淇＄幆澧冿紙鎴栧熀纭€搴撹繃浣庯級锛岃儗鏅煶涔愰檷绾т负绌哄疄鐜帮紙涓嶅奖鍝嶆父鎴忥級
+[audio] 鍒濆鍖栧畬鎴愶細audio/snowfall.mp3锛坴olume=0.55, loop=true锛?[audio] BGM 寮€濮嬫挱鏀撅細audio/snowfall.mp3
+Game initialized: {
+  mapX: 48,
+  mapY: 126.28,
+  mapWidth: 224,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 54,
+  mapY: 126.28,
+  mapWidth: 251.99999999999997,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 56.25,
+  mapY: 126.28,
+  mapWidth: 262.5,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 58.5,
+  mapY: 126.28,
+  mapWidth: 273,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 62.099999999999994,
+  mapY: 126.28,
+  mapWidth: 289.79999999999995,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 64.2,
+  mapY: 126.28,
+  mapWidth: 299.59999999999997,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 115.19999999999999,
+  mapY: 126.28,
+  mapWidth: 537.5999999999999,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 58.5,
+  mapY: 126.28,
+  mapWidth: 273,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 58.5,
+  mapY: 126.28,
+  mapWidth: 273,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+[audio] BGM 寮€濮嬫挱鏀撅細audio/snowfall.mp3
+[audio] BGM 寮€濮嬫挱鏀撅細audio/snowfall.mp3
+Game initialized: {
+  mapX: 58.5,
+  mapY: 126.28,
+  mapWidth: 273,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+[audio] BGM 寮€濮嬫挱鏀撅細audio/snowfall.mp3
+Game initialized: {
+  mapX: 58.5,
+  mapY: 126.28,
+  mapWidth: 273,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 58.5,
+  mapY: 126.28,
+  mapWidth: 273,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 58.5,
+  mapY: 126.28,
+  mapWidth: 273,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 58.5,
+  mapY: 126.28,
+  mapWidth: 273,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 58.5,
+  mapY: 126.28,
+  mapWidth: 273,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}

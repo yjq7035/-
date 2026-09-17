@@ -7,11 +7,18 @@
 //   ③ 游戏中菜单（☰）→ 只处理 返回战斗 / 放弃结束
 //   ④ 底部导航栏（导航永远可点，除非被结算/菜单遮住）
 //   ⑤ 战前选关界面（未开始游戏时）→ 切关卡 / 开始游戏
-//   ⑥ 图签 / 天赋场景的界面交互（天赋支持上下拖动滚动）
-//   ⑦ 战斗场景：塔属性面板(强化按钮) → 顶栏 ☰ → 放置槽 → 商店
+//   ⑥ 图签场景（格网可拖动；详情面板内部亦可拖动）
+//      —— 选宝石浮层是**模态**，优先级高于面板与格网
+//   ⑦ 天赋场景（列表可上下拖动）
+//   ⑧ 背包场景（格网展示 + 看广告解锁）
+//   ⑨ 战斗场景：强化浮层 → 塔属性面板(强化按钮/拖动) → 顶栏 ☰ → 放置槽 → 商店
+// 另有 ②' 顶栏 🔊 音乐开关：置顶处理（早于战前选关），因为音乐一进游戏就在响，
+//      关音乐的入口不能被"还没开打"挡住。（详见 handleTouchStart 内注释）
 //
-// 坐标一律来自各模块导出的纯布局函数（shop/nav/codex/talents/levels/gamemenu），
+// 坐标一律来自各模块导出的纯布局函数（shop/nav/codex/bag/talents/levels/gamemenu），
 // 渲染层与输入层共用同一份真源，不存在"画在一处、点在另一处"。
+// 同样地，图签的【宝石槽】坐标也由 codex 导出（socketRects / getSocketHitRects），
+// 输入层不自己算 —— 面板内部滚动时"看到的槽"与"能点的槽"必须是同一个。
 // ============================================================================
 const { TOWER_DEFS, LAYOUT, PLAYER, AD } = require('./config');
 const theme = require('./theme');
@@ -19,10 +26,12 @@ const towerMod = require('./tower');
 const shop = require('./shop');
 const nav = require('./nav');
 const codex = require('./codex');
+const bag = require('./bag');
 const talents = require('./talents');
 const levels = require('./levels');
 const gamemenu = require('./gamemenu');
 const enhance = require('./enhance');
+const audio = require('./audio');
 
 const DRAG_THRESHOLD = 8;        // 移动阈值（像素），超过则认定为拖放
 const TALENT_SCROLL_THRESHOLD = 6; // 天赋列表：垂直拖动超过此值即进入滚动
@@ -101,6 +110,21 @@ function handleTouchStart(game, e) {
     return;
   }
 
+  // ========== ②' 顶栏 🔊 音乐开关（全局，任何时候都该点得动）==========
+  // 刻意提前于 ④ 战前选关：音乐从**启动那一刻**就在响，而玩家第一眼看到的就是
+  // 选关界面 —— 想把音乐关掉却点不动，是必然会被投诉的坑。
+  // （顶栏判定原本排在 ④ 之后，于是"还没开打"时顶栏按钮全是死的。）
+  // 只提前音乐开关；☰ 是"战中菜单"，未开打时不该能打开，保持原位。
+  //
+  // 位置放在 ① 结算 / ② 菜单**之后**：这两个都是全屏模态遮罩，顶栏被盖住时
+  // 按钮本来就不该可点 —— 与实际画出来的东西保持一致。
+  if (game.scene === 'battle' && pos.y <= LAYOUT.topBarHeight &&
+      isPointInRect(pos, gamemenu.getMusicButtonRect(game))) {
+    pressButton(game, 'music:toggle');
+    game.touchStartPos = null;
+    return;
+  }
+
   // ========== ③ 底部导航栏 ==========
   // 判据用 game.H（逻辑视口）——canvas.height 现在是物理像素，拿它算会漏掉整条底栏
   if (pos.y >= game.H - LAYOUT.navHeight) {
@@ -130,11 +154,25 @@ function handleTouchStart(game, e) {
     return;
   }
 
-  // ========== ⑤ 图签场景（格网可上下拖动）==========
+  // ========== ⑤ 图签场景（格网 / 详情面板内部 均可上下拖动）==========
   if (game.scene === 'codex') {
+    // 选宝石浮层是**模态**：先于一切处理。
+    // 它盖住整个屏幕，所以触摸绝不允许漏到下面的面板/格网上。
+    // 与强化浮层同一条规矩：无论点到什么，这里都要把这次手势收干净再 return。
+    if (game.gemPicker) {
+      const hit = codex.hitGemPicker(game, pos);
+      game._gemPickTouch = { kind: hit.kind, gem: hit.gem || null };
+      if (hit.kind === 'pick') pressButton(game, 'gempick:' + hit.gem);
+      game.touchStartPos = null;
+      return;
+    }
+
     const hit = codex.hitCodex(game, pos);
+    const L = codex.getCodexLayout(game);
     game.touchStartPos = { x: pos.x, y: pos.y };
     game.codexScrolling = false;
+    // 这一手势按在哪里，决定它去滚谁：详情面板内 → 滚面板正文；否则滚格网。
+    game._codexSheetTouch = !!game.codexSelected && isPointInRect(pos, L.sheet);
 
     if (hit.kind === 'card') {
       game._codexTap = { kind: 'card', type: hit.type };
@@ -145,6 +183,15 @@ function handleTouchStart(game, e) {
     } else if (hit.kind === 'lineup') {
       game._codexTap = { kind: 'lineup', type: hit.type };
       pressButton(game, 'codex:lineup:' + hit.type);
+    } else if (hit.kind === 'socket') {
+      game._codexTap = { kind: 'socket', type: hit.type, index: hit.index };
+      pressButton(game, 'codex:socket:' + hit.index);
+    } else if (hit.kind === 'unsocket') {
+      game._codexTap = { kind: 'unsocket', type: hit.type, index: hit.index };
+      pressButton(game, 'codex:unsocket:' + hit.index);
+    } else if (hit.kind === 'socketLocked') {
+      game._codexTap = { kind: 'socketLocked', type: hit.type, index: hit.index };
+      pressButton(game, 'codex:locked:' + hit.index);
     } else if (hit.kind === 'close') {
       game._codexTap = { kind: 'close' };
     } else {
@@ -167,7 +214,20 @@ function handleTouchStart(game, e) {
     return;
   }
 
-  // ========== ⑦ 战斗场景 ==========
+  // ========== ⑦ 背包场景 ==========
+  if (game.scene === 'bag') {
+    const hit = bag.hitBag(game, pos);
+    game.touchStartPos = { x: pos.x, y: pos.y };
+    if (hit && hit.kind === 'expand') {
+      game._bagTap = { kind: 'expand' };
+      pressButton(game, 'bag:expand');
+    } else {
+      game._bagTap = null;
+    }
+    return;
+  }
+
+  // ========== ⑧ 战斗场景 ==========
   // 记录起点（用于点击/拖放区分）
   game.touchStartPos = { x: pos.x, y: pos.y };
 
@@ -202,9 +262,12 @@ function handleTouchStart(game, e) {
     return;
   }
 
-  // ---- 顶部状态栏：只有 ☰ 可点（关卡徽标改为纯展示，不再触发任何东西）----
+  // ---- 顶部状态栏：只有 ☰ 与 🔊 可点（关卡徽标改为纯展示，不再触发任何东西）----
   if (pos.y <= LAYOUT.topBarHeight) {
-    if (isPointInRect(pos, gamemenu.getMenuButtonRect(game))) {
+    // 🔊 先判：它与 ☰ 相邻，判定顺序反了不会重叠，但先判高频轻操作更顺手
+    if (isPointInRect(pos, gamemenu.getMusicButtonRect(game))) {
+      pressButton(game, 'music:toggle');
+    } else if (isPointInRect(pos, gamemenu.getMenuButtonRect(game))) {
       pressButton(game, 'menu:open');
     }
     game.touchStartPos = null;
@@ -281,8 +344,27 @@ function handleTouchMove(game, e) {
     return;
   }
 
+  // ========== 图签【详情面板内部】滚动 ==========
+  // 必须排在格网滚动之前：手指按在面板上时，滚的应该是面板正文，而不是整张卡片网。
+  // 两者共用 touchStartPos，谁先接管谁负责把基准点重置掉，所以不会互相抢。
+  if (game.scene === 'codex' && game.touchStartPos && game._codexSheetTouch &&
+      codex.isSheetScrollable(game)) {
+    const pos = getTouchPos(e);
+    const dy = pos.y - game.touchStartPos.y;
+    if (Math.abs(dy) >= LIST_SCROLL_THRESHOLD) {
+      game.codexScrolling = true;
+      const L = codex.getCodexLayout(game);
+      codex.setCodexSheetScroll(game, L.sheetScroll - dy);
+      game.touchStartPos = { x: pos.x, y: pos.y };
+      game._codexTap = null;          // 滚过了就不算点按
+      releaseButton(game);
+    }
+    return;
+  }
+
   // ========== 图签格网滚动 ==========
-  if (game.scene === 'codex' && game.touchStartPos && codex.isCodexScrollable(game)) {
+  if (game.scene === 'codex' && game.touchStartPos && !game._codexSheetTouch &&
+      codex.isCodexScrollable(game)) {
     const pos = getTouchPos(e);
     const dy = pos.y - game.touchStartPos.y;
     if (Math.abs(dy) >= LIST_SCROLL_THRESHOLD) {
@@ -408,7 +490,17 @@ function handleTouchEnd(game, e) {
     if (game.dragging || game.pendingDrag) _resetDragState(game);
     const bp = game.btnPress;
     const rect = gamemenu.getMenuButtonRect(game);
-    if (bp && bp.id === 'menu:open' && isPointInRect(pos, rect)) {
+    const musicRect = gamemenu.getMusicButtonRect(game);
+    // 音乐开关：按下与抬起要落在同一个按钮上才算（与其它按钮一致，
+    // 避免"按住后滑开"也被判成点击）。切换后必须给一句 toast ——
+    // 正在响的时候"关掉"玩家听得出来，但"开启"在系统静音键打开的设备上未必立刻有声，
+    // 没有文字确认玩家就会以为按钮坏了。
+    if (bp && bp.id === 'music:toggle' && isPointInRect(pos, musicRect)) {
+      const on = audio.toggle();
+      flashButton(game, musicRect, on ? '255,215,0' : '160,160,160', 'topbar');
+      toast(game, on ? '背景音乐已开启' : '背景音乐已关闭',
+        on ? THEME.accent.gold : THEME.text.dim);
+    } else if (bp && bp.id === 'menu:open' && isPointInRect(pos, rect)) {
       if (game.openMenu()) flashButton(game, rect, '255,215,0', 'topbar');
     }
     releaseButton(game);
@@ -436,8 +528,13 @@ function handleTouchEnd(game, e) {
     game._talentLearnId = null;
     game.codexScrolling = false;
     game._codexTap = null;
+    game._codexSheetTouch = false;
+    game._gemPickTouch = null;
+    game._bagTap = null;
     game.levelScrolling = false;
     game._readyTap = null;
+    // 模态浮层不跟着场景走：切场景就收掉（gemPicker 在 switchScene 里也会清一次）
+    game.gemPicker = null;
     releaseButton(game);
     game.touchStartPos = null;
     return;
@@ -481,21 +578,54 @@ function handleTouchEnd(game, e) {
 
   // ========== 图签场景：点按（滚动过就不触发）==========
   if (game.scene === 'codex') {
+    // ① 选宝石浮层（模态）优先结算
+    const gp = game._gemPickTouch;
+    if (gp) {
+      game._gemPickTouch = null;
+      const bp = game.btnPress;
+      if (gp.kind === 'pick' && gp.gem && bp && bp.id === 'gempick:' + gp.gem) {
+        const hit = codex.hitGemPicker(game, pos);
+        if (hit.kind === 'pick' && hit.gem === gp.gem) {
+          codex.actEmbedGem(game, gp.gem);
+        }
+      } else if (gp.kind === 'disabled') {
+        // 点到"持有 0"的灰行：只提示，浮层留在原地（不要因为一次误触就把它关掉）
+        toast(game, '背包里没有这种宝石', THEME.text.dim);
+      } else {
+        // 取消 / ✕ / 浮层外 → 关掉（模态必须能退出，否则整个图签点不动）
+        game.gemPicker = null;
+      }
+      releaseButton(game);
+      game.touchStartPos = null;
+      return;
+    }
+
     const tap = game._codexTap;
     const scrolled = game.codexScrolling;
     game._codexTap = null;
     game.codexScrolling = false;
+    game._codexSheetTouch = false;
 
     if (!scrolled && tap) {
       if (tap.kind === 'card') {
         // 再点同一张卡 → 收起详情面板
         game.codexSelected = (game.codexSelected === tap.type) ? null : tap.type;
+        game.codexSheetScroll = 0;    // 换塔/收起都把面板滚回顶部，免得"一打开就在中间"
       } else if (tap.kind === 'upgrade') {
         codex.actCodex(game, 'upgrade', tap.type);
       } else if (tap.kind === 'lineup') {
         codex.actCodex(game, 'lineup', tap.type);
+      } else if (tap.kind === 'socket') {
+        // 点空槽 → 弹出"选宝石"浮层（模态）
+        codex.openGemPicker(game, tap.type, tap.index);
+      } else if (tap.kind === 'unsocket') {
+        // 点已嵌宝石的槽 → 取出，放回背包
+        codex.actUnsocketGem(game, tap.type, tap.index);
+      } else if (tap.kind === 'socketLocked') {
+        toast(game, '该槽尚未解锁 · 图签每升 1 级解锁 1 个宝石槽', THEME.text.dim);
       } else if (tap.kind === 'close') {
         game.codexSelected = null;
+        game.codexSheetScroll = 0;
       }
     }
     releaseButton(game);
@@ -517,6 +647,25 @@ function handleTouchEnd(game, e) {
     game.touchStartPos = null;
     game._talentLearnId = null;
     game.talentScrolling = false;
+    return;
+  }
+
+  // ========== 背包场景：看广告解锁 ==========
+  if (game.scene === 'bag') {
+    const bp = game.btnPress;
+    const tap = game._bagTap;
+    game._bagTap = null;
+    if (tap && tap.kind === 'expand' && bp && bp.id === 'bag:expand') {
+      const hit = bag.hitBag(game, pos);
+      if (hit && hit.kind === 'expand') {
+        const res = bag.actExpandBag(game);
+        // 真发出去了才闪成功色；被拦下（广告未开放 / 已满）闪红色
+        if (res.ok) flashButton(game, bag.getBagLayout(game).btn, '77,208,225', 'bag');
+        else flashButton(game, bag.getBagLayout(game).btn, '255,68,68', 'bag');
+      }
+    }
+    releaseButton(game);
+    game.touchStartPos = null;
     return;
   }
 

@@ -1,0 +1,20 @@
+{
+  "file": "snowfall.mp3",
+  "bytes": 379844,
+  "duration_sec": 37.895,
+  "rms_dbfs": -16.45,
+  "peak_dbfs": -4.84,
+  "spectral_centroid_hz": 222,
+  "hf_ratio_gt4k_pct": 0.001,
+  "hf_ratio_gt8k_pct": 0.0,
+  "pain_band_2k5k_pct": 0.006,
+  "envelope_crest_20ms": 1.81,
+  "peak_over_rms_db": 11.61,
+  "roughness": 0.08766,
+  "PASS_centroid": true,
+  "PASS_hf4k": true,
+  "PASS_crest": true,
+  "PASS_peak_rms": true,
+  "PASS_roughness": false,
+  "PASS": false
+}

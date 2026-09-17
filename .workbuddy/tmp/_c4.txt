@@ -1,0 +1,4 @@
+﻿codex_parallel=42
+codex_graphic=0
+panel_parallel=19
+panel_graphic=0

@@ -52,6 +52,10 @@ function spawnEnemy(type, pathPoints, waveNumber) {
   enemy.reward = config.reward + (config.rewardPerWave || 0) * (waveNumber || 1);
   enemy.size = config.size;
   enemy.progress = 0;
+  // 血条"白色缓冲条"的鬼影初值必须 = 满血：否则怪物出生时即为满血、
+  // 小血条不绘制，鬼影就一直没机会初始化 —— 等它真被打了才第一次绘制，
+  // 初始值会退化成"当前血量"，于是**第一次挨打的白条永远不出现**。
+  enemy._hpGhost = scaledHp;
   // 初始朝向：取路径第一段切线方向（首帧即有正确朝向，供渲染朝向指示器）
   if (pathPoints.length >= 2) {
     enemy.facing = Math.atan2(pathPoints[1].y - pathPoints[0].y, pathPoints[1].x - pathPoints[0].x);

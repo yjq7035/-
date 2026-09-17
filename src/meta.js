@@ -13,17 +13,46 @@
 // ============================================================================
 
 const {
-  SHOP_TOWERS, TOWER_ORDER, TOWER_DEFS, CODEX, TALENTS, TALENT_EFFECT, LEVELS,
+  SHOP_TOWERS, TOWER_ORDER, TOWER_DEFS, CODEX, TALENTS, TALENT_EFFECT, LEVELS, GEM, GEM_KINDS,
 } = require('./config');
 
 const STORAGE_KEY = 'graphic_td_meta_v1';
 const SAVE_THROTTLE_MS = 400;
+
+/** 宝石表按 id 索引（模块级缓存，配置是静态的） */
+const GEM_BY_ID = (() => {
+  const m = {};
+  for (const g of GEM_KINDS) m[g.id] = g;
+  return m;
+})();
+
+// ---------- 塔型键重命名迁移 ----------
+// 存档里有三张表以**塔型**为键：codex（图签等级）、socketed（已嵌宝石）、lineup（登场池）。
+// 塔改名时内部键会跟着改，所以旧键必须搬过来 —— 否则玩家会静默掉图签等级、丢已嵌的宝石。
+// 每加一条：旧键 → 新键。
+const TYPE_ALIAS = {
+  graphic: 'parallel',   // 2026-09：「图形塔」更名为「平行塔」（与塔族统称撞车）
+};
+
+/** 按 TYPE_ALIAS 把旧键搬到新键；返回浅拷贝，不改调用方传进来的对象 */
+function aliasTable(tbl) {
+  const out = {};
+  if (!tbl || typeof tbl !== 'object') return out;
+  for (const k of Object.keys(tbl)) out[TYPE_ALIAS[k] || k] = tbl[k];
+  return out;
+}
 
 /** 一份全新的存档 */
 function createDefaultMeta() {
   const codex = {};
   // 默认解锁的 5 种基础塔（图签 Lv.1）
   for (const type of SHOP_TOWERS) codex[type] = 1;
+  // 新档赠送的宝石（让背包一开局就不是空的）
+  const gems = [];
+  const starters = GEM.starterGems || [];
+  for (let i = 0; i < starters.length; i++) {
+    if (GEM_BY_ID[starters[i]]) gems.push({ uid: 'g' + (i + 1), kind: starters[i] });
+  }
   return {
     version: 1,
     points: 0,                             // 特殊积分
@@ -33,6 +62,10 @@ function createDefaultMeta() {
     talents: {},                           // { [talentId]: level }
     levels: { cleared: {}, best: {} },     // cleared[id]=通关次数 / best[id]=最高波次
     selectedLevel: 1,
+    gems: gems,                            // 背包里的宝石（未嵌入）：[{ uid, kind }]
+    gemSeq: gems.length,                   // uid 自增序号（保证 uid 唯一）
+    socketed: {},                          // { [towerType]: ['ruby', null, ...] } 已嵌入的宝石（长度 = GEM.maxSlots）
+    bagSlots: GEM.bagSlots,                // 背包已解锁格数（默认 20 = 每行 10 格 × 2 行）
   };
 }
 
@@ -76,7 +109,7 @@ function normalize(raw) {
 
   // 图签等级：只保留存在且等级合法的条目
   out.codex = {};
-  const rawCodex = (raw.codex && typeof raw.codex === 'object') ? raw.codex : {};
+  const rawCodex = aliasTable(raw.codex);   // 旧塔型键在此自动搬到新键
   for (const type of TOWER_ORDER) {
     const lv = Number(rawCodex[type]);
     if (isFinite(lv) && lv >= 1) out.codex[type] = Math.min(CODEX.maxLevel, Math.floor(lv));
@@ -91,10 +124,11 @@ function normalize(raw) {
   const seen = {};
   out.lineup = [];
   for (const t of rawLine) {
-    if (!TOWER_DEFS[t] || seen[t]) continue;
-    if (!out.codex[t]) continue;
-    seen[t] = 1;
-    out.lineup.push(t);
+    const type = TYPE_ALIAS[t] || t;   // 旧塔型键迁移（登场池是"塔型字符串数组"）
+    if (!TOWER_DEFS[type] || seen[type]) continue;
+    if (!out.codex[type]) continue;
+    seen[type] = 1;
+    out.lineup.push(type);
   }
   if (out.lineup.length === 0) out.lineup = SHOP_TOWERS.slice();
   if (out.lineup.length > CODEX.lineupMax) out.lineup = out.lineup.slice(0, CODEX.lineupMax);
@@ -125,6 +159,50 @@ function normalize(raw) {
   }
   const sel = Number(raw.selectedLevel);
   out.selectedLevel = (isFinite(sel) && sel >= 1) ? Math.floor(sel) : 1;
+
+  // ---- 宝石：背包格数 / 背包内容 / 已嵌入的槽位 ----
+  // 袋口：只在 [bagSlots, bagMaxSlots] 之间取值（坏档也不会出现 3 格或 999 格）
+  const rawBag = Number(raw.bagSlots);
+  out.bagSlots = isFinite(rawBag)
+    ? Math.max(GEM.bagSlots, Math.min(GEM.bagMaxSlots, Math.floor(rawBag)))
+    : GEM.bagSlots;
+
+  // 背包内容：只保留"存在的宝石种类"，uid 去重；超出袋口的部分直接丢弃（不可能通过正常玩法产生）
+  out.gems = [];
+  const rawGems = Array.isArray(raw.gems) ? raw.gems : [];
+  const seenUid = {};
+  let seq = 0;
+  for (const item of rawGems) {
+    if (out.gems.length >= out.bagSlots) break;
+    const kind = item && GEM_BY_ID[item.kind] ? item.kind : null;
+    if (!kind) continue;
+    let uid = (item && typeof item.uid === 'string' && item.uid) ? item.uid : '';
+    if (!uid || seenUid[uid]) uid = 'g' + (++seq + rawGems.length);
+    seenUid[uid] = 1;
+    out.gems.push({ uid: uid, kind: kind });
+  }
+  const rawSeq = Number(raw.gemSeq);
+  out.gemSeq = Math.max(
+    isFinite(rawSeq) ? Math.floor(rawSeq) : 0,
+    out.gems.length,
+    seq + rawGems.length
+  );
+
+  // 已嵌入的槽位：仅保留已解锁的塔型 + 合法宝石 + 不超过自身槽位数
+  out.socketed = {};
+  const rawSock = aliasTable(raw.socketed);   // 旧塔型键在此自动搬到新键
+  for (const type of TOWER_ORDER) {
+    const arr = Array.isArray(rawSock[type]) ? rawSock[type] : null;
+    if (!arr) continue;
+    const maxN = Math.min(GEM.maxSlots, out.codex[type] || 0);
+    const slots = [];
+    for (let i = 0; i < GEM.maxSlots; i++) {
+      const kind = (i < maxN && arr[i] && GEM_BY_ID[arr[i]]) ? arr[i] : null;
+      slots.push(kind);
+    }
+    // 全空就不存这条记录（保持存档干净）
+    if (slots.some((k) => !!k)) out.socketed[type] = slots;
+  }
 
   return out;
 }
@@ -271,6 +349,135 @@ function toggleLineup(type) {
   return { ok: true, on: true };
 }
 
+// ==================== 宝石 / 背包 ====================
+
+/** 背包里的宝石（未嵌入）：返回副本，避免调用方直接改存档数组 */
+function gemList() {
+  return get().gems.map((g) => ({ uid: g.uid, kind: g.kind }));
+}
+
+/** 背包已解锁格数 */
+function bagSlots() {
+  return get().bagSlots;
+}
+
+/** 背包还能不能再解锁（+10 格） */
+function canExpandBag() {
+  const m = get();
+  return m.bagSlots < GEM.bagMaxSlots;
+}
+
+/**
+ * 看广告解锁背包：+bagStep 格。
+ * @returns {{ok:boolean, slots?:number, reason?:string}}
+ */
+function expandBag() {
+  const m = get();
+  if (m.bagSlots >= GEM.bagMaxSlots) return { ok: false, reason: 'max' };
+  m.bagSlots = Math.min(GEM.bagMaxSlots, m.bagSlots + GEM.bagStep);
+  save(true);
+  return { ok: true, slots: m.bagSlots };
+}
+
+/**
+ * 把一颗新宝石放进背包（掉落入口）。
+ * @param {string} kind 宝石种类 id
+ * @returns {{ok:boolean, gem?:object, reason?:string}} 背包满时 ok=false
+ */
+function addGem(kind) {
+  const m = get();
+  if (!GEM_BY_ID[kind]) return { ok: false, reason: 'unknown' };
+  if (m.gems.length >= m.bagSlots) return { ok: false, reason: 'full' };
+  m.gemSeq = (m.gemSeq || 0) + 1;
+  const gem = { uid: 'g' + m.gemSeq, kind: kind };
+  m.gems.push(gem);
+  save();
+  return { ok: true, gem: gem };
+}
+
+/** 按 uid 取出（不删除）背包里的宝石 */
+function findGem(uid) {
+  return get().gems.filter((g) => g.uid === uid)[0] || null;
+}
+
+/**
+ * 该塔型的嵌入槽数量 = 图签等级（1~5），未解锁 = 0。
+ * 这就是需求里的"图签每升级一次解锁一个嵌入宝石槽，最多 5 个"。
+ */
+function socketCount(type) {
+  const lv = codexLevel(type);
+  if (lv <= 0) return 0;
+  return Math.min(GEM.maxSlots, lv);
+}
+
+/**
+ * 该塔型的槽位状态（长度固定 GEM.maxSlots，便于 UI 定长绘制）。
+ * @returns {Array<{index:number, kind:string|null, unlocked:boolean}>}
+ */
+function gemSockets(type) {
+  const n = socketCount(type);
+  const arr = (get().socketed[type] || []);
+  const out = [];
+  for (let i = 0; i < GEM.maxSlots; i++) {
+    out.push({
+      index: i,
+      kind: (i < n && arr[i] && GEM_BY_ID[arr[i]]) ? arr[i] : null,
+      unlocked: i < n,
+    });
+  }
+  return out;
+}
+
+/** 已嵌入的宝石种类数组（长度 ≤ socketCount，按槽位顺序，忽略空槽） */
+function embeddedGems(type) {
+  return gemSockets(type).filter((s) => !!s.kind).map((s) => s.kind);
+}
+
+/**
+ * 嵌入宝石：从背包移除 → 写进该塔型的槽位（宝石与技能绑定，背包里不再显示）。
+ * @returns {{ok:boolean, kind?:string, reason?:string}}
+ */
+function embedGem(type, index, uid) {
+  const m = get();
+  if (!TOWER_DEFS[type]) return { ok: false, reason: 'unknown' };
+  const n = socketCount(type);
+  if (index < 0 || index >= n) return { ok: false, reason: 'locked' };
+  const gem = m.gems.filter((g) => g.uid === uid)[0];
+  if (!gem) return { ok: false, reason: 'nogem' };
+  const slots = m.socketed[type] || [];
+  for (let i = 0; i < GEM.maxSlots; i++) if (!slots[i]) slots[i] = null;
+  if (slots[index]) return { ok: false, reason: 'occupied' };
+
+  slots[index] = gem.kind;
+  m.socketed[type] = slots;
+  m.gems = m.gems.filter((g) => g.uid !== uid);   // ⚠️ 从这里开始它不在背包里了
+  save(true);
+  return { ok: true, kind: gem.kind };
+}
+
+/**
+ * 取出槽里的宝石，放回背包（背包满则拒绝，绝不吞掉玩家的宝石）。
+ * @returns {{ok:boolean, kind?:string, reason?:string}}
+ */
+function takeGem(type, index) {
+  const m = get();
+  const slots = m.socketed[type];
+  if (!slots || !slots[index]) return { ok: false, reason: 'empty' };
+  if (m.gems.length >= m.bagSlots) return { ok: false, reason: 'full' };
+  const kind = slots[index];
+  slots[index] = null;
+  if (!slots.some((k) => !!k)) delete m.socketed[type];
+  m.gemSeq = (m.gemSeq || 0) + 1;
+  m.gems.push({ uid: 'g' + m.gemSeq, kind: kind });
+  save(true);
+  return { ok: true, kind: kind };
+}
+
+/** 宝石定义（配置表查表；未知返回 null） */
+function gemDef(kind) {
+  return GEM_BY_ID[kind] || null;
+}
+
 // ==================== 天赋 ====================
 
 function talentLevel(id) {
@@ -378,6 +585,9 @@ function getSelectedLevel() {
 module.exports = {
   STORAGE_KEY,
   createDefaultMeta,
+  // 存档归一化（迁移 + 坏档兜底）。导出是为了让探针能直接喂一份"恶意存档"验证
+  // 它不会造出非法状态（越界槽位 / 未知宝石 / 重复 uid），而不是靠手改存档去撞。
+  normalize,
   get,
   save,
   resetAll,
@@ -394,6 +604,19 @@ module.exports = {
   getLineup,
   isInLineup,
   toggleLineup,
+  // 宝石 / 背包
+  gemList,
+  bagSlots,
+  canExpandBag,
+  expandBag,
+  addGem,
+  findGem,
+  socketCount,
+  gemSockets,
+  embeddedGems,
+  embedGem,
+  takeGem,
+  gemDef,
   // 天赋
   talentLevel,
   talentValue,

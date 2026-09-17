@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BGM 前后对比试听 —— Snowfall (Original) v1 vs v2</title>
+<style>
+  :root {
+    --bg: #14161c; --panel: #1d2027; --panel2: #22262f;
+    --line: #333844; --tx: #e8eaf0; --dim: #9aa2b1; --off: #6b7280;
+    --gold: #ffd166; --green: #7bd88f; --red: #f0787c; --blue: #7cb7ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 20px 60px;
+    background: var(--bg); color: var(--tx);
+    font: 15px/1.7 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    max-width: 900px; margin: 0 auto;
+  }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  .sub { color: var(--dim); font-size: 13px; margin-bottom: 26px; }
+  .cards { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (min-width: 760px) { .cards { grid-template-columns: 1fr 1fr; } }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 18px;
+  }
+  .card.bad { border-color: #5a3a3d; }
+  .card.good { border-color: #3c5a45; }
+  .tag {
+    display: inline-block; font-size: 11px; font-weight: 700;
+    padding: 3px 9px; border-radius: 999px; margin-bottom: 10px;
+    letter-spacing: .4px;
+  }
+  .tag.bad { background: rgba(240,120,124,.18); color: var(--red); border: 1px solid rgba(240,120,124,.5); }
+  .tag.good { background: rgba(123,216,143,.16); color: var(--green); border: 1px solid rgba(123,216,143,.5); }
+  .mood { color: var(--dim); font-size: 13px; min-height: 42px; }
+  audio { width: 100%; margin: 12px 0 4px; }
+  .hint { font-size: 12px; color: var(--off); }
+  table { width: 100%; border-collapse: collapse; margin-top: 26px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 600; font-size: 12px; letter-spacing: .3px; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .win { color: var(--green); font-weight: 700; }
+  .lose { color: var(--red); }
+  .note {
+    margin-top: 26px; background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px 18px; font-size: 13.5px; color: var(--dim);
+  }
+  .note b { color: var(--tx); }
+  .note ul { margin: 8px 0 0; padding-left: 20px; }
+  .note li { margin: 4px 0; }
+  code { background: #0f1116; padding: 1px 5px; border-radius: 4px; color: var(--gold); font-size: 12.5px; }
+</style>
+</head>
+<body>
+
+<h1>背景音乐前后对比试听</h1>
+<div class="sub">
+  同一款游戏、同一套播放系统，只有音频文件换了。建议戴耳机、按同样音量各听 40 秒以上，
+  重点听：<b>旋律音高是不是扎耳朵</b>、<b>有没有"叮叮"的金属味</b>、<b>听久了累不累</b>。
+</div>
+
+<div class="cards">
+  <div class="card bad">
+    <span class="tag bad">v1 · 你说的"太刺耳"那版</span>
+    <h2>Snowfall v1</h2>
+    <div class="mood">A 小调 / 72 BPM / 26.7 秒循环。旋律用随机数从音阶里挑音，<b>不看当前和弦</b>；
+      音域冲到 A4–E6；铃音带 2.01×、4.71× 这类非谐波泛音；琶音每小节 8 个音不停。</div>
+    <audio controls loop src="_bgm_v1.mp3"></audio>
+    <div class="hint">旋律音时常和和弦撞小二度 → 这就是"扎"的来源。</div>
+  </div>
+
+  <div class="card good">
+    <span class="tag good">v2 · 重做版（已装进游戏）</span>
+    <h2>Snowfall v2</h2>
+    <div class="mood">F 大调 / 76 BPM / 37.9 秒循环。旋律<b>只在当前和弦的和弦音＋安全延伸音里挑</b>；
+      音域压到 G4–G5；纯整数谐波软电钢音色；琶音每拍 1 音。
+      <b>前 12.6 秒是纯 pad 引子</b>，音乐才慢慢进来。</div>
+    <audio controls loop src="_bgm_v2.mp3"></audio>
+    <div class="hint">全曲 0 个和弦外音，全在 F 大调内。</div>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>指标</th><th>v1</th><th>v2</th><th>说明</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>和弦外音</td>
+      <td class="num lose">随机出现（含 Fmaj7 上的 B = #11）</td>
+      <td class="num win">0 个</td>
+      <td>刺耳的主因，属乐谱层面</td>
+    </tr>
+    <tr>
+      <td>旋律音域</td>
+      <td class="num lose">A4 – E6</td>
+      <td class="num win">G4 – G5</td>
+      <td>整体降约一个八度</td>
+    </tr>
+    <tr>
+      <td>2–5kHz「耳痛带」能量占比</td>
+      <td class="num lose">0.421 %</td>
+      <td class="num win">0.018 %</td>
+      <td>降 23 倍</td>
+    </tr>
+    <tr>
+      <td>&gt;4kHz 高频能量占比</td>
+      <td class="num lose">0.025 %</td>
+      <td class="num win">0.001 %</td>
+      <td>降 25 倍</td>
+    </tr>
+    <tr>
+      <td>频谱重心</td>
+      <td class="num">405 Hz</td>
+      <td class="num">401 Hz</td>
+      <td>都很暗，此项两版接近</td>
+    </tr>
+    <tr>
+      <td>音符密度</td>
+      <td class="num lose">约 4 音/秒</td>
+      <td class="num win">1.43 音/秒</td>
+      <td>减 64%，留白出来</td>
+    </tr>
+    <tr>
+      <td>整体响度 (RMS)</td>
+      <td class="num lose">−12.6 dBFS</td>
+      <td class="num win">−16.5 dBFS</td>
+      <td>降 3.9 dB，久听不累</td>
+    </tr>
+    <tr>
+      <td>无缝循环</td>
+      <td class="num win">通过</td>
+      <td class="num win">通过</td>
+      <td>解码后实测接缝一/二阶差分</td>
+    </tr>
+    <tr>
+      <td>体积</td>
+      <td class="num">261 KB / 26.7s</td>
+      <td class="num">371 KB / 37.9s</td>
+      <td>mono 32kHz 80kbps</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <b>为什么不是"下载那首 snowfall"：</b>流传最广的 Øneheart × reidenshi 版本是有版权的商业录音，
+  打进小游戏包体再上传发布属于侵权。但它的<b>公开分析数据可用</b>，v2 就是按那套参数做的：<br>
+  原曲 = F 大调 / 4-4 / ~95 BPM / 和弦进行 I△7–ii7–vi9（Fmaj7–Gm7–Dm9）/ 旋律音域 C4–C6。
+  v2 采用同一套和声语言与音域，只把速度放到 76 BPM 以适配塔防的长时间循环。<br><br>
+  <b>一个失败的度量（如实记录）：</b>我本想用一个心理声学"粗糙度"模型量化"刺耳"，结果它给出的排序
+  与听感相反（判 v2 更糙）。原因是它实际上度量的是"低频区互相贴近的分音有多少"= 浑浊度，
+  而刺耳的主因是<b>和声冲突</b>——那是乐谱层面的事，频谱指标测不出来。
+  该模型已降级为诊断项、不参与判定，标定失败的过程写在
+  <code>tools/measure-timbre.py</code> 的注释里，免得以后有人再被它骗。<br><br>
+  <b>所以"刺耳"的最终判据只有你的耳朵</b> —— 上面两个播放器就是为这个准备的。
+  如果 v2 还是不对，告诉我具体哪里不对（太闷 / 旋律难听 / 引子太长 / 想更接近原曲速度），
+  这些都是 <code>tools/make-snowfall.py</code> 里可调的参数，改完重跑即可。
+</div>
+
+</body>
+</html>

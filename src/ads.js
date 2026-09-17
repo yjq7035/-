@@ -249,11 +249,64 @@ async function showRewardedOnce() {
   }
 }
 
+// ============================================================================
+// 通用单次激励视频（背包解锁等"看一次给一次奖励"的场景）
+// ----------------------------------------------------------------------------
+// 与复活链（showReviveAds，要看 N 个）刻意分开：这里的语义是"一次广告一个回调"，
+// 且必须区分【看完 isEnded=true】与【中途跳过 isEnded=false】——
+// 只有看完才发奖励。回调保证只触发一次（_finishOnce）。
+// ============================================================================
+let _onceCallback = null;
+
+function _finishOnce(ok) {
+  const cb = _onceCallback;
+  _onceCallback = null;
+  if (cb) cb(!!ok);
+}
+
+function _onRewardedClose(res) {
+  _finishOnce(!!(res && res.isEnded));
+}
+
+/**
+ * 看一次激励视频。
+ * @param {(ok:boolean)=>void} onDone ok=true 表示完整看完（可以发奖励）
+ */
+function showRewarded(onDone) {
+  const done = (typeof onDone === 'function') ? onDone : function () {};
+  // 广告未开启 / 实例未就绪：直接回调失败，绝不让调用方"永远等下去"
+  if (!AD.enabled || !rewardedVideoAd) {
+    console.warn('[ads] showRewarded 不可用（enabled=' + AD.enabled + ', ready=' + !!rewardedVideoAd + '）');
+    done(false);
+    return;
+  }
+
+  _onceCallback = done;
+
+  // 自己挂一份 onClose：真实广告与模拟广告都走这条（模拟广告只在 mock 分支创建，
+  // initAds 里没有为它注册 onClose）。先 offClose 去掉上一次的，避免回调串台。
+  try { rewardedVideoAd.offClose(_onRewardedClose); } catch (e) {}
+  try { rewardedVideoAd.onClose(_onRewardedClose); } catch (e) {}
+
+  try {
+    Promise.resolve(rewardedVideoAd.load())
+      .then(function () { return rewardedVideoAd.show(); })
+      .catch(function (err) {
+        console.warn('[ads] showRewarded 播放失败', err);
+        _finishOnce(false);
+      });
+  } catch (e) {
+    console.warn('[ads] showRewarded 异常', e);
+    _finishOnce(false);
+  }
+}
+
 module.exports = {
   initAds,
   showBanner,
   showInterstitial,
   showReviveAds,
   showRewardedOnce,
+  showRewarded,
   isEnabled: () => AD.enabled,
 };

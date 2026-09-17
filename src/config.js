@@ -47,6 +47,11 @@ const TOWER_DEFS = {
   cross:         { name: '十字塔', color: '#F50057', cost: 210, rarity: 1 },
   arrow:         { name: '箭形塔', color: '#FFA000', cost: 280, rarity: 2 },
   bolt:          { name: '闪电塔', color: '#D500F9', cost: 380, rarity: 3 },
+  // ---- 第三批扩展：固有技能「连续射击」平行塔（双横轮廓）----
+  // 注：内部键用 parallel（形状名，与 triangle / circle / … 同构）；
+  //     历史上曾叫 graphic —— 那个名字与"图形塔"这个塔族统称撞车，2026-09 改名。
+  //     旧存档的键搬迁见 meta.js 的 TYPE_ALIAS。
+  parallel:      { name: '平行塔', color: '#00FF7F', cost: 450, rarity: 3 },
 };
 
 // 塔的详细属性（含攻击间隔秒数）
@@ -86,6 +91,15 @@ const TOWER_STATS = {
   cross:         { damage: 34, range: 190, attackSpeedMultiplier: 100, attackInterval: 0.9, critChance: 0, critMult: 1.5, penetration: 0, isSupport: false, description: '十字速射塔，射速快、射程偏短。适合贴身补伤。' },
   arrow:         { damage: 46, range: 240, attackSpeedMultiplier: 100, attackInterval: 1.2, critChance: 0, critMult: 1.7, penetration: 0, isSupport: false, description: '箭形狙击塔，射程远、单发高。攻击命中敌人时会给敌人挂一个碎甲的debuff，破坏目标3点抗性。' },
   bolt:          { damage: 70, range: 220, attackSpeedMultiplier: 100, attackInterval: 1.5, critChance: 0, critMult: 2.0, penetration: 0, isSupport: false, description: '闪电炮塔，暴击倍率全塔最高（200%），原生暴击几率为 0。' },
+  // ---- 第三批扩展：固有技能「连续射击」平行塔 ----
+  // 攻击间隔 0.25s（100% 攻速）；攻击力 35。
+  // 固有技能「连续射击」的实现见 game_core.updateTowers 的 parallel 分支：
+  //   · 每发必定换一个不同目标下手；
+  //   · 场上只剩同一个目标可打时，每次攻击叠加 innateStackStep 点攻速，
+  //     上限 innateStackCap（原生 100%，可被"强化"抬高，见 ENHANCE_SPECIAL）。
+  // ⚠️ 攻击间隔 / 攻速这类**有专属属性行**的数字不要写进 description ——
+  //    介绍只讲机制，数值交给属性表（属性面板已有「攻击间隔 每0.25秒」一行）。
+  parallel:      { damage: 35, range: 220, attackSpeedMultiplier: 100, attackInterval: 0.25, critChance: 0, critMult: 1.5, penetration: 0, isSupport: false, hasInnate: true, innateStackCap: 100, innateStackStep: 10, description: '固有技能「连续射击」：每发必定换一个不同的敌人下手。被逼着连续打同一个目标时，出手会越来越快。' },
 };
 
 // ============================================================================
@@ -134,6 +148,10 @@ const ENHANCE_SPECIAL = {
   cross:          { key: 'attackSpeedMultiplier', name: '攻击速度',     base: 100, per: 8,  unit: '%',  desc: '贴身速射更凶' },
   arrow:          { key: 'break',               name: '破解',         base: 0,   per: 3,  unit: '',   desc: '每级 +3 破解，直接抵消敌人抗性' },
   bolt:           { key: 'critChance',            name: '暴击几率',     base: 0,   per: 4,  unit: '%',  desc: '命中时触发暴击的概率（暴击倍率全塔最高）' },
+  // ---- 第三批扩展：平行塔（固有技能「连续射击」）----
+  // 与其他塔保持一致：它同样有"招牌属性"可强化，只是招牌是固有技能的叠加上限。
+  // base 必须 = TOWER_STATS.parallel.innateStackCap（引擎按"原生 + per×L"结算）。
+  parallel:       { key: 'innateStackCap',        name: '叠加上限',     base: 100, per: 20, unit: '%',  desc: '被迫连续攻击同一目标时，攻速最多能叠到多少（每次攻击 +10%）' },
 };
 
 // 默认已解锁 + 默认登场池的 5 种塔（玩家开局的起点阵容）// 图签里其余 7 种需要消耗"特殊积分"解锁后才能进入登场池。
@@ -378,6 +396,53 @@ const SHOP = {
 SHOP.panelHeight = SHOP.padTop + SHOP.headerH + SHOP.cardH + SHOP.padBottom;
 
 // ============================================================================
+// 宝石系统（Gems）
+// ----------------------------------------------------------------------------
+// 玩法：
+//   · 局内掉落 / 奖励的宝石先进【背包】（导航第 5 格，默认 20 格 = 10 格/行 × 2 行）
+//   · 图签里每升 1 级解锁 1 个【嵌入宝石槽】（解锁即 Lv.1 → 1 个槽，Lv.5 = 5 个槽）
+//   · 把背包里的宝石嵌进某个图形塔的槽里 → 宝石与【该塔的固有技能】绑定，
+//     从背包消失，加成永久（跨局）作用在该塔型上
+//
+// 数值口径：GEM_KINDS[].effect 的键与 bonusStats.ATTR / ENHANCE_SPECIAL 同名字段，
+//   战斗侧由 tower.js 的 getGemBonus 统一叠加（见 src/gems.js）。
+//
+// ⚠️ 袋口（bagSlots）之外还有 bagMaxSlots：广告解锁是"每次 +1 行（10 格）"，
+//    上限 40 格。广告未开放（AD.enabled=false）时解锁按钮与「再次挑战」同款禁用。
+// ============================================================================
+const GEM = {
+  maxSlots: 5,          // 单个图形塔最多 5 个嵌入槽（与 CODEX.maxLevel 对齐：每升 1 级 +1 槽）
+  slotFromLevel: 1,     // 图签 Lv.1（即解锁）就送 1 个槽
+  bagCols: 10,          // 背包每行 10 格
+  bagSlots: 20,         // 默认解锁 20 格
+  bagStep: 10,          // 看一次激励视频解锁 10 格（= 1 行）
+  bagMaxSlots: 40,      // 背包上限 40 格（4 行）
+  starterGems: ['ruby', 'emerald'],  // 新档赠送：让宝石系统一开局就能玩到
+  // 掉落：每清空 N 波必掉 1 颗（第 N、2N、… 波）；精英/BOSS 另按概率掉
+  dropEveryWaves: 3,
+  dropTierChance: { 3: 0.35, 4: 0.65, 5: 1.0 },
+};
+
+// 宝石种类（唯一真源：图标颜色 / 效果 / 文案都由本表驱动）
+//   effect.damagePercent        —— 攻击力 +N%（乘算，与图签同一档绿字）
+//   effect.attackSpeedMultiplier—— 攻速 +N
+//   effect.critChance           —— 暴击率 +N%
+//   effect.penetration          —— 穿透 +N
+//   effect.range                —— 射程 +N
+//   effect.skillLevels          —— 固有技能等级 +N
+//                                  （⚠️ 这条就是"宝石与技能绑定"：它直接给该塔的
+//                                   ENHANCE_SPECIAL 那项属性加等级，走 tower.getEnhanceAttr
+//                                   这一个口生效，因此战斗/面板/浮层不会各说各话）
+const GEM_KINDS = [
+  { id: 'ruby',     name: '红宝石', color: '#FF5252', effect: { damagePercent: 8 },           desc: '攻击力 +8%' },
+  { id: 'sapphire', name: '蓝宝石', color: '#448AFF', effect: { attackSpeedMultiplier: 10 },  desc: '攻速 +10' },
+  { id: 'emerald',  name: '翡翠',   color: '#00E676', effect: { critChance: 6 },              desc: '暴击率 +6%' },
+  { id: 'topaz',    name: '黄玉',   color: '#FFD54F', effect: { penetration: 6 },             desc: '穿透 +6' },
+  { id: 'amethyst', name: '紫晶',   color: '#B388FF', effect: { range: 16 },                  desc: '射程 +16' },
+  { id: 'opal',     name: '猫眼石', color: '#4DD0E1', effect: { skillLevels: 1 },             desc: '固有技能 +1 级' },
+];
+
+// ============================================================================
 // 广告配置
 // ============================================================================
 const AD = {
@@ -396,6 +461,37 @@ const AD = {
   // 插屏广告策略
   interstitialMinIntervalSec: 60, // 两次插屏展示的最小间隔（频控，避免连续弹窗）
   interstitialRetrySec: 30,       // 加载失败后按官方建议间隔一段时间再重试
+};
+
+// ============================================================================
+// 背景音乐配置
+// ============================================================================
+// 曲目：audio/snowfall.mp3 —— 原创氛围曲《Snowfall (Original)》
+//   · 26.67 秒无缝循环（8 小节 @72BPM），mono / 32kHz / 80kbps，约 261KB。
+//   · 生成脚本：.workbuddy/tools/make-snowfall.py（可复现，改参数重跑即可）；
+//     无缝性由 .workbuddy/tools/audit-bgm.py 审计（审的是解码后的 mp3）。
+//
+// ⚠️ 想换成自己手上那首《snowfall》？只要把文件放到 audio/ 下、改这里的 src 即可，
+//    别的代码一行都不用动。但请注意：流传最广的那版（Øneheart × reidenshi）是
+//    有版权的商业录音，放进了自己的包体再上传发布 = 侵权，请务必先拿到授权。
+const MUSIC = {
+  enabled: true,                 // 全局总开关（false 时音频模块完全不创建实例；保持 true 才能让游戏内开关能重新打开）
+  defaultEnabled: false,         // 用户默认偏好：首次进入、且无存档时的初始开关状态。false = 默认静音/影音关闭
+  src: 'audio/snowfall.mp3',     // 代码包内相对路径（微信支持直接播包内本地文件）
+  // BGM 音量 0~1。塔防要留耳朵给音效，别开满。
+  // 音频文件本身母带定在 RMS -16dBFS（比常见商用曲目低 ~4dB，久听不累），
+  // 所以这里给 0.55 —— 实际听感大约 -21dBFS，属于"在背景里、但听得清"。
+  volume: 0.55,
+  loop: true,                    // 循环播放
+  autoplay: true,                // 启动即播；失败时由 audio.js 在首次触摸时兜底重试
+  // iOS 静音键：false = 静音键打开时照样出声（游戏常见做法，保证"一进来就有声音"）；
+  //              true  = 尊重系统静音键（更礼貌，但用户会以为游戏没声音）。
+  // 注意：基础库 2.3.0 起 InnerAudioContext.obeyMuteSwitch 属性失效，
+  //       以 wx.setInnerAudioOption 的设置为准（audio.js 两处都设了）。
+  obeyMuteSwitch: false,
+  // true = 与其它 App 的音频混着播（不打断用户自己正在听的歌）；
+  // false = 独占音频通道（会把用户的音乐顶掉）——游戏 BGM 的常规做法。
+  mixWithOther: false,
 };
 
 module.exports = {
@@ -422,4 +518,7 @@ module.exports = {
   TALENT_EFFECT,
   LEVELS,
   AD,
+  MUSIC,
+  GEM,
+  GEM_KINDS,
 };

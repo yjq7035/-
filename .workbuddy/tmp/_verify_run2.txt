@@ -1,0 +1,44 @@
+﻿
+syntax_exit=0
+Game initialized: {
+  mapX: 48,
+  mapY: 93.16,
+  mapWidth: 224,
+  mapHeight: 262.84000000000003,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 56.25,
+  mapY: 105.03999999999999,
+  mapWidth: 262.5,
+  mapHeight: 349.96000000000004,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 56.25,
+  mapY: 122.44,
+  mapWidth: 262.5,
+  mapHeight: 470.96,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 58.5,
+  mapY: 126.28,
+  mapWidth: 273,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 64.2,
+  mapY: 136.12,
+  mapWidth: 299.59999999999997,
+  mapHeight: 537.0799999999999,
+  slots: 12,
+  towers: 0
+}
+
+smoke_exit=0

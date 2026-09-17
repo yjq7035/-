@@ -372,6 +372,16 @@ function boot() {
     } catch(e) {
       console.warn('[boot] 广告初始化失败', e);
     }
+    // 初始化背景音乐（audio/snowfall.mp3）
+    // 注意：这里必须独立 try/catch —— 音乐失败绝不能让"启动成功"变成启动失败。
+    // 自动播放被静默拦截时由 audio.js 内部的一次性触摸解锁兜底，不在这里重试。
+    try {
+      const audio = require('./src/audio');
+      audio.init();
+      console.log('[boot] 背景音乐初始化完成');
+    } catch(e) {
+      console.warn('[boot] 背景音乐初始化失败（不影响游戏）', e);
+    }
     console.log('[boot] ✅ 启动成功（第', bootTries, '次尝试；createCanvas 共调用', createCanvasCalls, '次，应为 1）');
     return null;
   } catch (err) {

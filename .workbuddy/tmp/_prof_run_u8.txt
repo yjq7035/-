@@ -1,0 +1,14 @@
+python.exe : Traceback (most recent call last):
+所在位置 行:446 字符: 1
++ & $py ".workbuddy\tmp\_profile.py" ".workbuddy\tmp\_ref_snowfall.m4a" ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last) 
+   ::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "F:\鍥惧舰濉旈槻\.workbuddy\tmp\_profile.py", line 41, in <module>
+    out.append('鏈€瀹夐潤鐨?10% 涓庢渶鍝嶇殑 10% 涔嬮棿宸?%.1f dB'
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+               % (np.percentile(rel, 90) - np.percentile(rel, 10)))
+               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ValueError: unsupported format character '?' (0x4e0e) at index 9

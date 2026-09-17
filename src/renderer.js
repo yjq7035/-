@@ -13,10 +13,13 @@ const shop = require('./shop');
 const nav = require('./nav');
 const codex = require('./codex');
 const talents = require('./talents');
+const bag = require('./bag');
 const levels = require('./levels');
 const gamemenu = require('./gamemenu');
 const enhanceMod = require('./enhance');
 const meta = require('./meta');
+const gems = require('./gems');
+const skillSlot = require('./skillSlot');
 const { anchorPointOf } = require('./geometry');
 
 // 通用 UI 原子统一来自 theme.js（本项目 UI 风格与坐标工具的唯一真源）
@@ -24,7 +27,7 @@ const {
   THEME, shade, teamBandGradient, easeOutCubic, easeOutBack,
   roundRectPath, drawStar, drawTowerIcon, wrapTextLines, wrapText,
   drawTaperedDivider, drawButton, drawButtonFx, isButtonPressed,
-  drawPillTitle, drawChip, ellipsize,
+  drawPillTitle, drawChip, ellipsize, drawChevron, drawScrollBar,
 } = theme;
 
 // 塔属性查询（纯配置查找，实体在 tower.js，这里保留同名别名给既有调用点）
@@ -40,6 +43,15 @@ const BOSS_TEAM_COLORS = {
   red:  new Set(['#FF0000']),
   blue: new Set(['#9900FF']),
 };
+
+// BOSS 大血条「白色缓冲条」的追赶速度：鬼影从满管缩到空管所需秒数。
+// 调小的手感 = 扣得更急（0.2 会像抽搐），调大的手感 = 白条挂太久像卡住。
+// 0.9s 实测既看得清"这一下掉了多少"，又不会让两条血长期对不上。
+const BOSS_HP_GHOST_DRAIN_SEC = 0.9;
+
+// 小怪血条同理，但要更快一点：小怪数量多、本身血量也小，
+// 白条挂太久会让人误判"这只还没死"。
+const ENEMY_HP_GHOST_DRAIN_SEC = 0.6;
 
 function drawPath(game) {
   const ctx = game.ctx;
@@ -313,6 +325,8 @@ function drawEnemyHpBar(game, enemy) {
   ctx.save();
 
   const pct = Math.max(0, enemy.hp / enemy.maxHp);
+  // 延迟掉血鬼影（与 BOSS 大血条同一套口径：实条立即更新，白条慢慢缩）
+  const ghostPct = updateHpGhost(enemy, frameDt(game), ENEMY_HP_GHOST_DRAIN_SEC);
   const barW = Math.max(20, s);
   const barH = 4;
   const barX = enemy.x - barW / 2;
@@ -323,6 +337,15 @@ function drawEnemyHpBar(game, enemy) {
   ctx.beginPath();
   ctx.roundRect(barX, barY, barW, barH, barH / 2);
   ctx.fill();
+
+  // 白色缓冲条（残留旧血量）
+  if (ghostPct > pct + 1e-4) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, Math.max(barH, barW * ghostPct), barH, barH / 2);
+    ctx.fill();
+  }
+
   // 填充（绿→黄→红，按剩余比例）
   let hpColor;
   if (pct > 0.5) hpColor = '#6EE86E';
@@ -364,16 +387,60 @@ function getTeamBoss(game, team) {
 }
 
 /**
- * 绘制 BOSS 大血条（宽条 + 数值文本 + 阵营色，带 BOSS 呼吸光晕）。
+ * 「延迟掉血」鬼影推进器（NDF/DNF 味儿的白色缓冲条）。
+ *
+ * 视觉口径：
+ *   · 彩色实条 = 真实血量，**扣血当帧就到位**（绝不延迟，读数永远准）；
+ *   · 白色鬼影 = 上一次的旧血量，只允许"向下"追平实条，所以扣血后会残留一段白条慢慢缩。
+ *
+ * 规则：
+ *   鬼影 > 实血  → 按 drainSecPerFull 秒缩完"整管"的恒定速度往下追（每帧夹一次，绝不越过头）
+ *   鬼影 ≤ 实血  → 立刻贴合（首次出现 / 回血 / 换单位复用都靠这条兜住，
+ *                  否则会出现"白条比实条长"或白条反向生长的鬼畜现象）
+ *
+ * @param {object} unit 需要 maxHp / hp 的单位（状态记在 unit._hpGhost，单位不池化故安全）
+ * @param {number} dt 帧间隔（秒）
+ * @param {number} drainSecPerFull 从满管掉到空管所需的秒数（越小扣得越快）
+ * @returns {number} 鬼影进度 0~1
+ */
+function updateHpGhost(unit, dt, drainSecPerFull) {
+  const maxHp = unit.maxHp > 0 ? unit.maxHp : 1;
+  const hp = Math.max(0, Math.min(maxHp, unit.hp || 0));
+  let ghost = unit._hpGhost;
+  if (typeof ghost !== 'number' || !(ghost > hp)) ghost = hp;
+  if (ghost > hp) {
+    const step = maxHp * (Math.max(0, dt) / (drainSecPerFull || 1));
+    ghost = Math.max(hp, ghost - step);
+  }
+  unit._hpGhost = ghost;
+  return ghost / maxHp;
+}
+
+/** 取本帧的帧间隔（秒）：由 game_core.loop 写入 game.dt；无头测试/首帧兜底 1/60 */
+function frameDt(game) {
+  const dt = game && game.dt;
+  return (typeof dt === 'number' && dt > 0) ? Math.min(dt, 0.1) : 1 / 60;
+}
+
+/**
+ * 绘制 BOSS 大血条（宽条 + 数值文本 + 阵营色）。
  * 红方 BOSS 画在波次标题下方，蓝方 BOSS 画在波次标题上方（调用方传 y）。
+ *
+ * 2026-09 改版：
+ *   · **删掉 BOSS 呼吸光晕**（那圈脉动椭圆糊在标题栏上很脏，而且告诉不了玩家任何信息）；
+ *     改成静态暗色垫底 + 细腻内高光，不闪不糊。
+ *   · 掉血缓冲条重做：旧版拿"最近 8 秒伤害明细"做归一化，剩余比例其实是
+ *     bufHp/bufTotal（永远从 1 开始），既不是血量也读不出信息。现在改为
+ *     标准「延迟掉血」——实条立即更新，白色鬼影条慢慢缩（见 updateHpGhost）。
  * @param {object} ctx 画布
  * @param {object} boss BOSS 单位
  * @param {number} cx 血条中心x（通常屏幕中心）
  * @param {number} cy 血条中心y
  * @param {string} team 'red' | 'blue'（决定配色）
  * @param {number} maxW 血条最大宽度
+ * @param {number} [dt] 帧间隔（秒）；不传则按 1/60 推
  */
-function drawBossHealthBar(ctx, boss, cx, cy, team, maxW) {
+function drawBossHealthBar(ctx, boss, cx, cy, team, maxW, dt) {
   const w = Math.min(maxW, 320);
   const h = 14;
   const x = cx - w / 2;
@@ -382,30 +449,15 @@ function drawBossHealthBar(ctx, boss, cx, cy, team, maxW) {
   const main = team === 'red' ? THEME.team.red.solid : THEME.team.blue.solid;
   const light = team === 'red' ? THEME.team.red.light : THEME.team.blue.light;
 
+  // 白色缓冲条（延迟掉血）：先推进鬼影，再按 ghostPct 画
+  const ghostPct = updateHpGhost(boss, (dt === undefined ? 1 / 60 : dt), BOSS_HP_GHOST_DRAIN_SEC);
+
   ctx.save();
 
-  // 呼吸光晕（BOSS 专属，强调"大血条"存在感）
-  // 优化：双层径向渐变 + 软调，外圈收窄，不再糊一圈
-  const t = Date.now() / 1000;
-  const pulse = 0.5 + 0.5 * Math.sin(t * 2.0);
-  const innerR = h * (0.8 + 0.3 * pulse);
-  const outerR = h * (1.6 + 0.4 * pulse);
-  const glowR = Math.max(w / 2 * 0.4, outerR);
-  // 内圈亮色（紧贴血条）
-  const glowInner = ctx.createRadialGradient(cx, cy, innerR * 0.5, cx, cy, glowR * 0.7);
-  glowInner.addColorStop(0, shade(main, 0.15, 0.25 + 0.15 * pulse));
-  glowInner.addColorStop(1, shade(main, 0.15, 0));
-  ctx.fillStyle = glowInner;
+  // 静态垫底（替代原来的呼吸光晕）：一圈固定暗边，保证亮地图上血条不糊
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
   ctx.beginPath();
-  ctx.ellipse(cx, cy, w / 2 + 8, glowR * 0.7, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // 外圈暗光（柔化过渡）
-  const glowOuter = ctx.createRadialGradient(cx, cy, glowR * 0.3, cx, cy, glowR);
-  glowOuter.addColorStop(0, shade(main, 0.1, 0.15 + 0.1 * pulse));
-  glowOuter.addColorStop(1, shade(main, 0.1, 0));
-  ctx.fillStyle = glowOuter;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, w / 2 + 12, glowR, 0, 0, Math.PI * 2);
+  ctx.roundRect(x - 3, y - 3, w + 6, h + 6, (h + 6) / 2);
   ctx.fill();
 
   // 轨道
@@ -414,7 +466,22 @@ function drawBossHealthBar(ctx, boss, cx, cy, team, maxW) {
   ctx.roundRect(x, y, w, h, h / 2);
   ctx.fill();
 
-  // 填充（阵营色渐变，按剩余比例）
+  // 白条：残留的旧血量（画在实条下面，只露在实条右边那一截）
+  if (ghostPct > pct + 1e-4) {
+    const gw = Math.max(h, w * ghostPct);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.82)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, gw, h, h / 2);
+    ctx.fill();
+    // 鬼影前锋的一道亮边：让"正在往下扣"这件事看得见
+    const edgeW = 2;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.beginPath();
+    ctx.roundRect(x + gw - edgeW - 1, y + 1, edgeW, h - 2, edgeW / 2);
+    ctx.fill();
+  }
+
+  // 实条：真实血量，按剩余比例（阵营色渐变）
   if (pct > 0) {
     const fw = Math.max(h, w * pct);
     const grad = ctx.createLinearGradient(x, 0, x + fw, 0);
@@ -425,6 +492,12 @@ function drawBossHealthBar(ctx, boss, cx, cy, team, maxW) {
     ctx.roundRect(x, y, fw, h, h / 2);
     ctx.fill();
   }
+
+  // 顶部内高光（静态，立体感靠它，不靠动画）
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+  ctx.beginPath();
+  ctx.roundRect(x + h * 0.35, y + 2, Math.max(0, w - h * 0.7), 2.5, 1.25);
+  ctx.fill();
 
   // 描边
   ctx.strokeStyle = THEME.border.strong;
@@ -459,10 +532,11 @@ function drawBossBars(game, titleCY, titleH) {
   const cx = game.W / 2;
   const maxW = game.W * 0.7;
   const gap = 8;
+  const dt = frameDt(game);
   const redBoss = getTeamBoss(game, 'red');
   const blueBoss = getTeamBoss(game, 'blue');
-  if (blueBoss) drawBossHealthBar(ctx, blueBoss, cx, titleCY - titleH / 2 - gap - 10, 'blue', maxW);
-  if (redBoss)  drawBossHealthBar(ctx, redBoss,  cx, titleCY + titleH / 2 + gap + 10, 'red', maxW);
+  if (blueBoss) drawBossHealthBar(ctx, blueBoss, cx, titleCY - titleH / 2 - gap - 10, 'blue', maxW, dt);
+  if (redBoss)  drawBossHealthBar(ctx, redBoss,  cx, titleCY + titleH / 2 + gap + 10, 'red', maxW, dt);
 }
 
 /**
@@ -474,8 +548,9 @@ function drawTower(ctx, game, tower) {
 
   ctx.save();
 
-  // 如果塔有攻击朝向，根据朝向旋转绘制
-  if (tower.attackAngle !== undefined) {
+  // 如果塔有攻击朝向，根据朝向旋转绘制（对称图形例外，见 theme.shouldRotateTowerIcon）
+  const rotatable = theme.shouldRotateTowerIcon(tower.type);
+  if (rotatable && tower.attackAngle !== undefined) {
     ctx.translate(tower.x, tower.y);
     ctx.rotate(tower.attackAngle);
     drawTowerIcon(ctx, 0, 0, towerDef.color, tower.type);
@@ -556,6 +631,7 @@ const PANEL_UI = {
   descLineH: 17,        // 攻击介绍行高
   descSize: 12.5,
   skillH: 24,
+  gemRowH: 40,          // 宝石条单行高（36 的珠子 + 上下呼吸）
   enhanceH: 52,         // 强化按钮区（含标签行）
   footerH: 24,
 };
@@ -602,27 +678,17 @@ function drawTowerPanel(game) {
   const cx = W / 2;
   const descLines = wrapTextLines(ctx, stats.description || '', contentW, `${PANEL_UI.descSize}px Arial`);
 
-  // 专属技能行：从 ENHANCE_SPECIAL 读取 name/desc/base+per×等级
-  const towerMod = require('./tower');
-  const spDef = towerMod.getSpecialDef(towerType);
-  // ⚠️ 说明文字必须换行：ENHANCE_SPECIAL 的 desc 最长一句 33 字（箭形塔），
-  //    按 12.5px 字宽算约 410px，而面板内容宽只有 262px ——
-  //    单行 fillText 会直接捅出面板右边界（实测右超 116px）。
-  //    换行后的行数会累加进下方 skill 区块的高度，面板高度因此自适应。
-  const skillLines = [];
-  if (spDef) {
-    const lv = tower ? (tower.enhanceLevel || 0) : 0;
-    const cur = spDef.base + spDef.per * lv;
-    const curText = spDef.unit === '倍' ? `×${cur}` : `${cur}${spDef.unit}`;
-    const perText = `+${spDef.per}${spDef.unit}`;
-    const raws = [ `${spDef.name}: ${curText} (${perText}/级)` ];
-    if (spDef.desc) raws.push(spDef.desc);
-    for (const raw of raws) {
-      const ls = wrapTextLines(ctx, raw, contentW, `${PANEL_UI.descSize}px Arial`);
-      if (ls.length) skillLines.push(...ls);
-      else skillLines.push('');
-    }
-  }
+  // 固有技能槽：每个技能一个槽（左图标 / 右技能名+Lv+介绍+当前值）。
+  // ⚠️ 高度必须取自 skillSlot.skillSlotsHeight —— 与绘制同一个换行函数，
+  //    "这边算行数、那边画文字"的历史事故（文字捅出面板 116px）不许回来。
+  const skillSlots = skillSlot.buildSkillSlots(ctx, towerType, tower, contentW);
+  const skillBlockH = skillSlots.length > 0
+    ? PANEL_UI.sectionTitleH + skillSlot.skillSlotsHeight(skillSlots, contentW)
+    : 0;
+
+  // 宝石槽条：展示该塔型已嵌入的宝石（嵌入操作在图签里做，这里负责"看得到"）
+  const gemKinds = gems.embeddedGems(towerType);
+  const gemBlockH = gemKinds.length > 0 ? PANEL_UI.sectionTitleH + PANEL_UI.gemRowH : 0;
 
   // 组装区块（累加高度，杜绝重叠）
   const blocks = [];
@@ -651,10 +717,16 @@ function drawTowerPanel(game) {
   push({ type: 'divider', h: PANEL_UI.dividerH });
   push({ type: 'desc', h: PANEL_UI.sectionTitleH + descLines.length * PANEL_UI.descLineH, lines: descLines });
 
-  // 固有技能区块
-  if (skillLines.length > 0) {
+  // 固有技能区块（技能槽：一技能一槽，左图标右文案）
+  if (skillSlots.length > 0) {
     push({ type: 'divider', h: PANEL_UI.dividerH });
-    push({ type: 'skill', h: PANEL_UI.sectionTitleH + skillLines.length * PANEL_UI.descLineH, lines: skillLines });
+    push({ type: 'skill', h: skillBlockH, slots: skillSlots, color: towerDef.color });
+  }
+
+  // 宝石区块（已嵌入的宝石，与固有技能绑定）
+  if (gemKinds.length > 0) {
+    push({ type: 'divider', h: PANEL_UI.dividerH });
+    push({ type: 'gems', h: gemBlockH, kinds: gemKinds });
   }
 
   push({ type: 'divider', h: PANEL_UI.dividerH });
@@ -738,9 +810,17 @@ function drawTowerPanel(game) {
   ctx.stroke();
   ctx.restore();
 
-  // 滚动指示器（滚动条）：绘制在面板右侧
+  // 滚动条：把"下面还有内容"画出来（面板右侧那道细条）。
+  //
+  // ⚠️ 这里原来调的是 drawScrollIndicator() —— 一个**全项目不存在**的函数。
+  //    它只在"内容高过屏幕"（scrollable = true）时才被调用，也就是矮屏 + 文字多的塔
+  //    （圆塔 / 正方塔 / 图形塔）上必炸 ReferenceError：
+  //    主循环 try/catch 把异常吞掉 → 面板整块画不出来 → 玩家看到的是"点了塔没反应"。
+  //    这就是「属性面板文本超出显示不全」的病根，别再换回任何自造函数。
+  //    统一用 theme.drawScrollBar（图签 / 天赋 / 选关天梯共用同一支）。
   if (scrollable) {
-    drawScrollIndicator(ctx, panelX, panelY, panelW, panelH, scroll, maxScroll);
+    drawScrollBar(ctx, { x: panelX, y: panelY + 6, w: panelW - 2, h: panelH - 12 },
+      scroll, maxScroll, panelH - 12, contentH);
   }
 
   // ---------- ③ 逐块绘制（应用滚动偏移） ----------
@@ -758,6 +838,7 @@ function drawTowerPanel(game) {
       case 'effects': drawPanelEffects(ctx, block, panelX, y, panelW); break;
       case 'desc':    drawPanelDescription(ctx, block, panelX, y, panelW, stats); break;
       case 'skill':   drawPanelSkill(ctx, block, panelX, y, panelW); break;
+      case 'gems':    drawPanelGems(ctx, block, panelX, y, panelW); break;
       case 'enhance': drawPanelEnhance(ctx, block, panelX, y, panelW, game); break;
       case 'footer':  drawPanelFooter(ctx, block, cx, y); break;
       default: break;
@@ -766,14 +847,23 @@ function drawTowerPanel(game) {
   }
   ctx.restore();
 
-  // 滚动提示（内容可滚动时显示）
+  // 滚动提示（内容可滚动时显示）：到顶/到底就把对应那一侧的提示收掉，
+  // 免得"已经滑到底了还在喊再滑"这种假提示。
   if (scrollable) {
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = '10px Arial';
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
-    ctx.fillText('上滑查看更多', cx, panelY + panelH - 6);
+    if (scroll > 2) {
+      ctx.globalAlpha = 0.55;
+      drawChevron(ctx, cx, panelY + 8, -1, THEME.text.dim);
+    }
+    if (scroll < maxScroll - 2) {
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.fillText('上滑查看更多', cx, panelY + panelH - 6);
+      drawChevron(ctx, cx, panelY + panelH - 17, 1, THEME.text.dim);
+    }
     ctx.restore();
   }
 
@@ -954,9 +1044,16 @@ function drawPanelDescription(ctx, block, panelX, y, panelW, stats) {
   }
 }
 
-/** 固有技能区：标题 + 技能名/数值 + 说明 */
+/**
+ * 固有技能区：标题 + 一个或多个【技能槽】。
+ *
+ * 槽的形态（需求原话）：左边技能图标，右边技能名 + Lv{等级} 与介绍。
+ * 排版全部交给 src/skillSlot.js —— 那里同时负责算高度，两边不会打架。
+ * @param {object} block { h, slots }
+ */
 function drawPanelSkill(ctx, block, panelX, y, panelW) {
   const left = panelX + PANEL_UI.padX;
+  const contentW = panelW - PANEL_UI.padX * 2;
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
@@ -964,14 +1061,48 @@ function drawPanelSkill(ctx, block, panelX, y, panelW) {
   ctx.fillStyle = THEME.text.secondary;
   ctx.fillText('固有技能', left, y + PANEL_UI.sectionTitleH / 2);
 
+  skillSlot.drawSkillSlots(ctx, left, y + PANEL_UI.sectionTitleH, contentW, block.slots, {
+    towerColor: block.color,
+  });
+}
+
+/**
+ * 宝石区：该塔型已嵌入的宝石（与固有技能绑定，跨局永久）。
+ * 只读展示 —— 嵌入/取出都在图签的槽位上操作，这里给出"这颗塔带了什么珠子"。
+ */
+function drawPanelGems(ctx, block, panelX, y, panelW) {
+  const left = panelX + PANEL_UI.padX;
+  const right = panelX + panelW - PANEL_UI.padX;
+  const kinds = block.kinds || [];
+
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.font = `${PANEL_UI.descSize}px Arial`;
-  ctx.fillStyle = THEME.text.primary;
-  let lineY = y + PANEL_UI.sectionTitleH + PANEL_UI.descLineH / 2;
-  for (const line of block.lines) {
-    ctx.fillText(line, left, lineY);
-    lineY += PANEL_UI.descLineH;
+  ctx.font = 'bold 12px Arial';
+  ctx.fillStyle = THEME.text.secondary;
+  ctx.fillText('宝石', left, y + PANEL_UI.sectionTitleH / 2);
+
+  ctx.textAlign = 'right';
+  ctx.font = '10px Arial';
+  ctx.fillStyle = THEME.text.off;
+  ctx.fillText('与固有技能绑定', right, y + PANEL_UI.sectionTitleH / 2);
+
+  // 珠子逐个横排：图标 + 名称（挤不下就只留图标）
+  const cy = y + PANEL_UI.sectionTitleH + PANEL_UI.gemRowH / 2;
+  let x = left + 12;
+  for (const kind of kinds) {
+    const def = gems.gemDef(kind);
+    if (!def) continue;
+    gems.drawGemIcon(ctx, x, cy, 11, kind);
+    x += 16;
+    ctx.textAlign = 'left';
+    ctx.font = '11px Arial';
+    ctx.fillStyle = def.color;
+    if (x + ctx.measureText(def.name).width < right - 2) {
+      ctx.fillText(def.name, x, cy);
+      x += ctx.measureText(def.name).width + 12;
+    } else {
+      x += 4;   // 放不下名称就只留图标，绝不越出面板
+    }
   }
 }
 
@@ -1010,6 +1141,21 @@ function drawPanelEnhance(ctx, block, panelX, y, panelW, game) {
     ctx.font = '10px Arial';
     ctx.fillStyle = THEME.text.off;
     ctx.fillText('放置到战场、并进阶到 ★★★ 后可花金币强化', left, y + block.h / 2 + 10);
+    return;
+  }
+
+  // 兜底：该塔类型没有登记专属属性（config.ENHANCE_SPECIAL 漏配）→ 直接说清楚，
+  // 绝不把"需 3★"这种假门槛画出来，更不许把按钮挂上去（点了会白花金币）。
+  if (!towerMod.getSpecialDef(tower.type)) {
+    game.panelEnhanceBtn = null;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 13px Arial';
+    ctx.fillStyle = THEME.text.secondary;
+    ctx.fillText('强化', left, y + block.h / 2 - 8);
+    ctx.font = '10px Arial';
+    ctx.fillStyle = THEME.text.off;
+    ctx.fillText('该塔暂无可强化项', left, y + block.h / 2 + 10);
     return;
   }
 
@@ -1466,8 +1612,9 @@ function drawTopBar(game) {
     stroke: 'rgba(229, 115, 115, 0.55)',
   });
 
-  // 右：☰ 游戏菜单按钮（顶栏唯一可点元素）
+  // 右：☰ 游戏菜单按钮 / 🔊 音乐开关（从右往左排，见 gamemenu.js 文件头）
   const menuRect = gamemenu.getMenuButtonRect(game);
+  gamemenu.drawMusicButton(game);
   gamemenu.drawMenuButton(game);
 
   ctx.strokeStyle = THEME.border.subtle;
@@ -1726,10 +1873,12 @@ function drawBattle(game) {
     }
     if (effect.type === 'square_laser') {
       const alpha = effect.life / effect.maxLife;
+      // 宽度跟随弹道体积（含强化）：0.8 / 0.15 是原生 200% 体积下与旧值 16 / 3 对齐的系数
+      const w = effect.width || 20;
       ctx.save();
       ctx.globalAlpha = alpha * 0.85;
       // 激光管：粗线 + 外发光
-      ctx.lineWidth = 16;
+      ctx.lineWidth = w * 0.8;
       ctx.strokeStyle = effect.color;
       ctx.shadowColor = effect.color;
       ctx.shadowBlur = 20;
@@ -1739,7 +1888,7 @@ function drawBattle(game) {
       ctx.stroke();
       ctx.shadowBlur = 0;
       // 中心高亮白线
-      ctx.lineWidth = 3;
+      ctx.lineWidth = Math.max(1, w * 0.15);
       ctx.strokeStyle = '#fff';
       ctx.globalAlpha = alpha * 0.9;
       ctx.beginPath();
@@ -2084,6 +2233,8 @@ function render(game) {
     codex.drawCodex(game);
   } else if (scene === 'talents') {
     talents.drawTalents(game);
+  } else if (scene === 'bag') {
+    bag.drawBag(game);
   } else {
     drawBattle(game);
   }
@@ -2133,6 +2284,7 @@ module.exports = {
   drawBossHealthBar,
   drawBossBars,
   getTeamBoss,
+  updateHpGhost,
   drawTowerIcon,
   drawTower,
   drawDragPreview,

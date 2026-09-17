@@ -1,0 +1,6 @@
+TOWER_ORDER = triangle,circle,hexagon,square,trapezoid,semicircle,sector,long_rectangle,diamond,pentagon,oval,star,octagon,cross,arrow,bolt,parallel
+TOWER_STATS keys = triangle,circle,hexagon,square,trapezoid,semicircle,sector,long_rectangle,diamond,pentagon,oval,star,octagon,cross,arrow,bolt,parallel
+ENHANCE_SPECIAL keys = triangle,circle,hexagon,square,semicircle,trapezoid,sector,long_rectangle,diamond,pentagon,oval,star,octagon,cross,arrow,bolt,parallel
+TOWER_STATS.graphic = undefined
+TOWER_ORDER 中缺 TOWER_STATS 的 = 
+TOWER_ORDER 中缺 ENHANCE_SPECIAL 的 = 

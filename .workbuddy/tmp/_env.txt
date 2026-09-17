@@ -1,0 +1,17 @@
+﻿--- ffmpeg ---
+C:\Users\Administrator.WIN-CF4N027LCCI\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe
+ffmpeg version 9.0.1-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers
+--- python ---
+True
+3.13.14 (main, Jun 11 2026, 04:04:46) [MSC v.1944 64 bit (AMD64)]
+--- numpy? ---
+2.5.3
+--- lameenc? ---
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import lameenc;print('ok')
+    ^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'lameenc'
+--- pip ---
+pip 26.1.2 from C:\Users\Administrator.WIN-CF4N027LCCI\.workbuddy\binaries\python\versions\3.13.12\Lib\site-packages\pip (python 3.13)
+

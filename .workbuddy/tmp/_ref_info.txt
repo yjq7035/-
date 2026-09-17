@@ -1,0 +1,25 @@
+﻿_ref_snowfall.m4a bytes=1028385
+ffmpeg.exe : Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '.workbuddy\tmp\_ref_snowf
+all.m4a':
+所在位置 行:450 字符: 6
++ $p = & $ff -hide_banner -i $ref 2>&1 | Out-String
++      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Input #0, mov,m..._snowfall.m4a': 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  Metadata:
+    major_brand     : M4A 
+    minor_version   : 512
+    compatible_brands: isomiso2
+    iTunSMPB        :  00000000 00000840 0000037B 0000000000537C45 00000000 000
+00000 00000000 00000000 00000000 00000000 00000000 00000000
+    iTunNORM        :  00000278 0000023C 00000E6E 00000D2E 00009791 0000CF13 00
+00766A 00007F92 00012925 0001783C
+  Duration: 00:00:30.01, start: 0.000000, bitrate: 274 kb/s
+  Stream #0:0[0x1](eng): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo,
+ fltp, 272 kb/s (default)
+    Metadata:
+      handler_name    : SoundHandler
+At least one output file must be specified
+

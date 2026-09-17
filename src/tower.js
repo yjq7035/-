@@ -4,6 +4,7 @@ const {
   ENHANCE_SPECIAL,
 } = require('./config');
 const { createUnit } = require('./units');
+const gems = require('./gems');
 
 function createTower(type, x, y) {
   const stats = TOWER_STATS[type] || TOWER_STATS.triangle;
@@ -135,7 +136,42 @@ function getSpecialDef(type) {
   return ENHANCE_SPECIAL[type] || null;
 }
 
-/** 该塔强化到 level 级时，专属特殊属性的「当前值」= base + per × level */
+// ============================================================================
+// 宝石（嵌入加成）—— 按"塔型"永久生效，战斗与面板共用同一份口径
+// ----------------------------------------------------------------------------
+// 宝石嵌在图签的槽里（meta.socketed），所以它挂在 **type** 上而不是塔实例上：
+//   只要有 tower.type，就能算出这颗塔该吃多少宝石加成。
+// 所有"取属性"的入口都必须过这里，否则会出现"面板显示 +8% 攻击，打起来没变"。
+// ============================================================================
+
+/** 该塔型的宝石加成汇总（无宝石时返回一份全 0 的结构，调用方可无脑相加） */
+function getGemBonus(type) {
+  return gems.bonusForType(type);
+}
+
+/** 攻击力宝石乘数（1 = 无宝石） */
+function getGemDamageMultiplier(type) {
+  return gems.damageMultiplier(type);
+}
+
+/** 宝石绑定的固有技能等级加成（猫眼石 +1 级/颗） */
+function getSkillGemLevels(type) {
+  return gems.skillLevels(type);
+}
+
+/**
+ * 该塔的【有效固有技能等级】= 局内强化等级 + 宝石等级。
+ * 面板上的「技能名 Lv.x」、强化浮层的「x → x+1」都用它，避免"珠子嵌了但等级没涨"的错觉。
+ */
+function getEffectiveSkillLevel(tower) {
+  if (!tower) return 0;
+  return clampEnhanceLevel((tower.enhanceLevel || 0) + getSkillGemLevels(tower.type));
+}
+
+/**
+ * 该塔强化到 level 级时，专属特殊属性的「当前值」= base + per × level。
+ * level 是【有效技能等级】（强化 + 宝石），与战斗口径 getEnhanceAttr 完全同源。
+ */
 function getSpecialValue(type, level) {
   const sp = getSpecialDef(type);
   if (!sp) return 0;
@@ -158,11 +194,25 @@ function clampEnhanceLevel(level) {
 }
 
 /**
- * 某项强化属性的增量（叠加在原生值之上的那份）
- * 例：三角塔强化 2 级 → getEnhanceAttr(tower,'critChance') === 10
+ * 某项强化属性的增量（叠加在原生值之上的那份）。
+ *
+ * 口径（2026-09 宝石版）：
+ *   有效技能等级 = clamp(局内强化等级 + 宝石等级)
+ *   · 招牌属性（sp.key）：增量 = per × 有效技能等级
+ *     —— 也就是 getSpecialBonus(type, enhanceLevel + 宝石等级)，与 ESC 展示完全一致；
+ *     「技能宝石」就是从这里生效的：它不需要任何额外分支，全项目的取属性入口
+ *     本来就是这一个函数（战斗 / 属性面板 / 强化浮层）。
+ *   · 其它键：照旧只读 tower.enhanceAttrs（applyEnhanceAttrs 写入的那份）
+ *
+ * ⚠️ 别把 sp.key 那条改回"只读 enhanceAttrs" —— 那样宝石加的技能等级会在战斗里蒸发。
  */
 function getEnhanceAttr(tower, key) {
-  if (!tower || !tower.enhanceAttrs) return 0;
+  if (!tower) return 0;
+  const sp = getSpecialDef(tower.type);
+  if (sp && sp.key === key) {
+    return sp.per * clampEnhanceLevel((tower.enhanceLevel || 0) + getSkillGemLevels(tower.type));
+  }
+  if (!tower.enhanceAttrs) return 0;
   return tower.enhanceAttrs[key] || 0;
 }
 
@@ -242,6 +292,22 @@ function getStackMax(tower) {
 }
 
 /**
+ * 平行塔：固有技能「连续射击」的攻速叠加上限（原生 100%，强化每级 +20%）。
+ * 战斗口径 = 原生值 + 强化增量，与 ENHANCE_SPECIAL.parallel 的 base + per×L 同源；
+ * 技能宝石加的等级同样由 getEnhanceAttr 折算进来。
+ */
+function getInnateStackCap(tower) {
+  const st = (tower && TOWER_STATS[tower.type]) || {};
+  return (st.innateStackCap || 100) + getEnhanceAttr(tower, 'innateStackCap');
+}
+
+/** 平行塔：被迫连打同一目标时，每次攻击叠加的攻速点数（原生 10） */
+function getInnateStackStep(tower) {
+  const st = (tower && TOWER_STATS[tower.type]) || {};
+  return st.innateStackStep || 10;
+}
+
+/**
  * 把塔的强化等级重新结算成 enhanceAttrs。
  * 单一真源：先清空再按「per × 等级」写入，等级回退（理论上不会发生）也不会残留旧的增量。
  * @returns {object} tower.enhanceAttrs
@@ -273,9 +339,11 @@ function getEnhanceCost(type, enhanceLevel) {
   return Math.max(1, Math.round(base * BALANCE.enhance.costRate * (lv + 1)));
 }
 
-/** 是否还能继续强化（只判等级上限；星级门槛另用 isStageReady） */
+/** 是否还能继续强化（只判等级上限；星级门槛另用 isStageReady）
+ *  ⚠️ 判的是【有效技能等级】（强化 + 宝石）—— 宝石已经把技能顶到上限时，
+ *     按钮必须变灰，否则玩家会花金币买一个 clamp 掉的等级（白扣钱）。 */
 function canEnhance(tower) {
-  return !!tower && (tower.enhanceLevel || 0) < BALANCE.enhance.maxLevel;
+  return !!tower && getEffectiveSkillLevel(tower) < BALANCE.enhance.maxLevel;
 }
 
 /**
@@ -286,11 +354,12 @@ function canEnhance(tower) {
 function getAttackProfile(tower) {
   const type = tower ? tower.type : null;
   const st = TOWER_STATS[type] || TOWER_STATS.triangle;
+  const gem = getGemBonus(type);
   const critMultPct = getEnhanceAttr(tower, 'critMult'); // 百分比放大
   return {
-    critChance: Math.max(0, (st.critChance || 0) + getEnhanceAttr(tower, 'critChance')),
+    critChance: Math.max(0, (st.critChance || 0) + gem.critChance + getEnhanceAttr(tower, 'critChance')),
     critMult: Math.max(1, (st.critMult || BALANCE.critDamageDefaultMult) * (1 + critMultPct / 100)),
-    penetration: Math.max(0, (st.penetration || 0) + getEnhanceAttr(tower, 'penetration')),
+    penetration: Math.max(0, (st.penetration || 0) + gem.penetration + getEnhanceAttr(tower, 'penetration')),
     break:       Math.max(0, (st.break || 0) + getEnhanceAttr(tower, 'break')),
   };
 }
@@ -307,16 +376,19 @@ function getTowerRuntimeStats(tower) {
   const type = tower ? tower.type : null;
   const st = TOWER_STATS[type] || TOWER_STATS.triangle;
   const lv = tower ? (tower.enhanceLevel || 0) : 0;
-  if (lv <= 0) return st;
+  // 宝石挂在塔型上（跨局永久），所以即使强化等级为 0 也要参与结算
+  const gem = getGemBonus(type);
+  const hasGem = gem.count > 0;
+  if (lv <= 0 && !hasGem) return st;
 
   const out = Object.assign({}, st);
   const add = (key) => getEnhanceAttr(tower, key);
-  out.range = (st.range || 0) + add('range');
+  out.range = (st.range || 0) + gem.range + add('range');
   // out.hp = (st.hp || 0) + add('hp');  // 已移除：图形塔无敌
-  out.attackSpeedMultiplier = (st.attackSpeedMultiplier || 0) + add('attackSpeedMultiplier');
-  out.penetration = (st.penetration || 0) + add('penetration');
+  out.attackSpeedMultiplier = (st.attackSpeedMultiplier || 0) + gem.attackSpeedMultiplier + add('attackSpeedMultiplier');
+  out.penetration = (st.penetration || 0) + gem.penetration + add('penetration');
   out.break = (st.break || 0) + add('break');
-  out.critChance = (st.critChance || 0) + add('critChance');
+  out.critChance = (st.critChance || 0) + gem.critChance + add('critChance');
   out.critMult = (st.critMult || BALANCE.critDamageDefaultMult) * (1 + add('critMult') / 100);
   if (st.isSupport) {
     // 辅助塔：专属属性"光环强度"直接加成在光环数值上
@@ -368,6 +440,11 @@ module.exports = {
   getSpecialDef,
   getSpecialValue,
   getSpecialBonus,
+  getGemBonus,
+  getGemDamageMultiplier,
+  getSkillGemLevels,
+  getEffectiveSkillLevel,
+  clampEnhanceLevel,
   getEnhanceAttr,
   getEnhanceOptions,
   getEnhanceOption,
@@ -378,6 +455,8 @@ module.exports = {
   getProjectileSize,
   getSectorHalfAngle,
   getStackMax,
+  getInnateStackCap,
+  getInnateStackStep,
   applyEnhanceAttrs,
   isStageReady,
   getEnhanceCost,

@@ -1,0 +1,38 @@
+﻿drives=C,D,E,F
+C:\Program Files\WindowsApps\microsoft.windowscommunicationsapps_16005.14326.22342.0_x64__8wekyb3d8bbwe\images\WeatherIcon_Snow.svg	0
+C:\Program Files\WindowsApps\microsoft.windowscommunicationsapps_16005.14326.22342.0_x64__8wekyb3d8bbwe\images\WeatherIcon_Snow_contrast-black.svg	0
+C:\Program Files\WindowsApps\microsoft.windowscommunicationsapps_16005.14326.22342.0_x64__8wekyb3d8bbwe\images\WeatherIcon_Snow_contrast-white.svg	0
+C:\Program Files\WindowsApps\microsoft.windowscommunicationsapps_16005.14326.22342.0_x64__8wekyb3d8bbwe\images\WeatherIcon_Snow_Dark.svg	0
+F:\Dota\World of Warcraft\_classic_titan_\Interface\Icons\ability_mount_snowygryphon.blp	12108
+F:\Dota\World of Warcraft\_classic_titan_\Interface\Icons\inv_ammo_snowball.blp	12108
+F:\Dota\World of Warcraft\_classic_titan_\Interface\Icons\inv_misc_food_105_snowplum.blp	12108
+F:\mdx\AA\lordaeronsnowtree.blp	599272
+F:\mdx\TX1\AZ_snowflake01.blp	6270
+F:\mdx\TX1\AZ_snowflake01_diff.blp	167158
+F:\mdx\TX1\AZ_SnowGlobe0.blp	11357
+F:\mdx\war3mapImported\AZ_snowflake01.blp	5866
+F:\mdx\war3mapImported\AZ_Snowflake3.blp	6470
+F:\mdx\war3mapImported\Hero_Venomancer_N1S_V_snowflake.blp	14916
+F:\mdx\war3mapImported\Snowflake4.blp	21878
+F:\solar_workspace\cache\image2png\LordaeronSnowTree.blp__99adbc0f9a8496320cd0ca9aa1db502b.png	148757
+F:\solar_workspace\cache\image2png\LordaeronSnowTreeBlight.blp__d154b738c0c499ef0778c4b405d2e52f.png	173463
+F:\solar_workspace\cache\image2png\(metadata)\LordaeronSnowTree.blp__99adbc0f9a8496320cd0ca9aa1db502b.png.metadata	34
+F:\solar_workspace\cache\image2png\(metadata)\LordaeronSnowTreeBlight.blp__d154b738c0c499ef0778c4b405d2e52f.png.metadata	34
+F:\solar_workspace\cache\wbdfiles\Doodads\Cinematic\ArthasIllidanFight\snowflake4.blp	4610
+F:\solar_workspace\cache\wbdfiles\Doodads\Cinematic\ArthasIllidanFight\StoneTiledSnowTALLtrev.blp	98919
+F:\solar_workspace\cache\wbdfiles\ReplaceableTextures\CommandButtons\BTNSnowOwl.blp	8826
+F:\solar_workspace\cache\wbdfiles\ReplaceableTextures\CommandButtonsDisabled\DISBTNSnowOwl.blp	5811
+F:\solar_workspace\cache\wbdfiles\ReplaceableTextures\LordaeronTree\LordaeronSnowTree.blp	92369
+F:\solar_workspace\cache\wbdfiles\ReplaceableTextures\LordaeronTree\LordaeronSnowTreeBlight.blp	88979
+F:\solar_workspace\cache\wbdfiles\ReplaceableTextures\Weather\snow.blp	2227
+F:\solar_workspace\cache\wbdfiles\TerrainArt\Icecrown\Ice_Snow.blp	130550
+F:\solar_workspace\cache\wbdfiles\TerrainArt\LordaeronWinter\Lordw_Snow.blp	117246
+F:\solar_workspace\cache\wbdfiles\TerrainArt\LordaeronWinter\Lordw_SnowGrass.blp	217549
+F:\solar_workspace\cache\wbdfiles\TerrainArt\Northrend\North_Snow.blp	114262
+F:\solar_workspace\cache\wbdfiles\TerrainArt\Northrend\North_SnowRock.blp	98681
+F:\solar_workspace\cache\wbdfiles\Textures\IronForgeSnow01solid1.blp	28181
+F:\solar_workspace\cache\wbdfiles\Textures\snowflake.blp	10800
+F:\solar_workspace\cache\wbdfiles\Textures\snowflake2.blp	13573
+F:\solar_workspace\cache\wbdfiles\Units\Critters\SnowOwl\SnowOwl.blp	38719
+F:\solar_workspace\cache\wbdfiles\Units\Critters\SnowOwl\SnowOwl.mdx	42714
+F:\solar_workspace\cache\wbdfiles\Units\Critters\SnowOwl\SnowOwl_Portrait.mdx	178779

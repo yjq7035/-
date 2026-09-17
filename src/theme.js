@@ -266,13 +266,29 @@ function applyTowerStyle(ctx, x, y, color, approxR) {
   ctx.stroke();
 }
 
-// ========== 图形塔图标（16 种轮廓，全项目统一绘制入口）==========
-// 方向语义保持原样：三角 / 扇 / 半圆 / 箭形 仍按攻击朝向绘制（正右方为 0 度）。
+// ========== 图形塔图标（17 种轮廓，全项目统一绘制入口）==========
+// 方向语义保持原样：三角 / 扇 / 半圆 / 箭形 仍按攻击朝向绘制（正右方为 0 度）；
+// 例外是"双横"平行塔 —— 对称图形旋转只会破坏辨识度，见 NO_ROTATE_SHAPES。
 const TOWER_SHAPES = [
   'triangle', 'circle', 'hexagon', 'square', 'trapezoid', 'semicircle',
   'sector', 'long_rectangle', 'diamond', 'pentagon', 'oval', 'star',
-  'octagon', 'cross', 'arrow', 'bolt',
+  'octagon', 'cross', 'arrow', 'bolt', 'parallel',
 ];
+
+/**
+ * 哪些图形塔**不跟随攻击朝向旋转**。
+ *
+ * 默认行为是 `drawTower` 按 attackAngle 旋转图标（三角/箭形/扇形的朝向本身就是信息）。
+ * 但"双横"这类**对称朝向无意义**的图形一转就变"双竖"，辨识度当场崩掉
+ * —— 平行塔的轮廓是上下两条横杠，转 90° 会被当成另一种塔，
+ * 所以它必须永远正立。
+ */
+const NO_ROTATE_SHAPES = new Set(['parallel']);
+
+/** 该塔图标是否应随攻击朝向旋转（渲染层统一入口，别在别处再写一份判断） */
+function shouldRotateTowerIcon(type) {
+  return !NO_ROTATE_SHAPES.has(type);
+}
 
 /**
  * 绘制塔图标（纯函数）：按类型构建轮廓，再套用统一立体样式。
@@ -492,6 +508,21 @@ function drawTowerIcon(ctx, x, y, color, type, scale) {
       ctx.lineTo(x + 9, y - 3);
       ctx.lineTo(x + 1, y - 3);
       ctx.closePath();
+      break;
+    }
+
+    case 'parallel': {
+      // 平行塔 - 双横：上下两条等长横杠（"二"字轮廓，两条杠互相平行）。
+      // ⚠️ 必须用 ctx.roundRect 逐条追加子路径，**不能用 roundRectPath**
+      //    —— 后者内部会 beginPath()，第二次调用会把第一条横杠擦掉，
+      //    最后只剩一条杠（这正是"平行塔画成了圆"之外最容易踩的坑）。
+      const barW = 22, barH = 7, barGap = 4;
+      approxR = 11;
+      const barX = x - barW / 2;
+      const topY = y - barGap / 2 - barH;
+      ctx.beginPath();
+      ctx.roundRect(barX, topY, barW, barH, 2.5);
+      ctx.roundRect(barX, topY + barH + barGap, barW, barH, 2.5);
       break;
     }
 
@@ -831,6 +862,209 @@ function drawDashedBox(ctx, x, y, w, h, r, color) {
   ctx.restore();
 }
 
+// ============================================================================
+// 固有技能图标（技能槽左侧那枚图形）
+// ----------------------------------------------------------------------------
+// 按技能的**属性键**决定画什么图形（不是按塔型）—— 同一项属性在不同塔上是同一种
+// "能力语义"，所以图标一致玩家才认得出：
+//   暴击 → 准星 / 爆炸 → 爆裂星芒 / 精英倍率 → 狙击环 / 弹道体积 → 外扩箭头
+//   穿透·破解 → 破盾箭 / 光环·射程 → 同心弧 / 扇面张角 → 扇形 / 叠加上限·堆叠 → 层叠横条
+//   攻速 → 速度线 / 生命 → 盾
+// 全部矢量绘制，不依赖 emoji 字体。
+// ============================================================================
+const SKILL_GLYPH = {
+  critChance: 'crosshair',
+  critMult: 'crosshair',
+  explosionDamage: 'burst',
+  explosionRadius: 'burst',
+  eliteMult: 'scope',
+  projectileScale: 'expand',
+  penetration: 'pierce',
+  break: 'pierce',
+  auraPower: 'aura',
+  range: 'aura',
+  sectorAngle: 'sector',
+  stackMax: 'stack',
+  innateStackCap: 'stack',
+  attackSpeedMultiplier: 'swift',
+  hp: 'shield',
+};
+
+/** 技能图标：按属性键取图形；未知键退回通用"星芒"（绝不静默不画） */
+function drawSkillIcon(ctx, cx, cy, r, key, color) {
+  const glyph = SKILL_GLYPH[key] || 'star';
+  const c = color || THEME.accent.violet;
+  const R = Math.max(4, r);
+  ctx.save();
+  ctx.strokeStyle = c;
+  ctx.fillStyle = c;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(1.2, R * 0.22);
+
+  switch (glyph) {
+    case 'crosshair': {
+      ctx.beginPath();
+      ctx.arc(cx, cy, R * 0.72, 0, Math.PI * 2);
+      ctx.stroke();
+      for (const d of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        ctx.beginPath();
+        ctx.moveTo(cx + d[0] * R * 0.72, cy + d[1] * R * 0.72);
+        ctx.lineTo(cx + d[0] * R * 1.15, cy + d[1] * R * 1.15);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(cx, cy, R * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'burst': {
+      const spikes = 8;
+      ctx.beginPath();
+      for (let i = 0; i < spikes * 2; i++) {
+        const rad = (i % 2 === 0) ? R : R * 0.42;
+        const a = (Math.PI / spikes) * i - Math.PI / 2;
+        const px = cx + rad * Math.cos(a), py = cy + rad * Math.sin(a);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'scope': {
+      ctx.beginPath();
+      ctx.arc(cx, cy, R * 0.86, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx - R * 1.1, cy); ctx.lineTo(cx - R * 0.4, cy);
+      ctx.moveTo(cx + R * 0.4, cy); ctx.lineTo(cx + R * 1.1, cy);
+      ctx.moveTo(cx, cy - R * 1.1); ctx.lineTo(cx, cy - R * 0.4);
+      ctx.moveTo(cx, cy + R * 0.4); ctx.lineTo(cx, cy + R * 1.1);
+      ctx.stroke();
+      break;
+    }
+    case 'expand': {
+      // 上下两条向外的箭头 + 中间一竖：弹道体积/命中范围变大
+      for (const s of [1, -1]) {
+        const tipY = cy + s * R * 1.05;
+        const baseY = cy + s * R * 0.55;
+        ctx.beginPath();
+        ctx.moveTo(cx, tipY);
+        ctx.lineTo(cx + R * 0.5, baseY);
+        ctx.lineTo(cx - R * 0.5, baseY);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx - R * 0.9, baseY);
+        ctx.lineTo(cx + R * 0.9, baseY);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - R * 0.5);
+      ctx.lineTo(cx, cy + R * 0.5);
+      ctx.stroke();
+      break;
+    }
+    case 'pierce': {
+      // 箭穿过一条盾线
+      ctx.beginPath();
+      ctx.moveTo(cx - R * 1.1, cy + R * 0.75);
+      ctx.lineTo(cx + R * 1.1, cy - R * 0.75);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx + R * 0.5, cy - R * 0.95);
+      ctx.lineTo(cx + R * 1.15, cy - R * 0.8);
+      ctx.lineTo(cx + R * 0.75, cy - R * 0.28);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx + R * 0.35, cy - R * 1.05);
+      ctx.lineTo(cx + R * 0.35, cy + R * 1.05);
+      ctx.stroke();
+      break;
+    }
+    case 'aura': {
+      for (let i = 1; i <= 3; i++) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, R * 0.32 * i, Math.PI * 0.15, Math.PI * 0.85);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(cx, cy, R * 0.32 * i, Math.PI * 1.15, Math.PI * 1.85);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(cx, cy, R * 0.16, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'sector': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + R * 0.9);
+      ctx.lineTo(cx - R * 0.95, cy - R * 0.7);
+      ctx.lineTo(cx + R * 0.95, cy - R * 0.7);
+      ctx.closePath();
+      ctx.globalAlpha = 0.35;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.stroke();
+      break;
+    }
+    case 'stack': {
+      for (let i = 0; i < 3; i++) {
+        const y = cy - R * 0.7 + i * R * 0.7;
+        const w = R * (1.9 - i * 0.35);
+        roundRectPath(ctx, cx - w / 2, y - R * 0.16, w, R * 0.32, R * 0.16);
+        ctx.fill();
+      }
+      break;
+    }
+    case 'swift': {
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.moveTo(cx - R * 0.9, cy + i * R * 0.6);
+        ctx.lineTo(cx + R * 0.45, cy + i * R * 0.6);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx + R * 0.2, cy + i * R * 0.6 - R * 0.3);
+        ctx.lineTo(cx + R * 0.85, cy + i * R * 0.6);
+        ctx.lineTo(cx + R * 0.2, cy + i * R * 0.6 + R * 0.3);
+        ctx.closePath();
+        ctx.fill();
+      }
+      break;
+    }
+    case 'shield': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - R);
+      ctx.lineTo(cx + R * 0.85, cy - R * 0.55);
+      ctx.lineTo(cx + R * 0.7, cy + R * 0.5);
+      ctx.lineTo(cx, cy + R);
+      ctx.lineTo(cx - R * 0.7, cy + R * 0.5);
+      ctx.lineTo(cx - R * 0.85, cy - R * 0.55);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - R * 0.45);
+      ctx.lineTo(cx, cy + R * 0.45);
+      ctx.stroke();
+      break;
+    }
+    default: {
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const rad = (i % 2 === 0) ? R : R * 0.34;
+        const a = (Math.PI / 4) * i - Math.PI / 2;
+        const px = cx + rad * Math.cos(a), py = cy + rad * Math.sin(a);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+}
+
 /**
  * 绘制竖直滚动条（细条，靠轨道右侧）——把"这里能上下滑"变成看得见的东西。
  * 不需要滚动（maxScroll <= 0）时什么都不画。
@@ -912,6 +1146,7 @@ function drawChevron(ctx, cx, cy, dir, color) {
 module.exports = {
   THEME,
   TOWER_SHAPES,
+  shouldRotateTowerIcon,
   shade,
   teamBandGradient,
   easeOutCubic,
@@ -934,6 +1169,8 @@ module.exports = {
   drawPillTitle,
   drawLockIcon,
   drawDashedBox,
+  SKILL_GLYPH,
+  drawSkillIcon,
   drawScrollBar,
   drawScrollHint,
   drawChevron,

@@ -1,15 +1,21 @@
 // ============================================================================
 // 游戏中菜单 —— src/gamemenu.js
 // ----------------------------------------------------------------------------
-// 入口：战斗场景顶栏右侧的 ☰ 按钮（顶栏唯一可点元素）。
-// 内容：返回战斗（继续）/ 放弃结束（结束本局，回到战前选关）。
+// 入口：战斗场景顶栏右侧的 ☰ 按钮 + 它左边的音乐开关按钮。
+//   · ☰：弹出模态菜单，内容为 返回战斗（继续）/ 放弃结束（结束本局，回战前选关）
+//   · 🔊：切换背景音乐开关（全局，状态持久化）。它放在顶栏而不是菜单里，
+//         因为"音乐太吵想立刻关掉"是随手动作，点两下才能关的开关等于没有。
 //
 // 为什么单独一个文件：levels.js 管"战前选关"，本文件管"战中菜单"，
 // 两者都是模态浮层但与战斗流程正交，拆开以后各自扩展互不干扰。
+//
+// ⚠️ 顶栏按钮布局是**从右往左**码的：☰ 贴右边距，其它按钮依次往左排。
+//    新增顶栏按钮请沿用这个顺序，别各自写死 x（会重叠，而且不同屏宽表现不一致）。
 // ============================================================================
 
 const { LAYOUT } = require('./config');
 const theme = require('./theme');
+const audio = require('./audio');
 
 const { THEME, roundRectPath, drawButton, drawPillTitle, drawButtonFx } = theme;
 
@@ -45,6 +51,95 @@ function getMenuButtonRect(game) {
     w: MENU_UI.iconW,
     h: MENU_UI.iconH,
   };
+}
+
+// ---------------------------------------------------------------------------
+// 顶栏音乐开关按钮
+// ---------------------------------------------------------------------------
+const MUSIC_UI = {
+  // 与 ☰ 同尺寸，保持顶栏两个按钮视觉一致（同样必须 ≤ LAYOUT.topBarHeight）
+  iconW: 28,
+  iconH: 24,
+  gap: 6,   // 与 ☰ 之间的间距
+};
+
+/** 顶栏 🔊 按钮矩形（渲染/输入共用）。位置由 ☰ 反推，保证永远不重叠。 */
+function getMusicButtonRect(game) {
+  const menu = getMenuButtonRect(game);
+  const H = LAYOUT.topBarHeight;
+  return {
+    x: menu.x - MUSIC_UI.gap - MUSIC_UI.iconW,
+    y: Math.round((H - MUSIC_UI.iconH) / 2),
+    w: MUSIC_UI.iconW,
+    h: MUSIC_UI.iconH,
+  };
+}
+
+/**
+ * 矢量扬声器图标：方腔 + 梯形号角 + 声波弧（静音时改为叉）。
+ * 不依赖 emoji 字体（和 nav.js 里双剑/背包图标同一条原则：任何设备都稳定出图形）。
+ * @param {boolean} muted 静音态 —— 画叉而非声波
+ */
+function drawSpeakerIcon(ctx, rect, color, muted) {
+  const cx = rect.x + rect.w / 2;
+  const cy = rect.y + rect.h / 2;
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // 号角（一个梯形，从腔体向右张开）
+  ctx.beginPath();
+  ctx.moveTo(cx - 6.5, cy - 3);
+  ctx.lineTo(cx - 3.5, cy - 3);
+  ctx.lineTo(cx - 0.5, cy - 7);
+  ctx.lineTo(cx - 0.5, cy + 7);
+  ctx.lineTo(cx - 3.5, cy + 3);
+  ctx.lineTo(cx - 6.5, cy + 3);
+  ctx.closePath();
+  ctx.fill();
+
+  if (muted) {
+    // 静音：右边一个叉（"关掉了"比"没有声波"更一眼可读）
+    ctx.lineWidth = 1.7;
+    ctx.beginPath();
+    ctx.moveTo(cx + 2.5, cy - 4);
+    ctx.lineTo(cx + 8, cy + 4);
+    ctx.moveTo(cx + 8, cy - 4);
+    ctx.lineTo(cx + 2.5, cy + 4);
+    ctx.stroke();
+  } else {
+    // 声波：两段同心弧
+    ctx.lineWidth = 1.6;
+    for (const rr of [3.5, 6.5]) {
+      ctx.beginPath();
+      ctx.arc(cx - 0.5, cy, rr, -Math.PI / 3.2, Math.PI / 3.2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+/** 顶栏 🔊 按钮（切换 BGM 开关） */
+function drawMusicButton(game) {
+  const ctx = game.ctx;
+  const r = getMusicButtonRect(game);
+  const on = audio.isEnabled();
+  const pressed = theme.isButtonPressed(game, 'music:toggle');
+
+  ctx.save();
+  // 底板与 ☰ 同款，顶栏两个按钮看起来是一套
+  ctx.fillStyle = pressed ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.06)';
+  ctx.strokeStyle = THEME.border.normal;
+  ctx.lineWidth = 1;
+  roundRectPath(ctx, r.x, r.y, r.w, r.h, THEME.radius.small);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  drawSpeakerIcon(ctx, r, on ? THEME.text.primary : THEME.text.off, !on);
 }
 
 /** 菜单面板布局 */
@@ -181,10 +276,14 @@ function drawGameMenu(game) {
 
 module.exports = {
   MENU_UI,
+  MUSIC_UI,
   getMenuButtonRect,
+  getMusicButtonRect,
   getMenuLayout,
   hitMenu,
   drawMenuIcon,
   drawMenuButton,
+  drawSpeakerIcon,
+  drawMusicButton,
   drawGameMenu,
 };

@@ -22,7 +22,8 @@
 
 const towerMod = require('./tower');
 const meta = require('./meta');
-const { CODEX, BALANCE } = require('./config');
+const gems = require('./gems');
+const { CODEX, BALANCE, ENHANCE_SPECIAL } = require('./config');
 
 // ---------- 属性键 ----------
 const ATTR = {
@@ -42,6 +43,7 @@ const ATTR = {
   PROJECTILE_SCALE: 'projectileScale', // 正方塔：弹道体积(%)（命中范围与之同步）
   SECTOR_ANGLE: 'sectorAngle',         // 扇塔：扇形半张角(°)
   STACK_MAX: 'stackMax',               // 长方塔：堆叠上限(层)
+  INNATE_STACK_CAP: 'innateStackCap',  // 平行塔：固有技能「连续射击」的攻速叠加上限(%)
 };
 
 // ---------- 来源分类（决定颜色语义与明细前缀）----------
@@ -50,6 +52,7 @@ const SOURCE = {
   STAGE: 'stage',     // 阶段增幅（进阶 1/2/3 星）
   CODEX: 'codex',     // 图签等级加成（每级 +6%，跨局永久）
   ENHANCE: 'enhance', // 塔强化（局内花金币，只抬该塔的专属特殊属性，不给伤害）
+  GEM: 'gem',         // 宝石（嵌入图签槽位，绑定固有技能，跨局永久）
   AURA: 'aura',       // 光环增益（正值）
   DEBUFF: 'debuff',   // 负面效果（负值）
 };
@@ -59,6 +62,7 @@ const SOURCE_LABEL = {
   [SOURCE.STAGE]: '阶段',
   [SOURCE.CODEX]: '图签',
   [SOURCE.ENHANCE]: '强化',
+  [SOURCE.GEM]: '宝石',
   [SOURCE.AURA]: '光环',
   [SOURCE.DEBUFF]: '负面',
 };
@@ -81,6 +85,7 @@ const BUFF_LABELS = {
   projectileScale:       { name: '弹道体积', unit: '%' },
   sectorAngle:           { name: '扇面张角', unit: '°' },
   stackMax:              { name: '堆叠上限', unit: '层' },
+  innateStackCap:        { name: '叠加上限', unit: '%' },
 };
 
 // 强化专属属性 key → ATTR key（两者同名；这里显式列出，新增属性别漏登记）
@@ -99,10 +104,28 @@ const ENHANCE_ATTR_MAP = {
   projectileScale: ATTR.PROJECTILE_SCALE,
   sectorAngle: ATTR.SECTOR_ANGLE,
   stackMax: ATTR.STACK_MAX,
+  innateStackCap: ATTR.INNATE_STACK_CAP,
 };
 
 function buffMeta(key) {
   return BUFF_LABELS[key] || { name: key, unit: '' };
+}
+
+/**
+ * 宝石明细标签：把"确实贡献了这一项加成"的宝石名字列出来。
+ * 例：红宝石 + 翡翠 同时嵌着 → 攻击力那一行的明细写「宝石 · 红宝石」，
+ *     暴击率那一行写「宝石 · 翡翠」，而不是笼统一句"宝石"。
+ * @param {string[]} kinds 已嵌入的宝石种类
+ * @param {(effect:object)=>boolean} pick 判断这颗宝石是否作用于本项
+ */
+function gemLabelFor(kinds, pick) {
+  const names = [];
+  for (const kind of kinds) {
+    const def = gems.gemDef(kind);
+    if (!def) continue;
+    if (pick(def.effect || {})) names.push(def.name);
+  }
+  return names.length ? ('宝石 · ' + names.join('/')) : '宝石';
 }
 
 /**
@@ -224,6 +247,45 @@ function collectTowerStats(game, tower, stats, towerType) {
     }
   }
 
+  // 1.32 宝石（嵌入图签槽位、与固有技能绑定，跨局永久）
+  //   与图签同档的"永久加成"，但走独立的 GEM 来源 —— 明细里能一眼看出这几点加成
+  //   是珠子给的还是图签给的。
+  //   技能宝石（skillLevels）折算成【招牌属性】上的点值增量：per × 宝石等级，
+  //   与 tower.getEnhanceAttr（= per × (强化 + 宝石)）严格同口径。
+  const gemBonus = tType ? gems.bonusForType(tType) : null;
+  if (gemBonus && gemBonus.count > 0) {
+    const kinds = gemBonus.kinds;
+    const label = (pick) => gemLabelFor(kinds, pick);
+    if (gemBonus.damagePercent) {
+      pushSource(sources, { attr: ATTR.DAMAGE, source: SOURCE.GEM, label: label((e) => e.damagePercent), kind: 'percent', percent: gemBonus.damagePercent });
+    }
+    if (gemBonus.attackSpeedMultiplier) {
+      pushSource(sources, { attr: ATTR.ATTACK_SPEED, source: SOURCE.GEM, label: label((e) => e.attackSpeedMultiplier), kind: 'points', value: gemBonus.attackSpeedMultiplier });
+    }
+    if (gemBonus.critChance) {
+      pushSource(sources, { attr: ATTR.CRIT, source: SOURCE.GEM, label: label((e) => e.critChance), kind: 'points', value: gemBonus.critChance });
+    }
+    if (gemBonus.penetration) {
+      pushSource(sources, { attr: ATTR.PENETRATION, source: SOURCE.GEM, label: label((e) => e.penetration), kind: 'points', value: gemBonus.penetration });
+    }
+    if (gemBonus.range) {
+      pushSource(sources, { attr: ATTR.RANGE, source: SOURCE.GEM, label: label((e) => e.range), kind: 'points', value: gemBonus.range });
+    }
+    if (gemBonus.skillLevels && tType) {
+      const sp = ENHANCE_SPECIAL[tType];
+      const attr = sp ? (ENHANCE_ATTR_MAP[sp.key] || sp.key) : null;
+      if (sp && attr) {
+        pushSource(sources, {
+          attr: attr,
+          source: SOURCE.GEM,
+          label: `${label((e) => e.skillLevels)} Lv.+${gemBonus.skillLevels}`,
+          kind: 'points',
+          value: sp.per * gemBonus.skillLevels,
+        });
+      }
+    }
+  }
+
   // 1.35 塔强化（局内花金币，需 3★）
   //   专属特殊属性增量登记成点值来源（绿字），不混入 base.damage。
   //   但 3★ 阶段强化会给白字基础攻击力 +5%/级（见下方 section 2 原生值）。
@@ -284,6 +346,7 @@ function collectTowerStats(game, tower, stats, towerType) {
     projectileScale: st.projectileScale || 0,
     sectorAngle: st.sectorHalfAngle || 0,
     stackMax: st.stackMax || 0,
+    innateStackCap: st.innateStackCap || 0,
   };
 
   // ================= 3. 最终值 =================
@@ -320,6 +383,7 @@ function collectTowerStats(game, tower, stats, towerType) {
   const finalProjScale = Math.max(0, base.projectileScale + pointsSum(sources, ATTR.PROJECTILE_SCALE));
   const finalSectorAngle = Math.max(0, base.sectorAngle + pointsSum(sources, ATTR.SECTOR_ANGLE));
   const finalStackMax = Math.max(0, base.stackMax + pointsSum(sources, ATTR.STACK_MAX));
+  const finalStackCap = Math.max(0, base.innateStackCap + pointsSum(sources, ATTR.INNATE_STACK_CAP));
 
   const final = {
     damage: finalDamage,
@@ -337,6 +401,7 @@ function collectTowerStats(game, tower, stats, towerType) {
     projectileScale: finalProjScale,
     sectorAngle: finalSectorAngle,
     stackMax: finalStackMax,
+    innateStackCap: finalStackCap,
   };
 
   // ================= 4. 附加值（绿字/红字的那一半）=================
@@ -356,6 +421,7 @@ function collectTowerStats(game, tower, stats, towerType) {
     projectileScale: final.projectileScale - base.projectileScale,
     sectorAngle: final.sectorAngle - base.sectorAngle,
     stackMax: final.stackMax - base.stackMax,
+    innateStackCap: final.innateStackCap - base.innateStackCap,
   };
 
   // ================= 5. 面板行（渲染就绪，渲染层不再算数）=================
@@ -520,6 +586,7 @@ function buildRows(ctx) {
   pushSpecialRow(rows, sources, { key: ATTR.PROJECTILE_SCALE, label: '弹道体积', unit: '%', base: base.projectileScale, bonus: bonus.projectileScale });
   pushSpecialRow(rows, sources, { key: ATTR.SECTOR_ANGLE, label: '扇面张角', unit: '°', base: base.sectorAngle, bonus: bonus.sectorAngle });
   pushSpecialRow(rows, sources, { key: ATTR.STACK_MAX, label: '堆叠上限', unit: '层', base: base.stackMax, bonus: bonus.stackMax });
+  pushSpecialRow(rows, sources, { key: ATTR.INNATE_STACK_CAP, label: '叠加上限', unit: '%', base: base.innateStackCap, bonus: bonus.innateStackCap });
 
   return rows;
 }
@@ -582,6 +649,7 @@ module.exports = {
   BUFF_LABELS,
   ENHANCE_ATTR_MAP,
   buffMeta,
+  gemLabelFor,
   stageText,
   collectTowerStats,
   collectAuras,

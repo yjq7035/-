@@ -1,6 +1,6 @@
 
 ===== 320x568 =====
-  ok   getCodexLayout 不抛异常  → sheetH=204 maxScroll=0
+  ok   getCodexLayout 不抛异常  → sheetH=190 maxScroll=0
   ok   格网至少 1 格
   ok   点击「triangle」卡片后选中并弹出详情  → codexSelected=triangle
   ok   再点同卡片收起面板  → codexSelected=null
@@ -10,10 +10,10 @@
   ok   circle 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   hexagon 面板裁剪区罩住面板  → 裁剪 288x228 vs 面板 292x232
   ok   hexagon 面板文字不溢出  → 面板内 11 条文字全部在界内
-  ok   square 面板裁剪区罩住面板  → 裁剪 288x228 vs 面板 292x232
-  ok   square 面板文字不溢出  → 面板内 11 条文字全部在界内
+  ok   square 面板裁剪区罩住面板  → 裁剪 288x242 vs 面板 292x246
+  ok   square 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   trapezoid 面板裁剪区罩住面板  → 裁剪 288x256 vs 面板 292x260
-  ok   trapezoid 面板文字不溢出  → 面板内 10 条文字全部在界内
+  ok   trapezoid 面板文字不溢出  → 面板内 9 条文字全部在界内
   ok   semicircle 面板裁剪区罩住面板  → 裁剪 288x228 vs 面板 292x232
   ok   semicircle 面板文字不溢出  → 面板内 11 条文字全部在界内
   ok   sector 面板裁剪区罩住面板  → 裁剪 288x228 vs 面板 292x232
@@ -32,13 +32,15 @@
   ok   octagon 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   cross 面板裁剪区罩住面板  → 裁剪 288x228 vs 面板 292x232
   ok   cross 面板文字不溢出  → 面板内 11 条文字全部在界内
-  ok   arrow 面板裁剪区罩住面板  → 裁剪 288x256 vs 面板 292x260
-  ok   arrow 面板文字不溢出  → 面板内 13 条文字全部在界内
+  ok   arrow 面板裁剪区罩住面板  → 裁剪 288x242 vs 面板 292x246
+  ok   arrow 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   bolt 面板裁剪区罩住面板  → 裁剪 288x242 vs 面板 292x246
   ok   bolt 面板文字不溢出  → 面板内 12 条文字全部在界内
+  ok   graphic 面板裁剪区罩住面板  → 裁剪 288x256 vs 面板 292x260
+  ok   graphic 面板文字不溢出  → 面板内 13 条文字全部在界内
 
 ===== 360x640 =====
-  ok   getCodexLayout 不抛异常  → sheetH=204 maxScroll=0
+  ok   getCodexLayout 不抛异常  → sheetH=190 maxScroll=0
   ok   格网至少 1 格
   ok   点击「triangle」卡片后选中并弹出详情  → codexSelected=triangle
   ok   再点同卡片收起面板  → codexSelected=null
@@ -48,10 +50,10 @@
   ok   circle 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   hexagon 面板裁剪区罩住面板  → 裁剪 328x228 vs 面板 332x232
   ok   hexagon 面板文字不溢出  → 面板内 11 条文字全部在界内
-  ok   square 面板裁剪区罩住面板  → 裁剪 328x228 vs 面板 332x232
-  ok   square 面板文字不溢出  → 面板内 11 条文字全部在界内
+  ok   square 面板裁剪区罩住面板  → 裁剪 328x242 vs 面板 332x246
+  ok   square 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   trapezoid 面板裁剪区罩住面板  → 裁剪 328x256 vs 面板 332x260
-  ok   trapezoid 面板文字不溢出  → 面板内 10 条文字全部在界内
+  ok   trapezoid 面板文字不溢出  → 面板内 9 条文字全部在界内
   ok   semicircle 面板裁剪区罩住面板  → 裁剪 328x228 vs 面板 332x232
   ok   semicircle 面板文字不溢出  → 面板内 11 条文字全部在界内
   ok   sector 面板裁剪区罩住面板  → 裁剪 328x228 vs 面板 332x232
@@ -70,13 +72,15 @@
   ok   octagon 面板文字不溢出  → 面板内 11 条文字全部在界内
   ok   cross 面板裁剪区罩住面板  → 裁剪 328x228 vs 面板 332x232
   ok   cross 面板文字不溢出  → 面板内 11 条文字全部在界内
-  ok   arrow 面板裁剪区罩住面板  → 裁剪 328x256 vs 面板 332x260
-  ok   arrow 面板文字不溢出  → 面板内 13 条文字全部在界内
+  ok   arrow 面板裁剪区罩住面板  → 裁剪 328x242 vs 面板 332x246
+  ok   arrow 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   bolt 面板裁剪区罩住面板  → 裁剪 328x228 vs 面板 332x232
   ok   bolt 面板文字不溢出  → 面板内 11 条文字全部在界内
+  ok   graphic 面板裁剪区罩住面板  → 裁剪 328x256 vs 面板 332x260
+  ok   graphic 面板文字不溢出  → 面板内 13 条文字全部在界内
 
 ===== 375x667 =====
-  ok   getCodexLayout 不抛异常  → sheetH=204 maxScroll=0
+  ok   getCodexLayout 不抛异常  → sheetH=190 maxScroll=0
   ok   格网至少 1 格
   ok   点击「triangle」卡片后选中并弹出详情  → codexSelected=triangle
   ok   再点同卡片收起面板  → codexSelected=null
@@ -86,10 +90,10 @@
   ok   circle 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   hexagon 面板裁剪区罩住面板  → 裁剪 343x228 vs 面板 347x232
   ok   hexagon 面板文字不溢出  → 面板内 11 条文字全部在界内
-  ok   square 面板裁剪区罩住面板  → 裁剪 343x228 vs 面板 347x232
-  ok   square 面板文字不溢出  → 面板内 11 条文字全部在界内
+  ok   square 面板裁剪区罩住面板  → 裁剪 343x242 vs 面板 347x246
+  ok   square 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   trapezoid 面板裁剪区罩住面板  → 裁剪 343x242 vs 面板 347x246
-  ok   trapezoid 面板文字不溢出  → 面板内 9 条文字全部在界内
+  ok   trapezoid 面板文字不溢出  → 面板内 8 条文字全部在界内
   ok   semicircle 面板裁剪区罩住面板  → 裁剪 343x228 vs 面板 347x232
   ok   semicircle 面板文字不溢出  → 面板内 11 条文字全部在界内
   ok   sector 面板裁剪区罩住面板  → 裁剪 343x228 vs 面板 347x232
@@ -108,13 +112,15 @@
   ok   octagon 面板文字不溢出  → 面板内 11 条文字全部在界内
   ok   cross 面板裁剪区罩住面板  → 裁剪 343x228 vs 面板 347x232
   ok   cross 面板文字不溢出  → 面板内 11 条文字全部在界内
-  ok   arrow 面板裁剪区罩住面板  → 裁剪 343x256 vs 面板 347x260
-  ok   arrow 面板文字不溢出  → 面板内 13 条文字全部在界内
+  ok   arrow 面板裁剪区罩住面板  → 裁剪 343x242 vs 面板 347x246
+  ok   arrow 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   bolt 面板裁剪区罩住面板  → 裁剪 343x228 vs 面板 347x232
   ok   bolt 面板文字不溢出  → 面板内 11 条文字全部在界内
+  ok   graphic 面板裁剪区罩住面板  → 裁剪 343x256 vs 面板 347x260
+  ok   graphic 面板文字不溢出  → 面板内 13 条文字全部在界内
 
 ===== 375x812 =====
-  ok   getCodexLayout 不抛异常  → sheetH=204 maxScroll=0
+  ok   getCodexLayout 不抛异常  → sheetH=190 maxScroll=0
   ok   格网至少 1 格
   ok   点击「triangle」卡片后选中并弹出详情  → codexSelected=triangle
   ok   再点同卡片收起面板  → codexSelected=null
@@ -124,10 +130,10 @@
   ok   circle 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   hexagon 面板裁剪区罩住面板  → 裁剪 343x228 vs 面板 347x232
   ok   hexagon 面板文字不溢出  → 面板内 11 条文字全部在界内
-  ok   square 面板裁剪区罩住面板  → 裁剪 343x228 vs 面板 347x232
-  ok   square 面板文字不溢出  → 面板内 11 条文字全部在界内
+  ok   square 面板裁剪区罩住面板  → 裁剪 343x242 vs 面板 347x246
+  ok   square 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   trapezoid 面板裁剪区罩住面板  → 裁剪 343x242 vs 面板 347x246
-  ok   trapezoid 面板文字不溢出  → 面板内 9 条文字全部在界内
+  ok   trapezoid 面板文字不溢出  → 面板内 8 条文字全部在界内
   ok   semicircle 面板裁剪区罩住面板  → 裁剪 343x228 vs 面板 347x232
   ok   semicircle 面板文字不溢出  → 面板内 11 条文字全部在界内
   ok   sector 面板裁剪区罩住面板  → 裁剪 343x228 vs 面板 347x232
@@ -146,13 +152,15 @@
   ok   octagon 面板文字不溢出  → 面板内 11 条文字全部在界内
   ok   cross 面板裁剪区罩住面板  → 裁剪 343x228 vs 面板 347x232
   ok   cross 面板文字不溢出  → 面板内 11 条文字全部在界内
-  ok   arrow 面板裁剪区罩住面板  → 裁剪 343x256 vs 面板 347x260
-  ok   arrow 面板文字不溢出  → 面板内 13 条文字全部在界内
+  ok   arrow 面板裁剪区罩住面板  → 裁剪 343x242 vs 面板 347x246
+  ok   arrow 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   bolt 面板裁剪区罩住面板  → 裁剪 343x228 vs 面板 347x232
   ok   bolt 面板文字不溢出  → 面板内 11 条文字全部在界内
+  ok   graphic 面板裁剪区罩住面板  → 裁剪 343x256 vs 面板 347x260
+  ok   graphic 面板文字不溢出  → 面板内 13 条文字全部在界内
 
 ===== 390x844 =====
-  ok   getCodexLayout 不抛异常  → sheetH=204 maxScroll=0
+  ok   getCodexLayout 不抛异常  → sheetH=190 maxScroll=0
   ok   格网至少 1 格
   ok   点击「triangle」卡片后选中并弹出详情  → codexSelected=triangle
   ok   再点同卡片收起面板  → codexSelected=null
@@ -162,10 +170,10 @@
   ok   circle 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   hexagon 面板裁剪区罩住面板  → 裁剪 358x228 vs 面板 362x232
   ok   hexagon 面板文字不溢出  → 面板内 11 条文字全部在界内
-  ok   square 面板裁剪区罩住面板  → 裁剪 358x228 vs 面板 362x232
-  ok   square 面板文字不溢出  → 面板内 11 条文字全部在界内
+  ok   square 面板裁剪区罩住面板  → 裁剪 358x242 vs 面板 362x246
+  ok   square 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   trapezoid 面板裁剪区罩住面板  → 裁剪 358x242 vs 面板 362x246
-  ok   trapezoid 面板文字不溢出  → 面板内 9 条文字全部在界内
+  ok   trapezoid 面板文字不溢出  → 面板内 8 条文字全部在界内
   ok   semicircle 面板裁剪区罩住面板  → 裁剪 358x228 vs 面板 362x232
   ok   semicircle 面板文字不溢出  → 面板内 11 条文字全部在界内
   ok   sector 面板裁剪区罩住面板  → 裁剪 358x228 vs 面板 362x232
@@ -184,13 +192,15 @@
   ok   octagon 面板文字不溢出  → 面板内 11 条文字全部在界内
   ok   cross 面板裁剪区罩住面板  → 裁剪 358x228 vs 面板 362x232
   ok   cross 面板文字不溢出  → 面板内 11 条文字全部在界内
-  ok   arrow 面板裁剪区罩住面板  → 裁剪 358x256 vs 面板 362x260
-  ok   arrow 面板文字不溢出  → 面板内 13 条文字全部在界内
+  ok   arrow 面板裁剪区罩住面板  → 裁剪 358x242 vs 面板 362x246
+  ok   arrow 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   bolt 面板裁剪区罩住面板  → 裁剪 358x228 vs 面板 362x232
   ok   bolt 面板文字不溢出  → 面板内 11 条文字全部在界内
+  ok   graphic 面板裁剪区罩住面板  → 裁剪 358x242 vs 面板 362x246
+  ok   graphic 面板文字不溢出  → 面板内 12 条文字全部在界内
 
 ===== 414x896 =====
-  ok   getCodexLayout 不抛异常  → sheetH=204 maxScroll=0
+  ok   getCodexLayout 不抛异常  → sheetH=190 maxScroll=0
   ok   格网至少 1 格
   ok   点击「triangle」卡片后选中并弹出详情  → codexSelected=triangle
   ok   再点同卡片收起面板  → codexSelected=null
@@ -200,10 +210,10 @@
   ok   circle 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   hexagon 面板裁剪区罩住面板  → 裁剪 382x228 vs 面板 386x232
   ok   hexagon 面板文字不溢出  → 面板内 11 条文字全部在界内
-  ok   square 面板裁剪区罩住面板  → 裁剪 382x228 vs 面板 386x232
-  ok   square 面板文字不溢出  → 面板内 11 条文字全部在界内
+  ok   square 面板裁剪区罩住面板  → 裁剪 382x242 vs 面板 386x246
+  ok   square 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   trapezoid 面板裁剪区罩住面板  → 裁剪 382x242 vs 面板 386x246
-  ok   trapezoid 面板文字不溢出  → 面板内 9 条文字全部在界内
+  ok   trapezoid 面板文字不溢出  → 面板内 8 条文字全部在界内
   ok   semicircle 面板裁剪区罩住面板  → 裁剪 382x228 vs 面板 386x232
   ok   semicircle 面板文字不溢出  → 面板内 11 条文字全部在界内
   ok   sector 面板裁剪区罩住面板  → 裁剪 382x228 vs 面板 386x232
@@ -226,9 +236,11 @@
   ok   arrow 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   bolt 面板裁剪区罩住面板  → 裁剪 382x228 vs 面板 386x232
   ok   bolt 面板文字不溢出  → 面板内 11 条文字全部在界内
+  ok   graphic 面板裁剪区罩住面板  → 裁剪 382x242 vs 面板 386x246
+  ok   graphic 面板文字不溢出  → 面板内 12 条文字全部在界内
 
 ===== 428x926 =====
-  ok   getCodexLayout 不抛异常  → sheetH=204 maxScroll=0
+  ok   getCodexLayout 不抛异常  → sheetH=190 maxScroll=0
   ok   格网至少 1 格
   ok   点击「triangle」卡片后选中并弹出详情  → codexSelected=triangle
   ok   再点同卡片收起面板  → codexSelected=null
@@ -238,10 +250,10 @@
   ok   circle 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   hexagon 面板裁剪区罩住面板  → 裁剪 396x228 vs 面板 400x232
   ok   hexagon 面板文字不溢出  → 面板内 11 条文字全部在界内
-  ok   square 面板裁剪区罩住面板  → 裁剪 396x228 vs 面板 400x232
-  ok   square 面板文字不溢出  → 面板内 11 条文字全部在界内
+  ok   square 面板裁剪区罩住面板  → 裁剪 396x242 vs 面板 400x246
+  ok   square 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   trapezoid 面板裁剪区罩住面板  → 裁剪 396x242 vs 面板 400x246
-  ok   trapezoid 面板文字不溢出  → 面板内 9 条文字全部在界内
+  ok   trapezoid 面板文字不溢出  → 面板内 8 条文字全部在界内
   ok   semicircle 面板裁剪区罩住面板  → 裁剪 396x228 vs 面板 400x232
   ok   semicircle 面板文字不溢出  → 面板内 11 条文字全部在界内
   ok   sector 面板裁剪区罩住面板  → 裁剪 396x228 vs 面板 400x232
@@ -264,6 +276,8 @@
   ok   arrow 面板文字不溢出  → 面板内 12 条文字全部在界内
   ok   bolt 面板裁剪区罩住面板  → 裁剪 396x228 vs 面板 400x232
   ok   bolt 面板文字不溢出  → 面板内 11 条文字全部在界内
+  ok   graphic 面板裁剪区罩住面板  → 裁剪 396x242 vs 面板 400x246
+  ok   graphic 面板文字不溢出  → 面板内 12 条文字全部在界内
 
 === 图签汇总：7 分辨率，失败 0 条 ===
-=== 判据戳：TOWER_ORDER=16 型 / sheetH基准=190 / 2026-09-17T08:15:36.281Z ===
+=== 判据戳：TOWER_ORDER=17 型 / sheetH基准=190 / 2026-09-17T15:02:06.067Z ===

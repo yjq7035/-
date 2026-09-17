@@ -1,0 +1,6 @@
+﻿F:\solar_workspace\cache\wbdfiles\Abilities\Spells\NightElf\Starfall\StarfallCaster1.wav	0.09MB
+F:\solar_workspace\cache\wbdfiles\Sound\Ambient\DoodadEffects\WaterWaterFallLoop1.wav	0.04MB
+F:\solar_workspace\cache\wbdfiles\Sound\Destructibles\TreeFall1.wav	0.06MB
+F:\solar_workspace\cache\wbdfiles\Sound\Destructibles\TreeFall2.wav	0.08MB
+F:\solar_workspace\cache\wbdfiles\Sound\Destructibles\TreeFall3.wav	0.08MB
+F:\solar_workspace\cache\wbdfiles\Sound\Dialogue\GenericWarnings\GenericWarningHeroFallen1.mp3	0.01MB

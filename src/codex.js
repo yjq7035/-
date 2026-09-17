@@ -10,16 +10,18 @@
 // 交互：点卡片 → 底部弹出详情面板（属性 + 解锁/升级 + 登场/下架）；点空白关闭。
 // ============================================================================
 
-const { TOWER_ORDER, TOWER_DEFS, TOWER_STATS, LAYOUT, CODEX, RARITY } = require('./config');
+const { TOWER_ORDER, TOWER_DEFS, TOWER_STATS, LAYOUT, CODEX, RARITY, GEM } = require('./config');
 const theme = require('./theme');
 const towerMod = require('./tower');
 const meta = require('./meta');
+const gems = require('./gems');
+const skillSlot = require('./skillSlot');
 const { formatNum } = require('./bonusStats');
 
 const {
   THEME, roundRectPath, drawTowerIcon, drawChip, drawButton, drawStar,
   drawLockIcon, drawTaperedDivider, ellipsize, drawScrollBar, drawScrollHint,
-  wrapTextLines,
+  wrapTextLines, drawChevron,
 } = theme;
 
 const CODEX_UI = {
@@ -30,18 +32,33 @@ const CODEX_UI = {
   gridTopGap: 12,
   cellMaxH: 106,
   cellMinH: 88,
-  sheetH: 190,        // 详情面板【基准】高（描述恰好 1 行时）；描述换行多出来的行数会把它撑高
-  descPadX: 14,       // 描述文字左右内边距（相对详情面板）
-  descFont: '11px Arial',
-  descLineH: 14,      // 描述行高
-  descTop: 52,        // 描述首行中心相对面板顶的偏移
   sheetGap: 8,
   gridBottomPad: 16,
+  // ---- 详情面板（固定高度 + 内部可滚动：对应需求"属性面板可点击可拖滑动"）----
+  // 三段式：①标题区（固定）②正文（可滚动）③按钮区（固定）。
+  // 正文滚动而不是整块滚动 —— 玩家任何时刻都看得见"这是哪个塔"和"能不能升级"。
+  sheetPadX: 14,        // 面板内容左右内边距
+  sheetHeaderH: 44,     // 固定标题区高（图标 + 名称 + 稀有度 + 分隔线）
+  sheetPadBottom: 10,   // 正文底 → 按钮顶 的留白
+  sheetMinH: 170,       // 面板最小高（内容再少也不缩成一条缝）
+  sheetMaxRatio: 0.68,  // 面板最多占"格网顶 → 导航顶"这一段的比例
+  sheetBtnH: 36,        // 底部按钮高（固定，不随内容滚动）
+  sheetBtnPad: 12,      // 按钮距面板底内边距
+  divH: 12,             // 分隔线占位
+  descFont: '11.5px Arial',
+  descLineH: 15,        // 描述行高
+  sectionTitleH: 20,    // 区块小标题行高
+  attrRowH: 17,
+  attrGapTop: 5,
+  codexLvH: 20,
+  socketSize: 38,       // 宝石嵌入槽边长（基准，窄屏自动缩）
+  socketGap: 8,
+  socketHintH: 16,
 };
 
-/** 描述文字的最大可用宽度（面板内左右各留 descPadX） */
+/** 描述文字的最大可用宽度（面板内左右各留 sheetPadX） */
 function descMaxWidth(W) {
-  return (W - CODEX_UI.padX * 2) - CODEX_UI.descPadX * 2;
+  return (W - CODEX_UI.padX * 2) - CODEX_UI.sheetPadX * 2;
 }
 
 /**
@@ -76,21 +93,80 @@ function getDescLines(game, type) {
 }
 
 /**
- * 「固有技能」区块的显示行：技能名 + 当前值（图签面板展示的是基准值，
- * 局内强化等级只在战斗里的属性面板体现），以及一句话说明。
+ * 宝石嵌入槽在【内容坐标系】里的矩形（x 相对内容左边界，y=0 相对宝石块正文顶）。
  *
- * ⚠️ 说明文字同样必须换行：`ENHANCE_SPECIAL[type].desc` 里有 30+ 字的长句
- *    （例如箭形塔 33 字），单行硬画会直接捅出面板右边界。
- *    换行后的行数会喂给 getCodexLayout 算面板高，两者必须共用本函数。
- * @returns {string[]} 行数组（无固有技能时为空数组）
+ * 5 个槽等宽横排并整体居中；窄屏自动缩到塞得下为止（绝不越出面板右边界）。
+ * ⚠️ 绘制与命中检测共用本函数 —— 不允许一边算坐标、一边自己排，
+ *    否则必然出现"画在一处、点在另一处"（历史事故：图签卡片点不准）。
+ * @param {number} contentW 面板正文可用宽（sheet.w - sheetPadX*2）
  */
-function getSkillLines(game, type) {
-  const spDef = type ? towerMod.getSpecialDef(type) : null;
-  if (!spDef) return [];
-  const curText = spDef.unit === '倍' ? `×${spDef.base}` : `${spDef.base}${spDef.unit}`;
-  const raws = [ `${spDef.name}: ${curText} (+${spDef.per}${spDef.unit}/级)` ];
-  if (spDef.desc) raws.push(spDef.desc);
-  return wrapParagraphs(game, raws, descMaxWidth(game.W));
+function socketRects(contentW) {
+  const n = GEM.maxSlots;
+  const gap = CODEX_UI.socketGap;
+  const fit = Math.floor((contentW - (n - 1) * gap) / n);
+  const size = Math.max(20, Math.min(CODEX_UI.socketSize, fit));
+  const totalW = n * size + (n - 1) * gap;
+  const x0 = Math.max(0, (contentW - totalW) / 2);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    out.push({ x: x0 + i * (size + gap), y: 0, w: size, h: size });
+  }
+  return out;
+}
+
+/**
+ * 详情面板的【正文内容块】（唯一真源）。
+ *
+ * 每块带 `y`（相对正文顶的偏移）与 `h`；绘制与命中检测一律按
+ * `sheetView.y - sheetScroll + block.y` 换算绝对坐标，所以两边永远在同一套几何上。
+ *
+ * 块序：描述 → 固有技能槽 → 宝石嵌入槽 → 属性数值 → 图签等级。
+ * 高度全部来自"与绘制同一个换行/布局函数"（desc 用 getDescLines，
+ * 技能用 skillSlot.buildSkillSlots），因此面板高不可能与文字实际占位脱节。
+ *
+ * @returns {{blocks:Array, h:number, contentW:number}|null}
+ */
+function buildSheetContent(game, sheetW) {
+  const type = game.codexSelected;
+  if (!type || !TOWER_DEFS[type]) return null;
+  const contentW = sheetW - CODEX_UI.sheetPadX * 2;
+
+  const blocks = [];
+  let h = 0;
+  const push = (b) => { b.y = h; blocks.push(b); h += b.h; return b; };
+
+  // ① 描述（整段换行；行数由 getDescLines 决定，与绘制同源）
+  const descLines = getDescLines(game, type);
+  push({ type: 'desc', h: descLines.length * CODEX_UI.descLineH, lines: descLines });
+
+  // ② 固有技能槽（与战斗属性面板共用 src/skillSlot.js）
+  //    tower 传 null：图签是"跨局预览"，Lv 只反映宝石等级（强化是局内的，不跨局）
+  const skillSlots = skillSlot.buildSkillSlots(game.ctx, type, null, contentW);
+  if (skillSlots.length > 0) {
+    push({ type: 'divider', h: CODEX_UI.divH });
+    push({
+      type: 'skill',
+      h: CODEX_UI.sectionTitleH + skillSlot.skillSlotsHeight(skillSlots, contentW),
+      slots: skillSlots,
+    });
+  }
+
+  // ③ 宝石嵌入槽：槽数 = 图签等级（Lv.1 解锁即 1 个，Lv.5 = 5 个）
+  push({ type: 'divider', h: CODEX_UI.divH });
+  push({
+    type: 'gems',
+    h: CODEX_UI.sectionTitleH + CODEX_UI.socketSize + CODEX_UI.socketHintH,
+    sockets: meta.gemSockets(type),
+  });
+
+  // ④ 属性数值（两行：攻击/射程/间隔 + 暴击/暴伤/穿透）
+  push({ type: 'divider', h: CODEX_UI.divH });
+  push({ type: 'attrs', h: CODEX_UI.attrGapTop + CODEX_UI.attrRowH * 2 });
+
+  // ⑤ 图签等级（数值本身在 draw 时现取，这里只要高度）
+  push({ type: 'codexlv', h: CODEX_UI.codexLvH });
+
+  return { blocks: blocks, h: h, contentW: contentW };
 }
 
 
@@ -127,21 +203,29 @@ function getCodexLayout(game) {
   if (fitH < CODEX_UI.cellMinH) cellH = Math.max(38, fitH);
 
   // ---- 视口：详情面板打开时把底部让出来 ----
-  // 面板高度自适应：介绍文字过长会自动换行（见 drawSheet），
-  // 每多一行就把面板顶往上一行，保证"描述永远完整、不被按钮压住、也不越出屏幕"。
-  // 先算面板高度，再决定视口底部位置
-  const descLineCount = getDescLines(game, game.codexSelected).length;
-  // 固有技能的说明文字也换行 → 高度必须按【换行后的行数】算，否则面板会被文字顶穿
-  const skillLineCount = getSkillLines(game, game.codexSelected).length;
-  // 面板基准高 + 描述多出来的行 + 固有技能占的行
-  const rawSheetH = CODEX_UI.sheetH
-    + Math.max(0, descLineCount - 1) * CODEX_UI.descLineH
-    + skillLineCount * CODEX_UI.descLineH
-    + 14;
-  // 兜底：超长介绍遇上极矮屏时，面板不许顶穿标题栏
-  // （真的塞不下就缩到上限，多出来的内容由 drawSheet 的裁剪区兜住，绝不越出屏幕）
-  const sheetMaxH = Math.max(120, navTop - gridY - CODEX_UI.sheetGap);
-  const sheetH = Math.min(rawSheetH, sheetMaxH);
+  // 面板 = 【定高 + 正文内部滚动】三段式：
+  //   · 面板高不再由文字行数决定（那会导致"点一下卡片整张网都在重排"，且长文案会被
+  //     屏幕夹住看不到结尾）；
+  //   · 高度 = 标题区 + 正文(有上限) + 按钮区，正文超出部分靠**面板内拖动**看；
+  //   · 标题区与按钮区固定 —— 玩家永远看得见"这是哪个塔"和"能不能升级"，
+  //     不会出现"滚到一半按钮找不到了"；
+  //   · 上限同时受"格网顶 → 导航顶"这段空间约束，保证格网还剩得下一行。
+  const availH = navTop - gridY - CODEX_UI.sheetGap;
+  const capH = Math.max(
+    CODEX_UI.sheetMinH,
+    Math.min(availH * CODEX_UI.sheetMaxRatio, availH - CODEX_UI.cellMinH * 0.6)
+  );
+
+  const sheetW = W - CODEX_UI.padX * 2;
+  const sheetContent = game.codexSelected ? buildSheetContent(game, sheetW) : null;
+  const sheetFixedH = CODEX_UI.sheetHeaderH + CODEX_UI.sheetPadBottom
+    + CODEX_UI.sheetBtnH + CODEX_UI.sheetBtnPad;
+  const sheetNeedH = sheetContent ? sheetFixedH + sheetContent.h : 0;
+
+  let sheetH = 0;
+  if (sheetContent) {
+    sheetH = Math.max(Math.min(CODEX_UI.sheetMinH, capH), Math.min(capH, sheetNeedH));
+  }
   const sheetTop = navTop - sheetH - CODEX_UI.sheetGap;
   // 视口底 = 面板上沿留 6px 间隙，但最低不能低于 gridY（视口高度至少 0）
   const viewportBottom = game.codexSelected ? Math.max(gridY, sheetTop - 6) : fullBottom;
@@ -179,19 +263,49 @@ function getCodexLayout(game) {
     points:   { x: pointsX, y: headerCY - 10, w: pointsW, h: 20 },
   };
 
-  // 详情面板（底部弹出，压在格网之上；高度随介绍文字行数自适应）
+  // 详情面板（底部弹出，压在格网之上）
   const sheet = {
     x: CODEX_UI.padX,
     y: sheetTop,
-    w: W - CODEX_UI.padX * 2,
+    w: sheetW,
     h: sheetH,
   };
+
+  // 面板内部：正文区（可滚动）夹在 标题区 与 按钮区 之间
+  const btnTop = sheetTop + sheetH - CODEX_UI.sheetBtnPad - CODEX_UI.sheetBtnH;
+  const viewTop = sheetTop + CODEX_UI.sheetHeaderH;
+  const contentViewH = Math.max(0, (btnTop - CODEX_UI.sheetPadBottom) - viewTop);
+  const sheetMaxScroll = sheetContent ? Math.max(0, sheetContent.h - contentViewH) : 0;
+  const sheetScroll = sheetContent
+    ? Math.max(0, Math.min(sheetMaxScroll, game.codexSheetScroll || 0))
+    : 0;
 
   return {
     cols, rows, cellW, cellH, gridY, header, grid, sheet, navTop,
     viewport: { x: 0, y: gridY, w: W, h: viewportH },
     contentH, maxScroll, scroll,
+    sheetContent, sheetNeedH, sheetMaxScroll, sheetScroll, sheetBtnTop: btnTop,
+    // 详情面板的"当前塔型"与主色：正文块绘制要用，但它们是"选中态"而不是几何，
+    // 放在这里统一暴露，省得每个绘制函数都去 game 里现捞一遍。
+    sheetType: game.codexSelected || null,
+    sheetAccent: (TOWER_DEFS[game.codexSelected] || {}).color,
+    sheetView: {
+      x: sheet.x + 2, y: viewTop,
+      w: sheet.w - 4, h: contentViewH,
+    },
   };
+}
+
+/** 把面板内部的滚动值夹到合法区间并写回 game */
+function setCodexSheetScroll(game, value) {
+  const L = getCodexLayout(game);
+  game.codexSheetScroll = Math.max(0, Math.min(L.sheetMaxScroll, value || 0));
+  return game.codexSheetScroll;
+}
+
+/** 详情面板内部当前是否需要滚动 */
+function isSheetScrollable(game) {
+  return getCodexLayout(game).sheetMaxScroll > 0;
 }
 
 /** 把滚动值夹到合法区间并写回 game（输入层滚动手势用） */
@@ -219,8 +333,44 @@ function getSheetButtons(game, sheet) {
 }
 
 /**
+ * 宝石槽在屏幕上的绝对矩形（含面板正文的滚动偏移）。
+ *
+ * ⚠️ 只返回"完整落在正文可视区内"的槽 —— 被滚出去的那半个槽不该能被点到，
+ *    否则手指点空白会莫名其妙弹出一个浮层（历史上卡片视图就栽在这上面）。
+ * @returns {Array<{index:number, kind:string|null, unlocked:boolean, rect:object}>}
+ */
+function getSocketHitRects(L) {
+  const out = [];
+  const content = L.sheetContent;
+  if (!content) return out;
+  const block = content.blocks.filter((b) => b.type === 'gems')[0];
+  if (!block) return out;
+
+  const rects = socketRects(content.contentW);
+  const left = L.sheet.x + CODEX_UI.sheetPadX;
+  const top = L.sheetView.y - L.sheetScroll + block.y + CODEX_UI.sectionTitleH;
+  const view = L.sheetView;
+
+  for (let i = 0; i < rects.length; i++) {
+    const r = rects[i];
+    const abs = { x: left + r.x, y: top + r.y, w: r.w, h: r.h };
+    if (abs.y < view.y - 0.5) continue;                      // 上边被裁
+    if (abs.y + abs.h > view.y + view.h + 0.5) continue;      // 下边被裁
+    const s = block.sockets[i] || { unlocked: false, kind: null };
+    out.push({ index: i, kind: s.kind, unlocked: !!s.unlocked, rect: abs });
+  }
+  return out;
+}
+
+/**
  * 命中检测（详情面板优先于格网；已被滚出视口的格子不可点）
- * @returns {{kind:'upgrade'|'lineup'|'card'|'close', type?:string}|null}
+ *
+ * 返回：
+ *   { kind:'upgrade'|'lineup'|'card'|'socket'|'unsocket'|'socketLocked'|'none'|'close', type?, index? }
+ *   · socket      —— 点了【已解锁的空槽】→ 打开选宝石浮层
+ *   · unsocket    —— 点了【已嵌宝石的槽】→ 取出，放回背包
+ *   · socketLocked—— 点了【未解锁的槽】→ 提示升图签
+ *   · none        —— 面板内其他空白（吞掉，不误触格网）
  */
 function hitCodex(game, pos) {
   const L = getCodexLayout(game);
@@ -230,7 +380,15 @@ function hitCodex(game, pos) {
     const btns = getSheetButtons(game, L.sheet);
     if (theme.pointInRect(pos, btns.upgrade)) return { kind: 'upgrade', type: sel };
     if (theme.pointInRect(pos, btns.lineup))  return { kind: 'lineup', type: sel };
-    if (theme.pointInRect(pos, L.sheet)) return { kind: 'none' }; // 面板内空白 → 吞掉，不误触格网
+
+    // 宝石槽：先于"面板空白吞掉"
+    for (const s of getSocketHitRects(L)) {
+      if (!theme.pointInRect(pos, s.rect)) continue;
+      if (!s.unlocked) return { kind: 'socketLocked', type: sel, index: s.index };
+      return { kind: s.kind ? 'unsocket' : 'socket', type: sel, index: s.index };
+    }
+
+    if (theme.pointInRect(pos, L.sheet)) return { kind: 'none' }; // 面板内空白 → 吞掉
   }
 
   // 视口外的格子（滚上去/滚下去的那些）不参与命中，否则会点到屏幕上看不见的卡
@@ -244,6 +402,152 @@ function hitCodex(game, pos) {
 
   return { kind: 'close' };
 }
+
+// ==================== 选宝石浮层（模态） ====================
+
+const PICKER_UI = {
+  maxW: 322,
+  headH: 44,
+  rowH: 44,
+  rowGap: 6,
+  footH: 46,
+  padX: 14,
+};
+
+/**
+ * 选宝石浮层布局（模态，居中）。
+ *
+ * 行 = 宝石【种类】而不是背包里的每一颗：6 种封顶，一屏放得下，
+ * 因此**不需要滚动**（少一个会出错的交互面）。每行右侧显示持有数量。
+ * @returns {{x,y,w,h,rows,close,cancel,bagUsed,bagMax,type,index}}
+ */
+function getGemPickerLayout(game) {
+  const W = game.W;
+  const H = game.H;
+  const kinds = gems.GEM_ORDER;
+  const counts = gems.bagCounts();
+
+  const w = Math.min(PICKER_UI.maxW, W - 36);
+  const h = PICKER_UI.headH + kinds.length * PICKER_UI.rowH + PICKER_UI.footH;
+  const x = Math.round((W - w) / 2);
+  const y = Math.round(Math.max(LAYOUT.topBarHeight + 14, (H - h) / 2 - 18));
+
+  const rows = kinds.map((kind, i) => {
+    const def = gems.gemDef(kind) || { name: kind, desc: '', color: '#90A4AE' };
+    const n = counts[kind] || 0;
+    return {
+      kind: kind,
+      name: def.name,
+      desc: def.desc,
+      color: def.color,
+      count: n,
+      enabled: n > 0,
+      rect: {
+        x: x + PICKER_UI.padX,
+        y: y + PICKER_UI.headH + i * PICKER_UI.rowH,
+        w: w - PICKER_UI.padX * 2,
+        h: PICKER_UI.rowH - PICKER_UI.rowGap,
+      },
+    };
+  });
+
+  return {
+    x, y, w, h, rows,
+    bagUsed: meta.gemList().length,
+    bagMax: meta.bagSlots(),
+    close: { x: x + w - 36, y: y + 9, w: 26, h: 26 },
+    cancel: {
+      x: x + PICKER_UI.padX,
+      y: y + h - PICKER_UI.footH + 6,
+      w: w - PICKER_UI.padX * 2,
+      h: 32,
+    },
+    type: game.gemPicker ? game.gemPicker.type : null,
+    index: game.gemPicker ? game.gemPicker.index : -1,
+  };
+}
+
+/**
+ * 浮层命中。
+ * @returns {{kind:'pick'|'disabled'|'close', gem?:string}}
+ *   · pick     —— 点到了持有数量 > 0 的宝石行
+ *   · disabled —— 点到的是"持有 0"的灰行：**不算关闭**，只提示，浮层留在原地
+ *                 （不然玩家手一抖点到灰行，整个浮层就没了）
+ *   · close    —— 点了取消 / ✕ / 浮层外
+ */
+function hitGemPicker(game, pos) {
+  const L = getGemPickerLayout(game);
+  for (const row of L.rows) {
+    if (!theme.pointInRect(pos, row.rect)) continue;
+    return row.enabled ? { kind: 'pick', gem: row.kind } : { kind: 'disabled', gem: row.kind };
+  }
+  return { kind: 'close' };
+}
+
+/** 浮层是否需要滚动（恒 false：6 种宝石一屏放得下 —— 保留接口给输入层判断） */
+function isGemPickerScrollable() {
+  return false;
+}
+
+/** 打开"给某槽选宝石"浮层 */
+function openGemPicker(game, type, index) {
+  game.gemPicker = { type: type, index: index };
+  return game.gemPicker;
+}
+
+/**
+ * 把背包里的一颗宝石嵌进浮层指向的槽位。
+ *
+ * 语义（需求原话"嵌入宝石后被嵌入的宝石与技能绑定会从物品栏消失"）：
+ *   ① 从背包移除该 uid（meta.embedGem 内部完成，永不复制）；
+ *   ② 写进该塔型的槽位 → 加成按塔型跨局生效（gems.bonusForType）；
+ *   ③ 若这颗是"猫眼石"（skillLevels），固有技能等级随之 +1 → 战斗立刻变强。
+ * @returns {{ok:boolean, reason?:string}}
+ */
+function actEmbedGem(game, kind) {
+  const p = game.gemPicker;
+  if (!p) return { ok: false, reason: 'nopicker' };
+
+  const owned = meta.gemList().filter((g) => g.kind === kind);
+  if (!owned.length) {
+    say(game, '背包里没有这种宝石', THEME.accent.danger);
+    return { ok: false, reason: 'nogem' };
+  }
+
+  const res = meta.embedGem(p.type, p.index, owned[0].uid);
+  if (res.ok) {
+    const def = gems.gemDef(kind) || { name: kind, desc: '', color: THEME.accent.violet };
+    game.gemPicker = null;
+    say(game, `已嵌入 ${def.name}（${def.desc}）· 与固有技能绑定`, def.color);
+  } else if (res.reason === 'occupied') {
+    say(game, '该槽已有宝石，先点它取出来', THEME.accent.danger);
+  } else if (res.reason === 'locked') {
+    say(game, '该槽尚未解锁', THEME.accent.danger);
+  } else {
+    say(game, '无法嵌入', THEME.accent.danger);
+  }
+  return res;
+}
+
+/** 取出槽里的宝石（回背包；背包满则拒绝，绝不吞宝石） */
+function actUnsocketGem(game, type, index) {
+  const res = meta.takeGem(type, index);
+  if (res.ok) {
+    const def = gems.gemDef(res.kind) || { name: '宝石', color: THEME.accent.violet };
+    say(game, `已取出 ${def.name}，放回背包`, THEME.accent.gold);
+  } else if (res.reason === 'full') {
+    say(game, '背包已满，无法取出（先清理或解锁更多格子）', THEME.accent.danger);
+  } else {
+    say(game, '该槽是空的', THEME.text.dim);
+  }
+  return res;
+}
+
+/** 统一轻提示（本模块内部用） */
+function say(game, text, color) {
+  game.toast = { text: text, color: color || THEME.text.secondary, t0: Date.now() };
+}
+
 
 // ==================== 绘制 ====================
 
@@ -316,6 +620,110 @@ function drawCodex(game) {
 
   // ---- 详情面板 ----
   if (game.codexSelected) drawSheet(game, L);
+
+  // ---- 选宝石浮层（模态，必须盖在详情面板之上）----
+  if (game.gemPicker) drawGemPicker(game);
+}
+
+/**
+ * 选宝石浮层：列出 6 种宝石与背包持有数，点一行即嵌入。
+ * 持有 0 的行置灰不可点（看得见"这种宝石长什么样"，但点不动）。
+ */
+function drawGemPicker(game) {
+  const ctx = game.ctx;
+  const L = getGemPickerLayout(game);
+  const W = game.W;
+  const H = game.H;
+
+  // 遮罩
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+
+  // 面板底
+  ctx.save();
+  const bg = ctx.createLinearGradient(0, L.y, 0, L.y + L.h);
+  bg.addColorStop(0, 'rgba(20, 20, 36, 0.99)');
+  bg.addColorStop(1, 'rgba(10, 10, 20, 1)');
+  ctx.fillStyle = bg;
+  ctx.strokeStyle = 'rgba(179, 136, 255, 0.55)';
+  ctx.lineWidth = 1.4;
+  roundRectPath(ctx, L.x, L.y, L.w, L.h, THEME.radius.large);
+  ctx.fill();
+  ctx.stroke();
+
+  // 标题：目标槽位 + 绑定的固有技能名
+  const towerDef = L.type ? TOWER_DEFS[L.type] : null;
+  const skillName = L.type ? gems.skillNameOf(L.type) : '';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 13px Arial';
+  ctx.fillStyle = THEME.text.primary;
+  ctx.fillText(`嵌入宝石 · 第 ${L.index + 1} 槽`, L.x + PICKER_UI.padX, L.y + 17);
+
+  ctx.font = '10px Arial';
+  ctx.fillStyle = THEME.text.dim;
+  const sub = towerDef
+    ? `${towerDef.name}${skillName ? ' · 绑定「' + skillName + '」' : ''}`
+    : '';
+  ctx.fillText(ellipsize(ctx, sub, L.w - PICKER_UI.padX * 2 - 40), L.x + PICKER_UI.padX, L.y + 33);
+
+  // 关闭 ✕
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 14px Arial';
+  ctx.fillStyle = THEME.text.dim;
+  ctx.fillText('✕', L.close.x + L.close.w / 2, L.close.y + L.close.h / 2);
+
+  // 宝石行
+  for (const row of L.rows) {
+    const r = row.rect;
+
+    ctx.fillStyle = row.enabled ? 'rgba(255, 255, 255, 0.06)' : 'rgba(255, 255, 255, 0.02)';
+    roundRectPath(ctx, r.x, r.y, r.w, r.h, THEME.radius.medium);
+    ctx.fill();
+    ctx.strokeStyle = row.enabled ? theme.shade(row.color, -0.1, 0.42) : THEME.border.subtle;
+    ctx.lineWidth = 1;
+    roundRectPath(ctx, r.x, r.y, r.w, r.h, THEME.radius.medium);
+    ctx.stroke();
+
+    // 左：宝石图标
+    gems.drawGemIcon(ctx, r.x + 22, r.y + r.h / 2, 12, row.kind, { dim: !row.enabled });
+
+    // 中：名称 + 效果
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 12px Arial';
+    ctx.fillStyle = row.enabled ? row.color : THEME.text.off;
+    ctx.fillText(row.name, r.x + 42, r.y + r.h / 2 - 7);
+
+    ctx.font = '10px Arial';
+    ctx.fillStyle = row.enabled ? THEME.text.secondary : THEME.text.off;
+    ctx.fillText(row.desc, r.x + 42, r.y + r.h / 2 + 9);
+
+    // 右：持有数量（0 就写明"无"，而不是画个 0 让人猜）
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 13px Arial';
+    ctx.fillStyle = row.enabled ? THEME.accent.green : THEME.text.off;
+    ctx.fillText(row.enabled ? `×${row.count}` : '无', r.x + r.w - 12, r.y + r.h / 2);
+  }
+
+  // 底部：背包占用 + 取消
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '10px Arial';
+  ctx.fillStyle = THEME.text.off;
+  ctx.fillText(`背包 ${L.bagUsed}/${L.bagMax} 格`, L.x + L.w / 2, L.y + L.h - PICKER_UI.footH + 2);
+
+  drawButton(ctx, {
+    x: L.cancel.x, y: L.cancel.y, w: L.cancel.w, h: L.cancel.h,
+    top: THEME.track.soft, bottom: THEME.track.faint, stroke: THEME.border.subtle,
+    label: '取消', labelColor: THEME.text.secondary,
+    fontSize: 13, radius: THEME.radius.medium,
+    pressed: false,
+  });
+
+  ctx.restore();
 }
 
 /** 单个图形塔格子 */
@@ -402,7 +810,7 @@ function drawCodexCell(game, cell) {
   ctx.restore();
 }
 
-/** 底部详情面板（属性 + 解锁/升级 + 登场切换） */
+/** 底部详情面板（标题固定 + 正文可滚动 + 按钮固定） */
 function drawSheet(game, L) {
   const ctx = game.ctx;
   const sheet = L.sheet;
@@ -410,7 +818,6 @@ function drawSheet(game, L) {
   const def = TOWER_DEFS[type];
   if (!def) return;
 
-  const stats = towerMod.getTowerStats(type);
   const rarity = RARITY[def.rarity] || RARITY[1];
   const level = meta.codexLevel(type);
   const unlocked = level > 0;
@@ -418,8 +825,6 @@ function drawSheet(game, L) {
   const cost = meta.codexCost(type, Math.min(CODEX.maxLevel, level + 1));
   const points = meta.get().points;
   const onLineup = meta.isInLineup(type);
-  const dmgMult = meta.codexDamageMultiplier(type);
-  const finalDamage = (stats.damage || 0) * dmgMult;
   const btns = getSheetButtons(game, sheet);
 
   ctx.save();
@@ -435,111 +840,37 @@ function drawSheet(game, L) {
   ctx.fill();
   ctx.stroke();
 
-  // 标题区：图标 + 名称 + 稀有度 + 关闭提示
-  const iconX = sheet.x + 30;
-  const iconY = sheet.y + 22;
-  drawTowerIcon(ctx, iconX, iconY, unlocked ? def.color : THEME.text.off, type);
-
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  const nameX = sheet.x + 54;
-  ctx.font = 'bold 16px Arial';
-  ctx.fillStyle = unlocked ? def.color : THEME.text.dim;
-  ctx.fillText(def.name, nameX, sheet.y + 22);
-  const nameW = ctx.measureText(def.name).width;
-
-  ctx.font = '10px Arial';
-  ctx.fillStyle = rarity.color;
-  ctx.fillText(rarity.name, nameX + nameW + 12, sheet.y + 23);
-
-  ctx.textAlign = 'right';
-  ctx.font = '10px Arial';
-  ctx.fillStyle = THEME.text.off;
-  ctx.fillText('点空白关闭', sheet.x + sheet.w - 14, sheet.y + 22);
-
-  // 分隔线①：标题与下方正文之间（此前缺这一条，标题和描述糊在一起）
-  drawTaperedDivider(ctx, sheet.x + sheet.w / 2, sheet.y + 38, sheet.w - 28, 4);
-
-  // ---- 描述：按面板宽度【自动换行】（面板高度已按行数算好，见 getCodexLayout）----
-  // 早期这里用 ellipsize 压成一行，长介绍会被硬截成"…但完全没有"这种半句；
-  // 现在整段换行显示，行数变化由 sheet.h 承接，下面的内容整体下移同样多的距离。
-  // 加上裁剪区域，防止长描述文字溢出面板边界。
-  // 注意：裁剪区要贴住面板本身（左右各留 2px 给圆角描边），
-  // 旧写法写的是 `sheet.h - 50`，比面板矮 48px —— 属性行 / 图签等级正好落在被切的那段里。
+  // ---------- ① 固定标题区（不随正文滚动）----------
+  // 玩家滚到正文任何位置，都必须看得见"这是哪个塔、什么稀有度、能不能升级"。
   ctx.save();
   ctx.beginPath();
-  ctx.rect(sheet.x + 2, sheet.y + 2, sheet.w - 4, sheet.h - 4);
+  ctx.rect(sheet.x + 2, sheet.y + 2, sheet.w - 4, CODEX_UI.sheetHeaderH);
   ctx.clip();
+  drawSheetHeader(ctx, sheet, def, rarity, unlocked, type);
+  ctx.restore();
 
-  const descLines = getDescLines(game, type);
-
-  // 固有技能区块：行数与 getCodexLayout 走同一个函数，高度才不会被文字顶穿
-  const skillLines = getSkillLines(game, type);
-
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.font = CODEX_UI.descFont;
-  ctx.fillStyle = THEME.text.secondary;
-  for (let i = 0; i < descLines.length; i++) {
-    ctx.fillText(descLines[i], sheet.x + CODEX_UI.descPadX, sheet.y + CODEX_UI.descTop + i * CODEX_UI.descLineH);
+  // ---------- ② 正文（可滚动，裁剪在 sheetView 内）----------
+  // 正文块的 y 一律相对内容顶算：绝对 y = sheetView.y - sheetScroll + block.y。
+  // 命中检测走同一个公式（getSocketHitRects），所以"看到的位置" = "能点的位置"。
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(L.sheetView.x, L.sheetView.y, L.sheetView.w, L.sheetView.h);
+  ctx.clip();
+  if (L.sheetContent) {
+    let by = L.sheetView.y - L.sheetScroll;
+    for (const block of L.sheetContent.blocks) {
+      drawSheetBlock(ctx, L, block, by);
+      by += block.h;
+    }
   }
+  ctx.restore();
 
-  // 固有技能标题 + 内容
-  const skillTitleY = sheet.y + CODEX_UI.descTop + descLines.length * CODEX_UI.descLineH + 6;
-  ctx.font = 'bold 11px Arial';
-  ctx.fillStyle = THEME.text.primary;
-  ctx.fillText('固有技能', sheet.x + CODEX_UI.descPadX, skillTitleY);
-  ctx.font = CODEX_UI.descFont;
-  ctx.fillStyle = THEME.text.secondary;
-  for (let i = 0; i < skillLines.length; i++) {
-    ctx.fillText(skillLines[i], sheet.x + CODEX_UI.descPadX, skillTitleY + 14 + i * CODEX_UI.descLineH);
+  // 正文滚动条 + 上下渐隐：把"里面还有内容"画出来（内容没超出就不画）
+  if (L.sheetMaxScroll > 0) {
+    const view = L.sheetView;
+    drawScrollBar(ctx, view, L.sheetScroll, L.sheetMaxScroll, view.h, L.sheetContent.h);
+    drawScrollHint(ctx, view, L.sheetScroll, L.sheetMaxScroll, 'rgba(16,16,30,0.96)', THEME.accent.violet);
   }
-
-  const descShift = descLines.length * CODEX_UI.descLineH + 14 + skillLines.length * CODEX_UI.descLineH;
-
-  // 分隔线②：描述与属性数值区之间（随描述行数下移）
-  drawTaperedDivider(ctx, sheet.x + sheet.w / 2, sheet.y + 66 + descShift, sheet.w - 28, 4);
-
-  // 属性行（含图签加成）——三等分，窄面板也不重叠（整块随描述行数下移）
-  const attrY = sheet.y + 82 + descShift;
-  const colW = (sheet.w - 28) / 3;
-  ctx.textAlign = 'left';
-  ctx.font = '11px Arial';
-  const isSupport = !!stats.isSupport;
-  let attrText;
-  if (isSupport) {
-    attrText = `光环 +${(stats.supportBuff && stats.supportBuff.attackSpeedMultiplier) || 0}%`;
-  } else {
-    attrText = `攻击 ${formatNum(stats.damage)}`;
-    const bonus = finalDamage - (stats.damage || 0);
-    if (bonus > 0) attrText += ` +${formatNum(bonus)}`;
-  }
-  ctx.fillStyle = THEME.text.dim;
-  ctx.fillText(attrText, sheet.x + 14, attrY);
-  ctx.fillText(`射程 ${stats.range}`, sheet.x + 14 + colW, attrY);
-  // ctx.fillText(`生命 ${stats.hp}`, sheet.x + 14 + colW * 2, attrY);  // 已移除
-
-  // 第二属性行：暴击率 / 暴击伤害 / 穿透（辅助塔无此三项）
-  if (!isSupport) {
-    const row2Y = attrY + 18;
-    const crit = (stats.critChance || 0);
-    const critMult = stats.critMult || 1.5;
-    const pen = stats.penetration || 0;
-    ctx.fillStyle = THEME.accent.cyan;
-    ctx.fillText(`暴击 ${crit}%`, sheet.x + 14, row2Y);
-    ctx.fillStyle = THEME.text.dim;
-    ctx.fillText(`暴伤 ${Math.round(critMult * 100)}%`, sheet.x + 14 + colW, row2Y);
-    ctx.fillStyle = THEME.accent.gold;
-    ctx.fillText(`穿透 ${pen}`, sheet.x + 14 + colW * 2, row2Y);
-  }
-
-  // 图签等级（第三行左侧，避免与属性行/按钮挤在一起）
-  ctx.textAlign = 'left';
-  ctx.font = 'bold 11px Arial';
-  ctx.fillStyle = THEME.accent.violet;
-  ctx.fillText(unlocked ? `图签 Lv.${level}/${CODEX.maxLevel}  ·  伤害 +${Math.round((dmgMult - 1) * 100)}%` : '未解锁（需 ✨' + cost + '）', sheet.x + 14, attrY + 36);
-
-  ctx.restore(); // 关闭描述裁剪
 
   // ---- 按钮 1：解锁 / 升级 ----
   let upLabel, upEnabled, upSub;
@@ -601,6 +932,214 @@ function drawSheet(game, L) {
   ctx.restore();
 }
 
+/** ① 固定标题区：图标 + 名称 + 稀有度 + 关闭提示 + 分隔线 */
+function drawSheetHeader(ctx, sheet, def, rarity, unlocked, type) {
+  const iconX = sheet.x + 30;
+  const iconY = sheet.y + 22;
+  drawTowerIcon(ctx, iconX, iconY, unlocked ? def.color : THEME.text.off, type);
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const nameX = sheet.x + 54;
+  ctx.font = 'bold 16px Arial';
+  ctx.fillStyle = unlocked ? def.color : THEME.text.dim;
+  ctx.fillText(def.name, nameX, sheet.y + 22);
+  const nameW = ctx.measureText(def.name).width;
+
+  ctx.font = '10px Arial';
+  ctx.fillStyle = rarity.color;
+  ctx.fillText(rarity.name, nameX + nameW + 12, sheet.y + 23);
+
+  ctx.textAlign = 'right';
+  ctx.font = '10px Arial';
+  ctx.fillStyle = THEME.text.off;
+  ctx.fillText('点空白关闭', sheet.x + sheet.w - 14, sheet.y + 22);
+
+  // 标题与正文之间的分隔线
+  drawTaperedDivider(ctx, sheet.x + sheet.w / 2, sheet.y + CODEX_UI.sheetHeaderH - 6, sheet.w - 28, 4);
+}
+
+/**
+ * ② 正文块绘制。`y` 是已经算好滚动偏移的绝对 y —— 本函数只管往 y 处画，
+ *    不自己算任何偏移（否则又与命中检测分家）。
+ */
+function drawSheetBlock(ctx, L, block, y) {
+  const sheet = L.sheet;
+  const content = L.sheetContent;
+  const left = sheet.x + CODEX_UI.sheetPadX;
+  const contentW = content ? content.contentW : (sheet.w - CODEX_UI.sheetPadX * 2);
+
+  switch (block.type) {
+    case 'divider': {
+      drawTaperedDivider(ctx, sheet.x + sheet.w / 2, y + block.h / 2, sheet.w - 28, 4);
+      break;
+    }
+    case 'desc': {
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.font = CODEX_UI.descFont;
+      ctx.fillStyle = THEME.text.secondary;
+      for (let i = 0; i < block.lines.length; i++) {
+        ctx.fillText(block.lines[i], left, y + i * CODEX_UI.descLineH + CODEX_UI.descLineH / 2);
+      }
+      break;
+    }
+    case 'skill': {
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 11px Arial';
+      ctx.fillStyle = THEME.text.primary;
+      ctx.fillText('固有技能', left, y + CODEX_UI.sectionTitleH / 2);
+      skillSlot.drawSkillSlots(ctx, left, y + CODEX_UI.sectionTitleH, contentW, block.slots, {
+        towerColor: L.sheetAccent,
+      });
+      break;
+    }
+    case 'gems': {
+      drawSheetGems(ctx, L, block, y, left, contentW);
+      break;
+    }
+    case 'attrs': {
+      drawSheetAttrs(ctx, L, block, y, left, contentW);
+      break;
+    }
+    case 'codexlv': {
+      drawSheetCodexLevel(ctx, L, y, left);
+      break;
+    }
+    default: break;
+  }
+}
+
+/** 宝石嵌入槽区：标题 + N 个槽（未解锁画锁）+ 一行操作提示 */
+function drawSheetGems(ctx, L, block, y, left, contentW) {
+  const sockets = block.sockets || [];
+  const unlockedN = sockets.filter((s) => s.unlocked).length;
+  const filledN = sockets.filter((s) => !!s.kind).length;
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 11px Arial';
+  ctx.fillStyle = THEME.text.primary;
+  ctx.fillText('宝石嵌入槽', left, y + CODEX_UI.sectionTitleH / 2);
+
+  ctx.textAlign = 'right';
+  ctx.font = '10px Arial';
+  ctx.fillStyle = unlockedN > 0 ? THEME.accent.violet : THEME.text.off;
+  ctx.fillText(`${unlockedN}/${GEM.maxSlots}`, left + contentW, y + CODEX_UI.sectionTitleH / 2);
+
+  const rects = socketRects(contentW);
+  const top = y + CODEX_UI.sectionTitleH;
+  for (let i = 0; i < rects.length; i++) {
+    const r = rects[i];
+    const sock = sockets[i] || { unlocked: false, kind: null };
+    const x = left + r.x;
+    const sy = top + r.y;
+    const size = r.w;
+
+    if (!sock.unlocked) {
+      // 未解锁：虚线凹槽 + 锁（一眼看出"图签升一级就多一个"）
+      gems.drawEmptySocket(ctx, x, sy, size, size, 'rgba(255,255,255,0.16)');
+      drawLockIcon(ctx, x + size / 2, sy + size / 2, size * 0.32, 'rgba(255,255,255,0.26)');
+      continue;
+    }
+
+    if (sock.kind) {
+      // 已嵌入：深色槽底 + 彩色描边 + 宝石
+      const col = gems.gemColor(sock.kind);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.40)';
+      roundRectPath(ctx, x, sy, size, size, 8);
+      ctx.fill();
+      ctx.strokeStyle = theme.shade(col, -0.05, 0.85);
+      ctx.lineWidth = 1.4;
+      roundRectPath(ctx, x, sy, size, size, 8);
+      ctx.stroke();
+      gems.drawGemIcon(ctx, x + size / 2, sy + size / 2, size * 0.34, sock.kind);
+    } else {
+      gems.drawEmptySocket(ctx, x, sy, size, size, 'rgba(179, 136, 255, 0.45)');
+    }
+  }
+
+  // 操作提示（随状态变话术，别让玩家猜）
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = '10px Arial';
+  ctx.fillStyle = THEME.text.off;
+  const bagEmpty = meta.gemList().length === 0;
+  let hint;
+  if (unlockedN === 0) hint = '解锁 / 升级图签，每级解锁 1 个宝石槽';
+  else if (bagEmpty) hint = '背包里还没有宝石 · 战斗清波与精英怪会掉落';
+  else if (filledN > 0) hint = '点空槽嵌入宝石 · 点已嵌的宝石取出';
+  else hint = '点槽位选择要嵌入的宝石（与固有技能绑定）';
+  ctx.fillText(ellipsize(ctx, hint, contentW), left, top + CODEX_UI.socketSize + CODEX_UI.socketHintH / 2);
+}
+
+/** 属性数值区：三列 × 两行（与塔属性面板同口径：tower.getTowerStats） */
+function drawSheetAttrs(ctx, L, block, y, left, contentW) {
+  const type = L.sheetType;
+  const stats = towerMod.getTowerStats(type);
+  const dmgMult = meta.codexDamageMultiplier(type);
+  const colW = contentW / 3;
+  const row1 = y + CODEX_UI.attrGapTop + CODEX_UI.attrRowH / 2;
+  const row2 = row1 + CODEX_UI.attrRowH;
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = '11px Arial';
+
+  const isSupport = !!stats.isSupport;
+  if (isSupport) {
+    ctx.fillStyle = THEME.text.dim;
+    ctx.fillText(`光环 +${(stats.supportBuff && stats.supportBuff.attackSpeedMultiplier) || 0}%`, left, row1);
+    ctx.fillText(`范围 ${stats.range}`, left + colW, row1);
+  } else {
+    // 攻击：白字基础值 + 绿字图签加成（与属性面板同一套双色语义）
+    ctx.fillStyle = THEME.text.primary;
+    const baseText = `攻击 ${formatNum(stats.damage)}`;
+    ctx.fillText(baseText, left, row1);
+    const baseW = ctx.measureText(baseText).width;
+    const bonus = (stats.damage || 0) * (dmgMult - 1);
+    if (bonus > 0) {
+      ctx.fillStyle = THEME.accent.green;
+      ctx.fillText(`+${formatNum(bonus)}`, left + baseW + 3, row1);
+    }
+    ctx.fillStyle = THEME.text.dim;
+    ctx.fillText(`射程 ${stats.range}`, left + colW, row1);
+    if (stats.attackInterval > 0) {
+      ctx.fillText(`间隔 ${stats.attackInterval}秒`, left + colW * 2, row1);
+    }
+  }
+
+  if (!isSupport) {
+    const critMult = stats.critMult || 1.5;
+    ctx.fillStyle = THEME.accent.cyan;
+    ctx.fillText(`暴击 ${stats.critChance || 0}%`, left, row2);
+    ctx.fillStyle = THEME.text.dim;
+    ctx.fillText(`暴伤 ${Math.round(critMult * 100)}%`, left + colW, row2);
+    ctx.fillStyle = THEME.accent.gold;
+    ctx.fillText(`穿透 ${stats.penetration || 0}`, left + colW * 2, row2);
+  }
+}
+
+/** 图签等级行（含宝石加成后的总伤害放大） */
+function drawSheetCodexLevel(ctx, L, y, left) {
+  const type = L.sheetType;
+  const level = meta.codexLevel(type);
+  const cost = meta.codexCost(type, Math.min(CODEX.maxLevel, level + 1));
+  const dmgMult = meta.codexDamageMultiplier(type);
+  const gemBonus = gems.bonusForType(type);
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 11px Arial';
+  ctx.fillStyle = THEME.accent.violet;
+  const text = level > 0
+    ? `图签 Lv.${level}/${CODEX.maxLevel} · 攻击 +${Math.round((dmgMult - 1) * 100)}%`
+      + (gemBonus.count > 0 ? ` · 宝石 ×${gemBonus.count}` : '')
+    : `未解锁（需 ✨${cost}）`;
+  ctx.fillText(text, left, y + CODEX_UI.codexLvH / 2);
+}
+
 /** 升级按钮按压态（id 带类型，避免换选中塔时状态串台） */
 function isUpgradePressed(game, type) {
   return theme.isButtonPressed(game, 'codex:up:' + type);
@@ -654,13 +1193,25 @@ function actCodex(game, action, type) {
 
 module.exports = {
   CODEX_UI,
+  PICKER_UI,
   getCodexLayout,
   getSheetButtons,
   getDescLines,
-  getSkillLines,
+  buildSheetContent,
+  socketRects,
+  getSocketHitRects,
   setCodexScroll,
+  setCodexSheetScroll,
   isCodexScrollable,
+  isSheetScrollable,
   hitCodex,
+  // 选宝石浮层
+  getGemPickerLayout,
+  hitGemPicker,
+  isGemPickerScrollable,
+  openGemPicker,
+  actEmbedGem,
+  actUnsocketGem,
   drawCodex,
   actCodex,
 };

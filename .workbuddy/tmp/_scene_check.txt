@@ -1,0 +1,130 @@
+﻿--- git status ---
+ M .workbuddy/memory/2026-09-17.md
+ M .workbuddy/memory/MEMORY.md
+ M .workbuddy/tmp/_codex.txt
+ D .workbuddy/tmp/_final.txt
+ M .workbuddy/tmp/_panel.txt
+ M .workbuddy/tmp/_smoke.txt
+ M .workbuddy/tmp/_syntax.txt
+ M .workbuddy/tools/probe-codex.js
+ M .workbuddy/tools/probe-panel.js
+ M .workbuddy/tools/smoke.js
+ M .workbuddy/tools/svgcheck.js
+ M game.js
+ M src/ads.js
+ M src/bonusStats.js
+ M src/codex.js
+ M src/config.js
+ M src/enemy.js
+ M src/game_core.js
+ M src/gamemenu.js
+ M src/input.js
+ M src/meta.js
+ M src/nav.js
+ M src/renderer.js
+ M src/theme.js
+ M src/tower.js
+?? .workbuddy/tmp/_all.txt
+?? .workbuddy/tmp/_audio_run.txt
+?? .workbuddy/tmp/_audio_run2.txt
+?? .workbuddy/tmp/_audio_run3.txt
+?? .workbuddy/tmp/_audio_run4.txt
+?? .workbuddy/tmp/_audio_search.txt
+?? .workbuddy/tmp/_audio_search2.txt
+?? .workbuddy/tmp/_bgm_audit_run.txt
+?? .workbuddy/tmp/_bgm_run.txt
+?? .workbuddy/tmp/_c1.txt
+?? .workbuddy/tmp/_c2.txt
+?? .workbuddy/tmp/_c3.txt
+?? .workbuddy/tmp/_c4.txt
+?? .workbuddy/tmp/_cfg.txt
+?? .workbuddy/tmp/_dump_console.txt
+?? .workbuddy/tmp/_env.txt
+?? .workbuddy/tmp/_final_report.txt
+?? .workbuddy/tmp/_g_code.txt
+?? .workbuddy/tmp/_g_out.txt
+?? .workbuddy/tmp/_g_stderr.txt
+?? .workbuddy/tmp/_g_stdout.txt
+?? .workbuddy/tmp/_g_sum.txt
+?? .workbuddy/tmp/_g_tail.txt
+?? .workbuddy/tmp/_g_time.txt
+?? .workbuddy/tmp/_g_where.txt
+?? .workbuddy/tmp/_gem_code.txt
+?? .workbuddy/tmp/_gem_console.txt
+?? .workbuddy/tmp/_gem_err.txt
+?? .workbuddy/tmp/_gem_out.txt
+?? .workbuddy/tmp/_graphic.html
+?? .workbuddy/tmp/_graphic.txt
+?? .workbuddy/tmp/_square_width_out.txt
+?? .workbuddy/tmp/_square_width_test.js
+?? .workbuddy/tmp/_tools_list.txt
+?? .workbuddy/tmp/_verify_run.txt
+?? .workbuddy/tools/_audio.txt
+?? .workbuddy/tools/_cfgprobe.js
+?? .workbuddy/tools/_codex.txt
+?? .workbuddy/tools/_dump-texts.js
+?? .workbuddy/tools/_dump-texts.txt
+?? .workbuddy/tools/_gem.txt
+?? .workbuddy/tools/_gems.html
+?? .workbuddy/tools/_gems_sizes.txt
+?? .workbuddy/tools/_gems_svgcheck.txt
+?? .workbuddy/tools/_graphic.html
+?? .workbuddy/tools/_graphic.txt
+?? .workbuddy/tools/_graphic_svgcheck.txt
+?? .workbuddy/tools/_must.txt
+?? .workbuddy/tools/_mustcheck.js
+?? .workbuddy/tools/_panel.txt
+?? .workbuddy/tools/_panels.html
+?? .workbuddy/tools/_panels_svgcheck.txt
+?? .workbuddy/tools/_r1.txt
+?? .workbuddy/tools/_r2.txt
+?? .workbuddy/tools/_r3.txt
+?? .workbuddy/tools/_r4.txt
+?? .workbuddy/tools/_smoke.txt
+?? .workbuddy/tools/_svgA.txt
+?? .workbuddy/tools/_svgB.txt
+?? .workbuddy/tools/_syntax.txt
+?? .workbuddy/tools/_texts.txt
+?? .workbuddy/tools/audit-bgm.py
+?? .workbuddy/tools/dump-gems.js
+?? .workbuddy/tools/dump-texts.js
+?? .workbuddy/tools/make-snowfall.py
+?? .workbuddy/tools/measure-timbre.py
+?? .workbuddy/tools/probe-audio.js
+?? .workbuddy/tools/probe-gem.js
+?? .workbuddy/tools/probe-graphic.js
+?? .workbuddy/tools/run-all.js
+?? audio/
+?? src/audio.js
+?? src/bag.js
+?? src/gems.js
+?? src/skillSlot.js
+
+--- 最近修改的 src 文件 ---
+09-17 23:32:35  input.js
+09-17 23:29:48  game.js
+09-17 23:29:29  renderer.js
+09-17 23:29:16  gamemenu.js
+09-17 23:28:34  audio.js
+09-17 23:28:15  config.js
+09-17 23:27:10  game_core.js
+09-17 23:22:40  meta.js
+09-17 23:17:05  tower.js
+09-17 23:16:56  theme.js
+09-17 23:14:13  bonusStats.js
+09-17 23:13:21  codex.js
+--- drawMusicButton 出现位置 ---
+gamemenu.js:59  const MUSIC_UI = {
+gamemenu.js:67  function getMusicButtonRect(game) {
+gamemenu.js:71  x: menu.x - MUSIC_UI.gap - MUSIC_UI.iconW,
+gamemenu.js:72  y: Math.round((H - MUSIC_UI.iconH) / 2),
+gamemenu.js:73  w: MUSIC_UI.iconW,
+gamemenu.js:74  h: MUSIC_UI.iconH,
+gamemenu.js:126  function drawMusicButton(game) {
+gamemenu.js:128  const r = getMusicButtonRect(game);
+gamemenu.js:279  MUSIC_UI,
+gamemenu.js:281  getMusicButtonRect,
+gamemenu.js:287  drawMusicButton,
+input.js:253  if (isPointInRect(pos, gamemenu.getMusicButtonRect(game))) {
+input.js:478  const musicRect = gamemenu.getMusicButtonRect(game);
+renderer.js:1617  gamemenu.drawMusicButton(game);

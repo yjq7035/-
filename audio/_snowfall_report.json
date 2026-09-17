@@ -1,0 +1,87 @@
+{
+  "version": 3,
+  "seed": 20260918,
+  "musical_key": "F major",
+  "progression": [
+    "Fmaj7",
+    "Gm7",
+    "Dm9",
+    "BbMaj7"
+  ],
+  "sample_rate": 32000,
+  "bpm": 92.0,
+  "bars": 12,
+  "loop_seconds": 31.3043,
+  "loop_samples": 1001739,
+  "rms_dbfs": -16.23,
+  "peak_dbfs": -0.72,
+  "seam_jump": 0.000555,
+  "typical_step": 0.0034,
+  "wav_bytes": 2003522,
+  "melody_notes": 32,
+  "figure_notes": 88,
+  "melody_out_of_key": 0,
+  "melody_strong_off_chord": 0,
+  "figure_bar_start_off_chord": 0,
+  "melody_max_interval_semitones": 3,
+  "melody_interval": {
+    "count": 24,
+    "stepwise_pct": 79.2,
+    "leap_pct": 0.0,
+    "median_semitones": 2.0,
+    "hist": {
+      "2": 8,
+      "-2": 6,
+      "3": 4,
+      "-1": 3,
+      "1": 2,
+      "-3": 1
+    }
+  },
+  "figure_interval": {
+    "count": 77,
+    "stepwise_pct": 72.7,
+    "leap_pct": 0.0,
+    "median_semitones": 2.0,
+    "hist": {
+      "2": 30,
+      "-2": 22,
+      "3": 12,
+      "-3": 9,
+      "1": 2,
+      "-1": 2
+    }
+  },
+  "melody_phrase_boundary_moves": [
+    -5,
+    0,
+    -3,
+    -7,
+    3,
+    0,
+    -2
+  ],
+  "figure_phrase_boundary_moves": [
+    -2,
+    -2,
+    2,
+    -5,
+    0,
+    -3,
+    0,
+    -9,
+    5,
+    -9
+  ],
+  "notes_per_sec": 3.833,
+  "melody_lowest_note": "E4",
+  "melody_highest_note": "D5",
+  "intro_seconds": 10.43,
+  "PASS_all_melody_in_key": true,
+  "PASS_strong_beats_on_chord": true,
+  "PASS_figure_bar_start_on_chord": true,
+  "PASS_melody_no_big_leap": true,
+  "PASS_melody_no_big_leap_note": "句内(gate: 上一轮把换句跳也算进来才误报 FAIL，已改为只约束句内)",
+  "PASS_melody_mostly_stepwise": true,
+  "mp3_bytes": 313964
+}
