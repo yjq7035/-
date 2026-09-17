@@ -572,6 +572,14 @@ function handleTouchEnd(game, e) {
 
   // ========== 场景 A：真正的拖放结束 ==========
   if (game.dragging) {
+    // 检查是否拖放到商店模块（销毁/出售）
+    if (isOverShopModule(game, pos) && game.draggingFromSlot && game.draggingFromSlot.occupied) {
+      sellTower(game, game.draggingFromSlot.tower);
+      // 清除原槽位
+      removeSlotTower(game, game.draggingFromSlot);
+      _resetDragState(game);
+      return;
+    }
     const placed = tryPlaceTowerAtPos(game, game.dragType, pos);
 
     if (placed) {
@@ -706,6 +714,37 @@ function _resetDragState(game) {
   releaseButton(game); // 拖放结束，清除商店槽按压态
 }
 
+// ==================== 出售 / 销毁 ====================
+
+/** 判断拖放位置是否覆盖商店面板区域 */
+function isOverShopModule(game, pos) {
+  const shop = require('./shop');
+  const L = shop.getShopLayout(game);
+  const pad = 16; // 商店模块可拖放的感应区域（面板 + 边缘余量）
+  const box = {
+    x: L.panel.x - pad,
+    y: L.panel.y - pad,
+    w: L.panel.w + pad * 2,
+    h: L.panel.h + pad * 2,
+  };
+  return pos.x >= box.x && pos.x <= box.x + box.w &&
+         pos.y >= box.y && pos.y <= box.y + box.h;
+}
+
+/** 出售图形塔，返还 70% 累计金币 */
+function sellTower(game, tower) {
+  const refund = Math.round((tower._cumulativeGold || 0) * 0.7);
+  game.gold += refund;
+  toast(game, `出售成功，返还 💰${refund}`, THEME.accent.gold);
+}
+
+/**
+ * 计算图形塔出售返还金额（70%）
+ */
+function getSellRefund(tower) {
+  return Math.round((tower._cumulativeGold || 0) * 0.7);
+}
+
 // ==================== 拖放底层函数 ====================
 
 /**
@@ -830,9 +869,10 @@ function tryPlaceTower(game, dragType, slot, fromShop) {
       // 合成成功：目标槽塔阶段+1，攻击增幅+100%
       slotTower.stage += 1;
       slotTower.attackPowerBoost = towerMod.getAttackPowerBoost(slotTower.stage);
-      // 如果从商店拖放，消耗金币
+      // 如果从商店拖放，消耗金币并计入累计
       if (fromShop) {
         game.gold -= cost;
+        slotTower._cumulativeGold += cost;
       }
       return true;
     }
@@ -844,6 +884,7 @@ function tryPlaceTower(game, dragType, slot, fromShop) {
       slotTower.level += 1;
       if (fromShop) {
         game.gold -= cost;
+        slotTower._cumulativeGold += cost;
       }
       return true;
     }
@@ -870,10 +911,11 @@ function tryPlaceTower(game, dragType, slot, fromShop) {
 
   // 4. 创建新塔到该空槽（仅从商店拖放时走此分支）
   if (!slot.occupied) {
-    createUnitToSlot(game, dragType, slot);
-
+    const newTower = createUnitToSlot(game, dragType, slot);
     if (fromShop) {
       game.gold -= cost;
+      // 记录该塔的基础造价作为累计金币起点
+      newTower._cumulativeGold = cost;
     }
     return true;
   }

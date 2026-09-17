@@ -36,6 +36,8 @@ function createTower(type, x, y) {
   tower.enhanceAttrs = {};
   // 每次强化落在哪一项上（顺序记录，供面板/浮层展示）
   tower.enhancePicks = [];
+  // 该塔已投入的累计金币（基础造价 + 每次强化/升级花费之和），用于出售返还
+  tower._cumulativeGold = 0;
   
   return tower;
 }

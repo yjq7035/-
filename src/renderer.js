@@ -810,6 +810,19 @@ function drawPanelHeader(ctx, block, panelX, y, panelW, towerDef, towerType, tow
   ctx.fillStyle = THEME.accent.gold;
   ctx.font = 'bold 16px Arial';
   ctx.fillText(`${towerDef.cost}`, right, y + 34);
+
+  // 累计投入（只有已放置的塔才显示）
+  if (tower && tower._cumulativeGold > 0) {
+    ctx.textAlign = 'right';
+    ctx.fillStyle = THEME.accent.gold;
+    ctx.font = 'bold 11px Arial';
+    ctx.fillText(`累计投入：${tower._cumulativeGold}`, right - PANEL_UI.padX - 120, y + 14);
+    // 出售返还 70%（灰色提示）
+    const refund = Math.round(tower._cumulativeGold * 0.7);
+    ctx.fillStyle = THEME.text.dim;
+    ctx.font = '10px Arial';
+    ctx.fillText(`出售返还 70%：${refund}`, right - PANEL_UI.padX - 120, y + 30);
+  }
 }
 
 /**
@@ -1099,6 +1112,20 @@ function drawDragPreview(game) {
   const targetSlot = findDropTargetSlot(game, pos);
   const validity = dropValidity(game, targetSlot, game.dragType);
 
+  // ---- 0. 检测拖放是否覆盖商店面板 → 变"销毁/出售"视觉状态 ----
+  const shopMod = require('./shop');
+  const shopL = shopMod.getShopLayout(game);
+  const sellPad = 16;
+  const sellBox = {
+    x: shopL.panel.x - sellPad,
+    y: shopL.panel.y - sellPad,
+    w: shopL.panel.w + sellPad * 2,
+    h: shopL.panel.h + sellPad * 2,
+  };
+  const isOverShop = pos.x >= sellBox.x && pos.x <= sellBox.x + sellBox.w &&
+                     pos.y >= sellBox.y && pos.y <= sellBox.y + sellBox.h;
+  const canSell = isOverShop && game.draggingFromSlot && game.draggingFromSlot.occupied;
+
   // ---- 1. 落点槽高亮（金色=可放置/合成，红色=不可）----
   if (targetSlot && validity !== 'none') {
     const good = validity === 'place' || validity === 'merge';
@@ -1151,6 +1178,31 @@ function drawDragPreview(game) {
   ctx.translate(-pos.x, -pos.y);
   drawTowerIcon(ctx, pos.x, pos.y, canAfford ? towerConfig.color : THEME.accent.danger, game.dragType);
   ctx.restore();
+
+  // ---- 4. 拖放覆盖商店面板 → 红色"销毁/出售"视觉反馈 ----
+  if (canSell) {
+    ctx.save();
+    // 红色呼吸光晕
+    const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 200);
+    const glow = ctx.createRadialGradient(pos.x, pos.y, 8, pos.x, pos.y, 30);
+    glow.addColorStop(0, `rgba(255, 68, 68, ${0.4 + 0.2 * pulse})`);
+    glow.addColorStop(1, 'rgba(255, 68, 68, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 30, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 底部标签 "销毁/出售"
+    ctx.fillStyle = THEME.accent.danger;
+    ctx.font = 'bold 14px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 2;
+    ctx.fillText('销毁 / 出售', pos.x, pos.y + 24);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
 }
 
 /**
@@ -1686,11 +1738,11 @@ function drawBattle(game) {
     }
   }
 
-  // 绘制拖拽预览
-  drawDragPreview(game);
-
-  // 绘制 UI
+  // 绘制 UI（含商店面板，位于拖拽图标之下）
   drawUI(game);
+
+  // 拖拽预览最后绘制，盖住商店面板，确保拖放图标始终可见
+  drawDragPreview(game);
 }
 
 /**
