@@ -593,19 +593,31 @@ function drawTowerPanel(game) {
   // 专属技能行：从 ENHANCE_SPECIAL 读取 name/desc/base+per×等级
   const towerMod = require('./tower');
   const spDef = towerMod.getSpecialDef(towerType);
-  let skillLines = [];
+  // ⚠️ 说明文字必须换行：ENHANCE_SPECIAL 的 desc 最长一句 33 字（箭形塔），
+  //    按 12.5px 字宽算约 410px，而面板内容宽只有 262px ——
+  //    单行 fillText 会直接捅出面板右边界（实测右超 116px）。
+  //    换行后的行数会累加进下方 skill 区块的高度，面板高度因此自适应。
+  const skillLines = [];
   if (spDef) {
     const lv = tower ? (tower.enhanceLevel || 0) : 0;
     const cur = spDef.base + spDef.per * lv;
     const curText = spDef.unit === '倍' ? `×${cur}` : `${cur}${spDef.unit}`;
     const perText = `+${spDef.per}${spDef.unit}`;
-    skillLines = [ `${spDef.name}: ${curText} (${perText}/级)` ];
-    if (spDef.desc) skillLines.push(spDef.desc);
+    const raws = [ `${spDef.name}: ${curText} (${perText}/级)` ];
+    if (spDef.desc) raws.push(spDef.desc);
+    for (const raw of raws) {
+      const ls = wrapTextLines(ctx, raw, contentW, `${PANEL_UI.descSize}px Arial`);
+      if (ls.length) skillLines.push(...ls);
+      else skillLines.push('');
+    }
   }
 
   // 组装区块（累加高度，杜绝重叠）
   const blocks = [];
-  let contentH = PANEL_UI.padTop;
+  // 上下留白走局部变量：矮屏塞不下时它们也参与"弹性压缩"（见下方自适应第二步）
+  let padTop = PANEL_UI.padTop;
+  let padBottom = PANEL_UI.padBottom;
+  let contentH = padTop;
   const push = (block) => { blocks.push(block); contentH += block.h; };
 
   push({ type: 'header', h: PANEL_UI.headerH });
@@ -637,13 +649,62 @@ function drawTowerPanel(game) {
   push({ type: 'enhance', h: PANEL_UI.enhanceH });
 
   push({ type: 'footer', h: PANEL_UI.footerH });
-  contentH += PANEL_UI.padBottom;
+  contentH += padBottom;
 
   // ---------- 面板外框 ----------
   const availH = H - PANEL_UI.screenMarginY * 2;
+
+  // ---- 高度自适应第二步：实在塞不下时，按"装饰优先级"依次让出高度 ----
+  // ① 先压扁"切割"分隔线（纯装饰，压扁只损失留白，不影响任何一条文字的可读性）
+  //    分隔线画在 y + block.h/2 上，所以直接改 block.h 就能让它自动重新居中；
+  // ② 再压页脚留白（那一块只有一行小字，本身用不满）；
+  // ③ 最后削上下内边距（底线 6px，保证内容不贴边）。
+  // 顺序很重要：被裁掉的绝不能是底部的「强化」按钮 —— 那才是要紧的东西。
+  if (contentH > availH) {
+    const shrinkBlocks = (type, floorH) => {
+      const still = contentH - availH;
+      if (still <= 0) return;
+      const list = blocks.filter((b) => b.type === type);
+      if (!list.length) return;
+      const per = Math.min(list[0].h - floorH, still / list.length);
+      if (per <= 0) return;
+      for (const b of list) { b.h -= per; contentH -= per; }
+    };
+    shrinkBlocks('divider', 6);
+    shrinkBlocks('footer', 16);
+
+    const still = contentH - availH;
+    if (still > 0) {
+      const MIN_PAD = 6;
+      const takeTop = Math.min(Math.max(0, padTop - MIN_PAD), still / 2);
+      const takeBottom = Math.min(Math.max(0, padBottom - MIN_PAD), still - takeTop);
+      padTop -= takeTop;
+      padBottom -= takeBottom;
+      contentH -= (takeTop + takeBottom);
+    }
+  }
+
   const panelH = Math.min(contentH, availH);
   const panelX = (W - panelW) / 2;
   const panelY = Math.max(PANEL_UI.screenMarginY, (H - panelH) / 2);
+
+  // ---------- 滚动支持 ----------
+  // 内容总高 - 面板高 = 可滚动距离
+  const scrollable = contentH > availH;
+  const maxScroll = scrollable ? (contentH - availH) : 0;
+  if (scrollable) {
+    // 打开面板时重置滚动到顶部
+    if (game.panelScrollOffset === undefined || game.panelScrollOffset === null) {
+      game.panelScrollOffset = 0;
+    }
+    game.panelScrollMax = maxScroll;
+    // 边界修正（防止面板缩放后 maxScroll 变小）
+    if (game.panelScrollOffset > maxScroll) game.panelScrollOffset = maxScroll;
+  } else {
+    game.panelScrollMax = 0;
+    game.panelScrollOffset = 0;
+  }
+  const scroll = game.panelScrollOffset || 0;
 
   // 背板 + 描边（同时建立裁剪区，超出屏幕的内容自动切掉而非糊出面板）
   // 透明度取 0.96：再低会让战场上的"第 N 波"横幅、选中塔名称标签从面板中间透出来，很脏。
@@ -663,13 +724,18 @@ function drawTowerPanel(game) {
   ctx.stroke();
   ctx.restore();
 
-  // ---------- ③ 逐块绘制 ----------
+  // 滚动指示器（滚动条）：绘制在面板右侧
+  if (scrollable) {
+    drawScrollIndicator(ctx, panelX, panelY, panelW, panelH, scroll, maxScroll);
+  }
+
+  // ---------- ③ 逐块绘制（应用滚动偏移） ----------
   ctx.save();
   ctx.beginPath();
   ctx.roundRect(panelX, panelY, panelW, panelH, PANEL_UI.radius);
   ctx.clip();
 
-  let y = panelY + PANEL_UI.padTop;
+  let y = panelY + padTop - scroll;
   for (const block of blocks) {
     switch (block.type) {
       case 'header':  drawPanelHeader(ctx, block, panelX, y, panelW, towerDef, towerType, tower); break;
@@ -685,6 +751,17 @@ function drawTowerPanel(game) {
     y += block.h;
   }
   ctx.restore();
+
+  // 滚动提示（内容可滚动时显示）
+  if (scrollable) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '10px Arial';
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillText('上滑查看更多', cx, panelY + panelH - 6);
+    ctx.restore();
+  }
 
   // 「强化」按钮的点击波纹（只画 panel 层的）
   drawButtonFx(game, ctx, 'panel');

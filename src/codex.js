@@ -45,20 +45,52 @@ function descMaxWidth(W) {
 }
 
 /**
- * 某塔的介绍文字在详情面板里会占几行（用于把面板高度算准，见 getCodexLayout）。
- * 说明：面板高度必须与"绘制时同样的换行结果"一致，所以这里复用一个换行函数，
+ * 把若干段原文按面板可用宽度逐段换行后拼成一个行数组。
+ * 说明：面板高度必须与"绘制时同样的换行结果"一致，所以这里与绘制共用同一个换行函数，
  *      字体也走同一份配置（CODEX_UI.descFont）。
+ * 命中检测（touchstart）可能先于渲染帧执行，此时 game.ctx 为 null
+ * → 回退到"每段 1 行"，布局仍能算出合理值，不会崩溃。
+ * @returns {string[]}
+ */
+function wrapParagraphs(game, raws, maxW) {
+  if (!game.ctx) return raws.slice();
+  const out = [];
+  for (const raw of raws) {
+    const ls = wrapTextLines(game.ctx, raw, maxW, CODEX_UI.descFont);
+    if (ls.length) out.push(...ls);
+    else out.push('');
+  }
+  return out;
+}
+
+/**
+ * 某塔的介绍文字在详情面板里会占几行（用于把面板高度算准，见 getCodexLayout）。
  * @returns {string[]} 行数组（至少 1 行）
  */
 function getDescLines(game, type) {
   const st = type ? TOWER_STATS[type] : null;
   const text = st && st.description ? st.description : '';
   if (!text) return [''];
-  // 命中检测（touchstart）可能先于渲染帧执行，此时 game.ctx 为 null
-  // → 回退到单行，布局仍能算出合理值，不会崩溃
-  if (!game.ctx) return [''];
-  const lines = wrapTextLines(game.ctx, text, descMaxWidth(game.W), CODEX_UI.descFont);
+  const lines = wrapParagraphs(game, [text], descMaxWidth(game.W));
   return lines.length ? lines : [''];
+}
+
+/**
+ * 「固有技能」区块的显示行：技能名 + 当前值（图签面板展示的是基准值，
+ * 局内强化等级只在战斗里的属性面板体现），以及一句话说明。
+ *
+ * ⚠️ 说明文字同样必须换行：`ENHANCE_SPECIAL[type].desc` 里有 30+ 字的长句
+ *    （例如箭形塔 33 字），单行硬画会直接捅出面板右边界。
+ *    换行后的行数会喂给 getCodexLayout 算面板高，两者必须共用本函数。
+ * @returns {string[]} 行数组（无固有技能时为空数组）
+ */
+function getSkillLines(game, type) {
+  const spDef = type ? towerMod.getSpecialDef(type) : null;
+  if (!spDef) return [];
+  const curText = spDef.unit === '倍' ? `×${spDef.base}` : `${spDef.base}${spDef.unit}`;
+  const raws = [ `${spDef.name}: ${curText} (+${spDef.per}${spDef.unit}/级)` ];
+  if (spDef.desc) raws.push(spDef.desc);
+  return wrapParagraphs(game, raws, descMaxWidth(game.W));
 }
 
 
@@ -97,18 +129,23 @@ function getCodexLayout(game) {
   // ---- 视口：详情面板打开时把底部让出来 ----
   // 面板高度自适应：介绍文字过长会自动换行（见 drawSheet），
   // 每多一行就把面板顶往上一行，保证"描述永远完整、不被按钮压住、也不越出屏幕"。
+  // 先算面板高度，再决定视口底部位置
   const descLineCount = getDescLines(game, game.codexSelected).length;
-  const towerMod = require('./tower');
-  const typeForHeight = game.codexSelected;
-  const spDef = typeForHeight ? towerMod.getSpecialDef(typeForHeight) : null;
-  const skillLinesCount = spDef ? (1 + (spDef.desc ? 1 : 0)) : 0;
-  const sheetH = CODEX_UI.sheetH + Math.max(0, descLineCount - 1) * CODEX_UI.descLineH + skillLinesCount * CODEX_UI.descLineH + 14;
+  // 固有技能的说明文字也换行 → 高度必须按【换行后的行数】算，否则面板会被文字顶穿
+  const skillLineCount = getSkillLines(game, game.codexSelected).length;
+  // 面板基准高 + 描述多出来的行 + 固有技能占的行
+  const rawSheetH = CODEX_UI.sheetH
+    + Math.max(0, descLineCount - 1) * CODEX_UI.descLineH
+    + skillLineCount * CODEX_UI.descLineH
+    + 14;
+  // 兜底：超长介绍遇上极矮屏时，面板不许顶穿标题栏
+  // （真的塞不下就缩到上限，多出来的内容由 drawSheet 的裁剪区兜住，绝不越出屏幕）
+  const sheetMaxH = Math.max(120, navTop - gridY - CODEX_UI.sheetGap);
+  const sheetH = Math.min(rawSheetH, sheetMaxH);
   const sheetTop = navTop - sheetH - CODEX_UI.sheetGap;
-  const viewportBottom = game.codexSelected ? (sheetTop - 6) : fullBottom;
+  // 视口底 = 面板上沿留 6px 间隙，但最低不能低于 gridY（视口高度至少 0）
+  const viewportBottom = game.codexSelected ? Math.max(gridY, sheetTop - 6) : fullBottom;
   const viewportH = Math.max(0, viewportBottom - gridY);
-
-  // ---- 详情面板实际高度（已按描述行数自适应） ----
-  L.sheet.h = sheetH;
 
   const contentH = rows * cellH + (rows - 1) * CODEX_UI.gap;
   const maxScroll = Math.max(0, contentH - viewportH);
@@ -426,26 +463,18 @@ function drawSheet(game, L) {
   // ---- 描述：按面板宽度【自动换行】（面板高度已按行数算好，见 getCodexLayout）----
   // 早期这里用 ellipsize 压成一行，长介绍会被硬截成"…但完全没有"这种半句；
   // 现在整段换行显示，行数变化由 sheet.h 承接，下面的内容整体下移同样多的距离。
-  // 加上裁剪区域，防止长描述文字溢出面板边界
+  // 加上裁剪区域，防止长描述文字溢出面板边界。
+  // 注意：裁剪区要贴住面板本身（左右各留 2px 给圆角描边），
+  // 旧写法写的是 `sheet.h - 50`，比面板矮 48px —— 属性行 / 图签等级正好落在被切的那段里。
   ctx.save();
   ctx.beginPath();
-  ctx.rect(sheet.x + 2, sheet.y + 2, sheet.w - 4, sheet.h - 50);
+  ctx.rect(sheet.x + 2, sheet.y + 2, sheet.w - 4, sheet.h - 4);
   ctx.clip();
 
   const descLines = getDescLines(game, type);
 
-  // 固有技能区块：从 ENHANCE_SPECIAL 读取
-  const towerMod = require('./tower');
-  const spDef = towerMod.getSpecialDef(type);
-  let skillLines = [];
-  if (spDef) {
-    const skillName = spDef.name;
-    const cur = spDef.base;
-    const curText = spDef.unit === '倍' ? `×${cur}` : `${cur}${spDef.unit}`;
-    const perText = `+${spDef.per}${spDef.unit}`;
-    skillLines = [ `${skillName}: ${curText} (${perText}/级)` ];
-    if (spDef.desc) skillLines.push(spDef.desc);
-  }
+  // 固有技能区块：行数与 getCodexLayout 走同一个函数，高度才不会被文字顶穿
+  const skillLines = getSkillLines(game, type);
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
@@ -623,6 +652,7 @@ module.exports = {
   getCodexLayout,
   getSheetButtons,
   getDescLines,
+  getSkillLines,
   setCodexScroll,
   isCodexScrollable,
   hitCodex,

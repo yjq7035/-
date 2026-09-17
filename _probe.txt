@@ -1,0 +1,5 @@
+module loaded OK
+[1] layout(no sel) THREW: ReferenceError :: L is not defined
+[2] layout(sel) THREW: ReferenceError :: L is not defined
+[3] hitCodex THREW: ReferenceError :: L is not defined
+[4] drawCodex(sel) THREW: ReferenceError :: L is not defined
