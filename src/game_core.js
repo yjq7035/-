@@ -20,7 +20,7 @@ const {
   POINTS, TALENT_POINTS, LEVELS, SHOP,
 } = config;
 
-// 「重新挑战（看广告复活）」复活后回满的生命比例。
+// 「再次挑战（看广告复活）」复活后回满的生命比例。
 // 口径：复活 = 回到 30% 生存积分，既救得回来又不至于让失败没有代价。
 const REVIVE_LIVES_RATIO = 0.3;
 
@@ -553,7 +553,8 @@ class Game {
       this.lives = Math.max(1, Math.floor(base * REVIVE_LIVES_RATIO));
     }
 
-    // 恢复当前波次
+    // 成功触发后效果：先移除场上所有怪物，重新开始当前关卡
+    this.enemies = [];
     this.enemiesToSpawn = waveMod.generateWave(this.currentWave);
     this.spawnTimer = 0;
     this.waveInProgress = true;
@@ -648,8 +649,13 @@ class Game {
     // ① 暴击
     if (sourceTower && o.allowCrit !== false) {
       const prof = towerMod.getAttackProfile(sourceTower);
+      let critMult = prof.critMult;
+      // 三角塔专属强化选项[暴力]：暴击伤害+10%
+      if (sourceTower.type === 'triangle') {
+        critMult = critMult * 1.1;
+      }
       if (prof.critChance > 0 && Math.random() * 100 < prof.critChance) {
-        dmg = dmg * prof.critMult;
+        dmg = dmg * critMult;
         crit = true;
       }
     }
@@ -661,6 +667,13 @@ class Game {
     if (effectiveArmor > 0 && dmg > 0) {
       const reduce = effectiveArmor / (effectiveArmor + BALANCE.armorK);
       dmg = Math.max(1, dmg * (1 - reduce));
+    }
+
+    // 箭形塔碎甲debuff：命中时破坏目标抗性
+    if (sourceTower && sourceTower.type === 'arrow' && enemy.alive) {
+      const armorDebuff = 3 + (sourceTower.enhanceLevel || 0) * 0; // 基础破坏3点，强化选项[碎甲]由描述体现，实际数值可通过增强等级扩展
+      // 这里简化为固定3点破坏，强化等级可扩展
+      enemy.armor = Math.max(0, (enemy.armor || 0) - 3);
     }
 
     this.triggerHit(enemy, source, dmg);

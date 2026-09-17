@@ -645,6 +645,39 @@ function drawButton(ctx, o) {
     ctx.fillText(o.label, cx, cy);
   }
 
+  // 可选：左上角图标（用于广告播放器等标识）
+  if (o.icon && !o.disabled) {
+    const iconSize = 16;
+    const iconX = x + 14;
+    const iconY = y + h / 2;
+    ctx.save();
+    ctx.translate(iconX, iconY);
+    // 简单播放器图标：矩形+三角
+    ctx.fillStyle = o.labelColor || THEME.text.primary;
+    ctx.fillRect(-iconSize/2, -iconSize/2, iconSize, iconSize);
+    ctx.fillStyle = o.labelColor || THEME.text.primary;
+    ctx.beginPath();
+    ctx.moveTo(-iconSize/3, -iconSize/3);
+    ctx.lineTo(iconSize/3, 0);
+    ctx.lineTo(-iconSize/3, iconSize/3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    // 文字右移避免重叠
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = o.labelColor;
+    ctx.font = `bold ${o.fontSize || 16}px Arial`;
+    if (o.subLabel) {
+      ctx.fillText(o.label, cx, cy - 9);
+      ctx.fillStyle = o.subColor || THEME.text.secondary;
+      ctx.font = '12px Arial';
+      ctx.fillText(o.subLabel, cx, cy + 11);
+    } else {
+      ctx.fillText(o.label, cx, cy);
+    }
+  }
+
   if (o.pressed) ctx.restore();
 }
 

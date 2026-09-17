@@ -1446,52 +1446,42 @@ function drawGameOver(game) {
     ctx.font = '14px Arial';
     ctx.fillText('观看广告后可继续游戏', cx, panelY + 226);
   } else {
-    // 失败 - 按钮：广告开关决定是否显示"重新挑战"
+    // 失败 - 按钮：AD.enabled 为 false 时，再次挑战按钮变灰不可点
     const btnH = 54;
     const inner = panelW - 40;
-    const showAd = AD.enabled;
-    if (showAd) {
-      // 双按钮
-      const gap = 16;
-      const btnW = (inner - gap) / 2;
-      const totalW = btnW * 2 + gap;
-      const x1 = (width - totalW) / 2;
-      const x2 = x1 + btnW + gap;
-      const btnY = panelY + panelH - 90;
-      game.gameOverButtons = {
-        restart: { x: x1, y: btnY, w: btnW, h: btnH },
-        watchContinue: { x: x2, y: btnY, w: btnW, h: btnH },
-      };
-      drawButton(ctx, {
-        x: x1, y: btnY, w: btnW, h: btnH,
-        top: 'rgba(165, 214, 167, 0.5)', bottom: 'rgba(76, 175, 80, 0.32)',
-        stroke: 'rgba(165, 214, 167, 0.8)',
-        label: '重新开始', labelColor: THEME.text.primary, fontSize: 16,
-        pressed: isButtonPressed(game, 'restart'),
-      });
-      drawButton(ctx, {
-        x: x2, y: btnY, w: btnW, h: btnH,
-        top: 'rgba(146, 197, 255, 0.5)', bottom: 'rgba(100, 181, 246, 0.32)',
-        stroke: 'rgba(146, 197, 255, 0.8)',
-        label: '重新挑战', labelColor: THEME.text.primary, fontSize: 15,
-        subLabel: `(${game.currentWave * 500} 金币)`, subColor: THEME.text.secondary,
-        pressed: isButtonPressed(game, 'watchContinue'),
-      });
-    } else {
-      // 仅显示重新开始
-      const btnW = inner;
-      const btnY = panelY + panelH - 90;
-      game.gameOverButtons = {
-        restart: { x: (width - btnW) / 2, y: btnY, w: btnW, h: btnH },
-      };
-      drawButton(ctx, {
-        x: (width - btnW) / 2, y: btnY, w: btnW, h: btnH,
-        top: 'rgba(165, 214, 167, 0.5)', bottom: 'rgba(76, 175, 80, 0.32)',
-        stroke: 'rgba(165, 214, 167, 0.8)',
-        label: '重新开始', labelColor: THEME.text.primary, fontSize: 18,
-        pressed: isButtonPressed(game, 'restart'),
-      });
-    }
+    const gap = 16;
+    const btnW = (inner - gap) / 2;
+    const totalW = btnW * 2 + gap;
+    const x1 = (width - totalW) / 2;
+    const x2 = x1 + btnW + gap;
+    const btnY = panelY + panelH - 90;
+    game.gameOverButtons = {
+      restart: { x: x1, y: btnY, w: btnW, h: btnH },
+      watchContinue: { x: x2, y: btnY, w: btnW, h: btnH },
+    };
+    const adEnabled = AD.enabled;
+    const watchDisabled = !adEnabled;
+    const watchTop = watchDisabled ? 'rgba(120, 120, 120, 0.4)' : 'rgba(146, 197, 255, 0.5)';
+    const watchBottom = watchDisabled ? 'rgba(90, 90, 90, 0.32)' : 'rgba(100, 181, 246, 0.32)';
+    const watchStroke = watchDisabled ? 'rgba(120, 120, 120, 0.8)' : 'rgba(146, 197, 255, 0.8)';
+    drawButton(ctx, {
+      x: x1, y: btnY, w: btnW, h: btnH,
+      top: 'rgba(165, 214, 167, 0.5)', bottom: 'rgba(76, 175, 80, 0.32)',
+      stroke: 'rgba(165, 214, 167, 0.8)',
+      label: '重新开始', labelColor: THEME.text.primary, fontSize: 16,
+      pressed: isButtonPressed(game, 'restart'),
+    });
+    drawButton(ctx, {
+      x: x2, y: btnY, w: btnW, h: btnH,
+      top: watchTop, bottom: watchBottom,
+      stroke: watchStroke,
+      label: '再次挑战', labelColor: THEME.text.primary, fontSize: 15,
+      subLabel: `(${game.currentWave * 500} 金币)`, subColor: THEME.text.secondary,
+      pressed: adEnabled && isButtonPressed(game, 'watchContinue'),
+      disabled: watchDisabled,
+      disabledColor: THEME.text.off,
+      icon: true,
+    });
   }
 
   // 结算按钮的点击波纹（只画 gameover 层的）
@@ -1660,13 +1650,138 @@ function drawProjectiles(game) {
         break;
 
       case 'square':
-        // 正方塔弹道：旋转的正方形（体积随"弹道体积"强化一起变大，命中范围同步）
+        // 正方塔弹道：旋转的正方形（体积随弹道体积强化一起变大，命中范围同步）
         ctx.rotate(proj.rotationAngle || 0);
         {
           const sq = Math.max(1.5, (proj.size || 10) * 0.3);
           ctx.fillRect(-sq, -sq, sq * 2, sq * 2);
           ctx.strokeRect(-sq, -sq, sq * 2, sq * 2);
         }
+        break;
+
+      case 'diamond':
+        // 菱形塔弹道：菱形
+        ctx.beginPath();
+        ctx.moveTo(0, -size);
+        ctx.lineTo(size, 0);
+        ctx.lineTo(0, size);
+        ctx.lineTo(-size, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'pentagon':
+        // 五边塔弹道：五边形
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const angle = (Math.PI * 2 / 5) * i - Math.PI / 2;
+          const px = size * Math.cos(angle);
+          const py = size * Math.sin(angle);
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'oval':
+        // 椭圆塔弹道：椭圆
+        ctx.beginPath();
+        ctx.ellipse(0, 0, size * 1.2, size * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'star':
+        // 星形塔弹道：六角星
+        const r1 = size * 1.2, r2 = size * 0.5;
+        ctx.beginPath();
+        for (let i = 0; i < 12; i++) {
+          const radius = i % 2 === 0 ? r1 : r2;
+          const angle = (Math.PI / 6) * i - Math.PI / 2;
+          const sx = radius * Math.cos(angle);
+          const sy = radius * Math.sin(angle);
+          if (i === 0) ctx.moveTo(sx, sy);
+          else ctx.lineTo(sx, sy);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'octagon':
+        // 八边塔弹道：八边形
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+          const angle = (Math.PI / 4) * i - Math.PI / 8;
+          const px = size * Math.cos(angle);
+          const py = size * Math.sin(angle);
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'cross':
+        // 十字塔弹道：十字形
+        const arm = size * 0.6, len = size * 1.2;
+        const pts = [
+          [-arm, -len], [arm, -len], [arm, -arm], [len, -arm],
+          [len, arm], [arm, arm], [arm, len], [-arm, len],
+          [-arm, arm], [-len, arm], [-len, -arm], [-arm, -arm],
+        ];
+        ctx.beginPath();
+        pts.forEach((p, i) => {
+          const px = p[0], py = p[1];
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'arrow':
+        // 箭形塔弹道：箭头
+        ctx.beginPath();
+        ctx.moveTo(size * 1.5, 0);
+        ctx.lineTo(size * 0.4, -size);
+        ctx.lineTo(size * 0.4, -size * 0.5);
+        ctx.lineTo(-size, -size * 0.5);
+        ctx.lineTo(-size, size * 0.5);
+        ctx.lineTo(size * 0.4, size * 0.5);
+        ctx.lineTo(size * 0.4, size);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'bolt':
+        // 闪电塔弹道：闪电
+        ctx.beginPath();
+        ctx.moveTo(size * 0.2, -size);
+        ctx.lineTo(-size * 0.9, size * 0.2);
+        ctx.lineTo(-size * 0.1, size * 0.2);
+        ctx.lineTo(-size * 0.5, size);
+        ctx.lineTo(size * 0.9, -size * 0.3);
+        ctx.lineTo(size * 0.1, -size * 0.3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'semicircle':
+        // 半圆塔弹道：半圆（激光视觉）
+        ctx.beginPath();
+        ctx.arc(0, 0, size, -Math.PI / 2, Math.PI / 2);
+        ctx.lineTo(0, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
         break;
     }
 
