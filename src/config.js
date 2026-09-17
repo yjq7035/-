@@ -117,7 +117,7 @@ const TOWER_STATS = {
 // ============================================================================
 const ENHANCE_SPECIAL = {
   // ---- 首批 5 种（开局阵容）----
-  triangle:       { key: 'critChance',            name: '暴击几率',     base: 5,   per: 5,  unit: '%',  desc: '命中时触发暴击的概率；专属强化选项[暴力]：暴击伤害+10%' },
+  triangle:       { key: 'critChance',            name: '暴击几率',     base: 5,   per: 5,  unit: '%',  desc: '命中时触发暴击的概率' },
   circle:         { key: 'explosionDamage',       name: '二段爆炸伤害', base: 25,  per: 5,  unit: '%',  desc: '二次爆炸的溅射伤害占主伤害的比例' },
   hexagon:        { key: 'eliteMult',             name: '精英伤害倍率', base: 5,   per: 1,  unit: '倍', desc: '对精英及以上（含 BOSS）的伤害倍数' },
   square:         { key: 'projectileScale',       name: '弹道体积',     base: 100, per: 20, unit: '%',  desc: '放大冲锋弹道，命中范围（相对伤害范围）同步变大' },
@@ -132,7 +132,7 @@ const ENHANCE_SPECIAL = {
   star:           { key: 'critChance',            name: '暴击几率',     base: 0,   per: 6,  unit: '%',  desc: '命中时触发暴击的概率（配上 200% 暴击倍率）' },
   octagon:        { key: 'hp',                    name: '生命',         base: 210, per: 40, unit: '',   desc: '本体更耐打' },
   cross:          { key: 'attackSpeedMultiplier', name: '攻击速度',     base: 100, per: 8,  unit: '%',  desc: '贴身速射更凶' },
-  arrow:          { key: 'penetration',           name: '穿透',         base: 0,   per: 7,  unit: '',   desc: '直接抵扣敌人抗性；攻击命中时给敌人挂碎甲debuff，破坏目标3点抗性。强化选项[碎甲]：破坏抗性+3' },
+  arrow:          { key: 'penetration',           name: '穿透',         base: 0,   per: 7,  unit: '',   desc: '直接抵扣敌人抗性；攻击命中时给敌人挂碎甲debuff，破坏目标3点抗性' },
   bolt:           { key: 'critChance',            name: '暴击几率',     base: 0,   per: 4,  unit: '%',  desc: '命中时触发暴击的概率（暴击倍率全塔最高）' },
 };
 

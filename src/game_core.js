@@ -650,10 +650,6 @@ class Game {
     if (sourceTower && o.allowCrit !== false) {
       const prof = towerMod.getAttackProfile(sourceTower);
       let critMult = prof.critMult;
-      // 三角塔专属强化选项[暴力]：暴击伤害+10%
-      if (sourceTower.type === 'triangle') {
-        critMult = critMult * 1.1;
-      }
       if (prof.critChance > 0 && Math.random() * 100 < prof.critChance) {
         dmg = dmg * critMult;
         crit = true;

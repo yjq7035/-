@@ -590,6 +590,19 @@ function drawTowerPanel(game) {
   const cx = W / 2;
   const descLines = wrapTextLines(ctx, stats.description || '', contentW, `${PANEL_UI.descSize}px Arial`);
 
+  // 专属技能行：从 ENHANCE_SPECIAL 读取 name/desc/base+per×等级
+  const towerMod = require('./tower');
+  const spDef = towerMod.getSpecialDef(towerType);
+  let skillLines = [];
+  if (spDef) {
+    const lv = tower ? (tower.enhanceLevel || 0) : 0;
+    const cur = spDef.base + spDef.per * lv;
+    const curText = spDef.unit === '倍' ? `×${cur}` : `${cur}${spDef.unit}`;
+    const perText = `+${spDef.per}${spDef.unit}`;
+    skillLines = [ `${spDef.name}: ${curText} (${perText}/级)` ];
+    if (spDef.desc) skillLines.push(spDef.desc);
+  }
+
   // 组装区块（累加高度，杜绝重叠）
   const blocks = [];
   let contentH = PANEL_UI.padTop;
@@ -613,6 +626,12 @@ function drawTowerPanel(game) {
 
   push({ type: 'divider', h: PANEL_UI.dividerH });
   push({ type: 'desc', h: PANEL_UI.sectionTitleH + descLines.length * PANEL_UI.descLineH, lines: descLines });
+
+  // 固有技能区块
+  if (skillLines.length > 0) {
+    push({ type: 'divider', h: PANEL_UI.dividerH });
+    push({ type: 'skill', h: PANEL_UI.sectionTitleH + skillLines.length * PANEL_UI.descLineH, lines: skillLines });
+  }
 
   push({ type: 'divider', h: PANEL_UI.dividerH });
   push({ type: 'enhance', h: PANEL_UI.enhanceH });
@@ -658,6 +677,7 @@ function drawTowerPanel(game) {
       case 'attrs':   drawPanelAttrRows(ctx, block, panelX, y, panelW); break;
       case 'effects': drawPanelEffects(ctx, block, panelX, y, panelW); break;
       case 'desc':    drawPanelDescription(ctx, block, panelX, y, panelW, stats); break;
+      case 'skill':   drawPanelSkill(ctx, block, panelX, y, panelW); break;
       case 'enhance': drawPanelEnhance(ctx, block, panelX, y, panelW, game); break;
       case 'footer':  drawPanelFooter(ctx, block, cx, y); break;
       default: break;
@@ -830,6 +850,27 @@ function drawPanelDescription(ctx, block, panelX, y, panelW, stats) {
   }
 }
 
+/** 固有技能区：标题 + 技能名/数值 + 说明 */
+function drawPanelSkill(ctx, block, panelX, y, panelW) {
+  const left = panelX + PANEL_UI.padX;
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 12px Arial';
+  ctx.fillStyle = THEME.text.secondary;
+  ctx.fillText('固有技能', left, y + PANEL_UI.sectionTitleH / 2);
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = `${PANEL_UI.descSize}px Arial`;
+  ctx.fillStyle = THEME.text.primary;
+  let lineY = y + PANEL_UI.sectionTitleH + PANEL_UI.descLineH / 2;
+  for (const line of block.lines) {
+    ctx.fillText(line, left, lineY);
+    lineY += PANEL_UI.descLineH;
+  }
+}
+
 /**
  * 强化区：花金币提升该塔（局内，不跨局）。
  * 2026-09 二次重做后的规则：
@@ -888,7 +929,7 @@ function drawPanelEnhance(ctx, block, panelX, y, panelW, game) {
   ctx.textBaseline = 'middle';
   ctx.font = 'bold 13px Arial';
   ctx.fillStyle = lv > 0 ? THEME.accent.green : THEME.text.primary;
-  ctx.fillText(`强化 Lv.${lv}/${maxLv}`, left, y + 20);
+  ctx.fillText(`固有技能 Lv.${lv}/${maxLv}`, left, y + 20);
 
   ctx.font = '10px Arial';
   if (!stageReady) {
@@ -917,10 +958,10 @@ function drawPanelEnhance(ctx, block, panelX, y, panelW, game) {
   } else if (affordable) {
     top = 'rgba(129, 199, 132, 0.42)'; bottom = 'rgba(56, 142, 60, 0.26)';
     stroke = 'rgba(129, 199, 132, 0.85)';
-    label = `强化 💰${cost}`; labelColor = THEME.text.primary;
+    label = `本次提升固有技能 💰${cost}`; labelColor = THEME.text.primary;
   } else {
     top = THEME.track.soft; bottom = THEME.track.faint; stroke = THEME.border.subtle;
-    label = `强化 💰${cost}`; labelColor = THEME.text.off;
+    label = `本次提升固有技能 💰${cost}`; labelColor = THEME.text.off;
   }
   void usable;
 

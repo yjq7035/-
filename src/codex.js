@@ -54,6 +54,9 @@ function getDescLines(game, type) {
   const st = type ? TOWER_STATS[type] : null;
   const text = st && st.description ? st.description : '';
   if (!text) return [''];
+  // 命中检测（touchstart）可能先于渲染帧执行，此时 game.ctx 为 null
+  // → 回退到单行，布局仍能算出合理值，不会崩溃
+  if (!game.ctx) return [''];
   const lines = wrapTextLines(game.ctx, text, descMaxWidth(game.W), CODEX_UI.descFont);
   return lines.length ? lines : [''];
 }
@@ -95,10 +98,17 @@ function getCodexLayout(game) {
   // 面板高度自适应：介绍文字过长会自动换行（见 drawSheet），
   // 每多一行就把面板顶往上一行，保证"描述永远完整、不被按钮压住、也不越出屏幕"。
   const descLineCount = getDescLines(game, game.codexSelected).length;
-  const sheetH = CODEX_UI.sheetH + Math.max(0, descLineCount - 1) * CODEX_UI.descLineH;
+  const towerMod = require('./tower');
+  const typeForHeight = game.codexSelected;
+  const spDef = typeForHeight ? towerMod.getSpecialDef(typeForHeight) : null;
+  const skillLinesCount = spDef ? (1 + (spDef.desc ? 1 : 0)) : 0;
+  const sheetH = CODEX_UI.sheetH + Math.max(0, descLineCount - 1) * CODEX_UI.descLineH + skillLinesCount * CODEX_UI.descLineH + 14;
   const sheetTop = navTop - sheetH - CODEX_UI.sheetGap;
   const viewportBottom = game.codexSelected ? (sheetTop - 6) : fullBottom;
   const viewportH = Math.max(0, viewportBottom - gridY);
+
+  // ---- 详情面板实际高度（已按描述行数自适应） ----
+  L.sheet.h = sheetH;
 
   const contentH = rows * cellH + (rows - 1) * CODEX_UI.gap;
   const maxScroll = Math.max(0, contentH - viewportH);
@@ -416,8 +426,26 @@ function drawSheet(game, L) {
   // ---- 描述：按面板宽度【自动换行】（面板高度已按行数算好，见 getCodexLayout）----
   // 早期这里用 ellipsize 压成一行，长介绍会被硬截成"…但完全没有"这种半句；
   // 现在整段换行显示，行数变化由 sheet.h 承接，下面的内容整体下移同样多的距离。
+  // 加上裁剪区域，防止长描述文字溢出面板边界
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(sheet.x + 2, sheet.y + 2, sheet.w - 4, sheet.h - 50);
+  ctx.clip();
+
   const descLines = getDescLines(game, type);
-  const descShift = Math.max(0, descLines.length - 1) * CODEX_UI.descLineH;
+
+  // 固有技能区块：从 ENHANCE_SPECIAL 读取
+  const towerMod = require('./tower');
+  const spDef = towerMod.getSpecialDef(type);
+  let skillLines = [];
+  if (spDef) {
+    const skillName = spDef.name;
+    const cur = spDef.base;
+    const curText = spDef.unit === '倍' ? `×${cur}` : `${cur}${spDef.unit}`;
+    const perText = `+${spDef.per}${spDef.unit}`;
+    skillLines = [ `${skillName}: ${curText} (${perText}/级)` ];
+    if (spDef.desc) skillLines.push(spDef.desc);
+  }
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
@@ -426,6 +454,19 @@ function drawSheet(game, L) {
   for (let i = 0; i < descLines.length; i++) {
     ctx.fillText(descLines[i], sheet.x + CODEX_UI.descPadX, sheet.y + CODEX_UI.descTop + i * CODEX_UI.descLineH);
   }
+
+  // 固有技能标题 + 内容
+  const skillTitleY = sheet.y + CODEX_UI.descTop + descLines.length * CODEX_UI.descLineH + 6;
+  ctx.font = 'bold 11px Arial';
+  ctx.fillStyle = THEME.text.primary;
+  ctx.fillText('固有技能', sheet.x + CODEX_UI.descPadX, skillTitleY);
+  ctx.font = CODEX_UI.descFont;
+  ctx.fillStyle = THEME.text.secondary;
+  for (let i = 0; i < skillLines.length; i++) {
+    ctx.fillText(skillLines[i], sheet.x + CODEX_UI.descPadX, skillTitleY + 14 + i * CODEX_UI.descLineH);
+  }
+
+  const descShift = descLines.length * CODEX_UI.descLineH + 14 + skillLines.length * CODEX_UI.descLineH;
 
   // 分隔线②：描述与属性数值区之间（随描述行数下移）
   drawTaperedDivider(ctx, sheet.x + sheet.w / 2, sheet.y + 66 + descShift, sheet.w - 28, 4);
@@ -468,6 +509,8 @@ function drawSheet(game, L) {
   ctx.font = 'bold 11px Arial';
   ctx.fillStyle = THEME.accent.violet;
   ctx.fillText(unlocked ? `图签 Lv.${level}/${CODEX.maxLevel}  ·  伤害 +${Math.round((dmgMult - 1) * 100)}%` : '未解锁（需 ✨' + cost + '）', sheet.x + 14, attrY + 36);
+
+  ctx.restore(); // 关闭描述裁剪
 
   // ---- 按钮 1：解锁 / 升级 ----
   let upLabel, upEnabled, upSub;

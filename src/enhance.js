@@ -156,12 +156,12 @@ function drawEnhancePicker(game) {
   ctx.fill();
   ctx.stroke();
 
-  // 标题：强化 · 塔名   Lv.x → Lv.y
+  // 标题：固有技能 · 塔名   Lv.x → Lv.y
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.font = 'bold 15px Arial';
   ctx.fillStyle = THEME.text.primary;
-  ctx.fillText(`强化 · ${towerDef.name}`, L.panel.x + ENHANCE_UI.padX, L.titleCY);
+  ctx.fillText(`固有技能 · ${towerDef.name}`, L.panel.x + ENHANCE_UI.padX, L.titleCY);
 
   ctx.textAlign = 'right';
   ctx.font = 'bold 13px Arial';
@@ -176,7 +176,7 @@ function drawEnhancePicker(game) {
   ctx.font = 'bold 12px Arial';
   ctx.fillStyle = THEME.accent.green;
   ctx.fillText(
-    sp ? `本次获得 ${sp.name} ${gainText(tower.type)}` : '本次获得',
+    sp ? `本次提升固有技能 ${sp.name} ${gainText(tower.type)}` : '本次获得',
     L.panel.x + ENHANCE_UI.padX, L.infoLines[0]
   );
 
@@ -204,7 +204,7 @@ function drawEnhancePicker(game) {
   ctx.textBaseline = 'middle';
   ctx.font = '10px Arial';
   ctx.fillStyle = THEME.text.off;
-  ctx.fillText('点卡片立即强化 · 点空白取消', W / 2, L.hintY);
+  ctx.fillText('点卡片提升固有技能 · 点空白取消', W / 2, L.hintY);
 
   ctx.restore();
 }
@@ -257,7 +257,7 @@ function drawOptionCard(game, card, tower) {
 
   ctx.font = '9px Arial';
   ctx.fillStyle = THEME.text.off;
-  ctx.fillText('本次获得', x + w - 14, y + h / 2 + 11);
+  ctx.fillText('本次提升', x + w - 14, y + h / 2 + 11);
 
   ctx.restore();
 }
