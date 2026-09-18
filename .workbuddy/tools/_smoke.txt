@@ -4,14 +4,14 @@
   ok   战斗 + 属性面板 渲染  → 指令 397 条
   ok   图签（无选中） 渲染  → 指令 370 条
   ok   图签 + 详情面板 渲染  → 指令 330 条
-  ok   图签 + 选宝石浮层 渲染  → 指令 410 条
+  ok   图签 + 选宝石浮层 渲染  → 指令 346 条
   ok   天赋 渲染  → 指令 274 条
-  ok   背包 渲染  → 指令 294 条
+  ok   背包 渲染  → 指令 834 条
   ok   图签：点卡片弹出详情面板  → codexSelected=triangle
   ok   图签：执行一次升级不抛异常  → ok
   ok   图签：点空白收面板  → codexSelected=null
   ok   导航第 5 格 = 背包（真实点按可进入）  → 第5格 scene=bag → game.scene=bag
-  ok   背包：广告未开放时拒绝解锁（不假解锁）  → AD.enabled=false → {"ok":false,"reason":"ad"} slots 20→20
+  ok   背包：广告未开放时拒绝解锁（不假解锁）  → AD.enabled=false → {"ok":false,"reason":"ad"} slots 24→24
   ok   战斗：点顶栏不抛异常  → ok
 
 ===== 375x667 =====
@@ -19,14 +19,14 @@
   ok   战斗 + 属性面板 渲染  → 指令 415 条
   ok   图签（无选中） 渲染  → 指令 370 条
   ok   图签 + 详情面板 渲染  → 指令 330 条
-  ok   图签 + 选宝石浮层 渲染  → 指令 410 条
+  ok   图签 + 选宝石浮层 渲染  → 指令 346 条
   ok   天赋 渲染  → 指令 334 条
-  ok   背包 渲染  → 指令 294 条
+  ok   背包 渲染  → 指令 834 条
   ok   图签：点卡片弹出详情面板  → codexSelected=triangle
   ok   图签：执行一次升级不抛异常  → ok
   ok   图签：点空白收面板  → codexSelected=null
   ok   导航第 5 格 = 背包（真实点按可进入）  → 第5格 scene=bag → game.scene=bag
-  ok   背包：广告未开放时拒绝解锁（不假解锁）  → AD.enabled=false → {"ok":false,"reason":"ad"} slots 20→20
+  ok   背包：广告未开放时拒绝解锁（不假解锁）  → AD.enabled=false → {"ok":false,"reason":"ad"} slots 24→24
   ok   战斗：点顶栏不抛异常  → ok
 
 ===== 375x812 =====
@@ -34,14 +34,14 @@
   ok   战斗 + 属性面板 渲染  → 指令 444 条
   ok   图签（无选中） 渲染  → 指令 370 条
   ok   图签 + 详情面板 渲染  → 指令 396 条
-  ok   图签 + 选宝石浮层 渲染  → 指令 476 条
+  ok   图签 + 选宝石浮层 渲染  → 指令 412 条
   ok   天赋 渲染  → 指令 326 条
-  ok   背包 渲染  → 指令 294 条
+  ok   背包 渲染  → 指令 834 条
   ok   图签：点卡片弹出详情面板  → codexSelected=triangle
   ok   图签：执行一次升级不抛异常  → ok
   ok   图签：点空白收面板  → codexSelected=null
   ok   导航第 5 格 = 背包（真实点按可进入）  → 第5格 scene=bag → game.scene=bag
-  ok   背包：广告未开放时拒绝解锁（不假解锁）  → AD.enabled=false → {"ok":false,"reason":"ad"} slots 20→20
+  ok   背包：广告未开放时拒绝解锁（不假解锁）  → AD.enabled=false → {"ok":false,"reason":"ad"} slots 24→24
   ok   战斗：点顶栏不抛异常  → ok
 
 ===== 390x844 =====
@@ -49,14 +49,14 @@
   ok   战斗 + 属性面板 渲染  → 指令 447 条
   ok   图签（无选中） 渲染  → 指令 370 条
   ok   图签 + 详情面板 渲染  → 指令 396 条
-  ok   图签 + 选宝石浮层 渲染  → 指令 476 条
+  ok   图签 + 选宝石浮层 渲染  → 指令 412 条
   ok   天赋 渲染  → 指令 326 条
-  ok   背包 渲染  → 指令 294 条
+  ok   背包 渲染  → 指令 834 条
   ok   图签：点卡片弹出详情面板  → codexSelected=triangle
   ok   图签：执行一次升级不抛异常  → ok
   ok   图签：点空白收面板  → codexSelected=null
   ok   导航第 5 格 = 背包（真实点按可进入）  → 第5格 scene=bag → game.scene=bag
-  ok   背包：广告未开放时拒绝解锁（不假解锁）  → AD.enabled=false → {"ok":false,"reason":"ad"} slots 20→20
+  ok   背包：广告未开放时拒绝解锁（不假解锁）  → AD.enabled=false → {"ok":false,"reason":"ad"} slots 24→24
   ok   战斗：点顶栏不抛异常  → ok
 
 ===== 428x926 =====
@@ -64,15 +64,15 @@
   ok   战斗 + 属性面板 渲染  → 指令 463 条
   ok   图签（无选中） 渲染  → 指令 370 条
   ok   图签 + 详情面板 渲染  → 指令 472 条
-  ok   图签 + 选宝石浮层 渲染  → 指令 552 条
+  ok   图签 + 选宝石浮层 渲染  → 指令 488 条
   ok   天赋 渲染  → 指令 326 条
-  ok   背包 渲染  → 指令 294 条
+  ok   背包 渲染  → 指令 834 条
   ok   图签：点卡片弹出详情面板  → codexSelected=triangle
   ok   图签：执行一次升级不抛异常  → ok
   ok   图签：点空白收面板  → codexSelected=null
   ok   导航第 5 格 = 背包（真实点按可进入）  → 第5格 scene=bag → game.scene=bag
-  ok   背包：广告未开放时拒绝解锁（不假解锁）  → AD.enabled=false → {"ok":false,"reason":"ad"} slots 20→20
+  ok   背包：广告未开放时拒绝解锁（不假解锁）  → AD.enabled=false → {"ok":false,"reason":"ad"} slots 24→24
   ok   战斗：点顶栏不抛异常  → ok
 
 === 冒烟汇总：5 分辨率 × 7 场景，失败 0 条 ===
-=== 判据戳：TOWER_ORDER=17 / 2026-09-17T16:47:07.386Z ===
+=== 判据戳：TOWER_ORDER=17 / 2026-09-18T11:03:48.727Z ===

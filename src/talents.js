@@ -124,15 +124,11 @@ function learn(game, id) {
   const res = meta.learnTalent(id);
   const def = TALENTS.filter((t) => t.id === id)[0];
   if (res.ok) {
-    game.toast = {
-      text: `${def ? def.name : id} → Lv.${res.level}`,
-      color: THEME.accent.cyan,
-      t0: Date.now(),
-    };
+    theme.pushToast(game, `${def ? def.name : id} → Lv.${res.level}`, THEME.accent.cyan);
   } else {
     const msg = res.reason === 'points' ? '天赋点不足'
       : (res.reason === 'maxed' ? '该天赋已精通' : '无法学习');
-    game.toast = { text: msg, color: THEME.accent.danger, t0: Date.now() };
+    theme.pushToast(game, msg, THEME.accent.danger);
   }
   return res;
 }

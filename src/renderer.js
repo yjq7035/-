@@ -20,11 +20,12 @@ const enhanceMod = require('./enhance');
 const meta = require('./meta');
 const gems = require('./gems');
 const skillSlot = require('./skillSlot');
+const gemModal = require('./gemModal');
 const { anchorPointOf } = require('./geometry');
 
 // 通用 UI 原子统一来自 theme.js（本项目 UI 风格与坐标工具的唯一真源）
 const {
-  THEME, shade, teamBandGradient, easeOutCubic, easeOutBack,
+  THEME, TOAST, shade, teamBandGradient, easeOutCubic, easeOutBack,
   roundRectPath, drawStar, drawTowerIcon, wrapTextLines, wrapText,
   drawTaperedDivider, drawButton, drawButtonFx, isButtonPressed,
   drawPillTitle, drawChip, ellipsize, drawChevron, drawScrollBar,
@@ -687,8 +688,9 @@ function drawTowerPanel(game) {
     : 0;
 
   // 宝石槽条：展示该塔型已嵌入的宝石（嵌入操作在图签里做，这里负责"看得到"）
-  const gemKinds = gems.embeddedGems(towerType);
-  const gemBlockH = gemKinds.length > 0 ? PANEL_UI.sectionTitleH + PANEL_UI.gemRowH : 0;
+  // 嵌入条目带等级（合成产物 > Lv.1），名字按需求带上 Lv
+  const gemEntries = gems.embeddedEntries(towerType);
+  const gemBlockH = gemEntries.length > 0 ? PANEL_UI.sectionTitleH + PANEL_UI.gemRowH : 0;
 
   // 组装区块（累加高度，杜绝重叠）
   const blocks = [];
@@ -724,9 +726,9 @@ function drawTowerPanel(game) {
   }
 
   // 宝石区块（已嵌入的宝石，与固有技能绑定）
-  if (gemKinds.length > 0) {
+  if (gemEntries.length > 0) {
     push({ type: 'divider', h: PANEL_UI.dividerH });
-    push({ type: 'gems', h: gemBlockH, kinds: gemKinds });
+    push({ type: 'gems', h: gemBlockH, entries: gemEntries });
   }
 
   push({ type: 'divider', h: PANEL_UI.dividerH });
@@ -1073,7 +1075,7 @@ function drawPanelSkill(ctx, block, panelX, y, panelW) {
 function drawPanelGems(ctx, block, panelX, y, panelW) {
   const left = panelX + PANEL_UI.padX;
   const right = panelX + panelW - PANEL_UI.padX;
-  const kinds = block.kinds || [];
+  const entries = block.entries || [];
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
@@ -1086,20 +1088,21 @@ function drawPanelGems(ctx, block, panelX, y, panelW) {
   ctx.fillStyle = THEME.text.off;
   ctx.fillText('与固有技能绑定', right, y + PANEL_UI.sectionTitleH / 2);
 
-  // 珠子逐个横排：图标 + 名称（挤不下就只留图标）
+  // 珠子逐个横排：图标 + 名字（带 Lv；挤不下就只留图标）
   const cy = y + PANEL_UI.sectionTitleH + PANEL_UI.gemRowH / 2;
   let x = left + 12;
-  for (const kind of kinds) {
-    const def = gems.gemDef(kind);
+  for (const entry of entries) {
+    const def = gems.gemDef(entry.kind);
     if (!def) continue;
-    gems.drawGemIcon(ctx, x, cy, 11, kind);
+    gems.drawGemIcon(ctx, x, cy, 11, entry.kind);
     x += 16;
     ctx.textAlign = 'left';
     ctx.font = '11px Arial';
     ctx.fillStyle = def.color;
-    if (x + ctx.measureText(def.name).width < right - 2) {
-      ctx.fillText(def.name, x, cy);
-      x += ctx.measureText(def.name).width + 12;
+    const label = gems.gemName(entry.kind, entry.lv);
+    if (x + ctx.measureText(label).width < right - 2) {
+      ctx.fillText(label, x, cy);
+      x += ctx.measureText(label).width + 12;
     } else {
       x += 4;   // 放不下名称就只留图标，绝不越出面板
     }
@@ -2264,50 +2267,127 @@ function drawProjectiles(game) {
 }
 
 /**
- * 轻提示（操作反馈）：解锁 / 升级 / 登场 / 学习 / 失败原因。
- * game.toast = { text, color, t0 }，自动淡出。
+ * 轻提示（操作反馈）：多条同屏、各自独立计时、互相顶位。
+ * 数据由 theme.pushToast 写入 game.toasts = [{ text, color, t0, duration, y }]。
+ *
+ * 动效：
+ *   ① 默认出现在屏幕高度 45% 处，先原地淡入（淡入期间不位移），
+ *      同时带一个「由大到小」的收缩动画（spawnScale → 1.0）；
+ *   ② 淡入完成后开始向上漂浮；
+ *   ③ 后续提示到来时，把前面的整体顶上去（y 逐帧缓动，不瞬移），形成动态层次；
+ *   ④ 每条活满各自的 duration 后淡出并回收。
+ * 视觉：文字上下各一条「中间实、两端渐隐」的分割线；
+ *      背景为横向渐变（中间不透明度高、两侧渐隐为透明），不用旧的圆角药丸 + 描边。
  */
-function drawToast(game) {
-  const t = game.toast;
-  if (!t) return;
-
-  const elapsed = (Date.now() - t.t0) / 1000;
-  if (elapsed > 2.2) { game.toast = null; return; }
+function drawToasts(game) {
+  const list = game.toasts;
+  if (!list || !list.length) return;
 
   const ctx = game.ctx;
   const W = game.W;
   const H = game.H;
-  const navTop = H - LAYOUT.navHeight;
+  const now = Date.now();
 
-  const fadeIn = Math.min(1, elapsed / 0.15);
-  const fadeOut = elapsed > 1.8 ? Math.max(0, 1 - (elapsed - 1.8) / 0.35) : 1;
-  const alpha = Math.min(fadeIn, fadeOut);
+  // 帧间隔：draw 没有 dt，用上一帧时间戳自己算（顶位缓动要用）
+  const dt = Math.min(0.05, Math.max(0.001, (now - (game._toastFrameTs || now)) / 1000));
+  game._toastFrameTs = now;
+
+  const baseY = H * TOAST.baseYRatio;
+  const step = TOAST.lineHeight + TOAST.gap;
+
+  // 回收：活满各自 duration 的移除
+  for (let i = list.length - 1; i >= 0; i--) {
+    if ((now - list[i].t0) / 1000 >= list[i].duration) list.splice(i, 1);
+  }
+  if (!list.length) return;
 
   ctx.save();
-  ctx.globalAlpha = alpha;
-
-  ctx.font = 'bold 12px Arial';
-  const tw = ctx.measureText(t.text).width || 60;
-  const w = Math.min(W - 32, tw + 30);
-  const h = 30;
-  const x = (W - w) / 2;
-  const y = navTop - h - 80;
-
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.88)';
-  roundRectPath(ctx, x, y, w, h, h / 2);
-  ctx.fill();
-
-  ctx.strokeStyle = t.color || THEME.border.strong;
-  ctx.lineWidth = 1.2;
-  roundRectPath(ctx, x, y, w, h, h / 2);
-  ctx.stroke();
-
-  ctx.fillStyle = t.color || THEME.text.primary;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(t.text, W / 2, y + h / 2);
+  ctx.font = `bold ${TOAST.fontSize}px Arial`;
+
+  const maxTextW = W - 48;
+
+  // 由旧到新绘制：最新的压在其它之上
+  for (let i = 0; i < list.length; i++) {
+    const t = list[i];
+    const age = (now - t.t0) / 1000;
+
+    // 透明度：开头淡入、结尾淡出
+    const aIn = Math.min(1, age / TOAST.fadeIn);
+    const aOut = Math.min(1, Math.max(0, (t.duration - age) / TOAST.fadeOut));
+    const alpha = Math.max(0, Math.min(aIn, aOut));
+    if (alpha <= 0.001) continue;
+
+    // 淡入完成后开始向上漂浮（越老漂得越高）
+    const riseT = Math.min(1, Math.max(0, (age - TOAST.fadeIn) / Math.max(0.001, t.duration - TOAST.fadeIn)));
+    const rise = TOAST.rise * easeOutCubic(riseT);
+
+    // 被后面的（更新的）提示顶上去：越靠前，目标位越高
+    const stackOffset = (list.length - 1 - i) * step;
+    const targetY = baseY - rise - stackOffset;
+
+    if (t.y === null || t.y === undefined) t.y = targetY;
+    else t.y += (targetY - t.y) * Math.min(1, dt * 14);
+
+    // 淡入附带「由大到小」收缩：起手放大，随淡入完成回到原尺寸
+    const spawnT = Math.min(1, age / TOAST.fadeIn);
+    const scale = 1 + (TOAST.spawnScale - 1) * (1 - easeOutCubic(spawnT));
+
+    const text = ellipsize(ctx, t.text, maxTextW);
+    const tw = ctx.measureText(text).width || 60;
+    const w = Math.min(W - 24, tw + TOAST.padX);
+
+    ctx.save();
+    ctx.translate(W / 2, t.y);
+    ctx.scale(scale, scale);
+    drawToastBand(ctx, 0, 0, w, t.color, alpha, text);
+    ctx.restore();
+  }
 
   ctx.restore();
+}
+
+/** 画一条轻提示：横向渐隐背景 + 上下分割线 + 居中文字 */
+function drawToastBand(ctx, cx, cy, w, color, alpha, text) {
+  const x0 = cx - w / 2;
+  const x1 = cx + w / 2;
+  const halfH = TOAST.lineHeight / 2;
+
+  ctx.globalAlpha = alpha;
+
+  // 背景：中间不透明度高，两侧渐隐为透明
+  const bg = ctx.createLinearGradient(x0, 0, x1, 0);
+  bg.addColorStop(0, shade(TOAST.bgColor, 0, 0));
+  bg.addColorStop(0.22, shade(TOAST.bgColor, 0, TOAST.bgAlpha * 0.72));
+  bg.addColorStop(0.5, shade(TOAST.bgColor, 0, TOAST.bgAlpha));
+  bg.addColorStop(0.78, shade(TOAST.bgColor, 0, TOAST.bgAlpha * 0.72));
+  bg.addColorStop(1, shade(TOAST.bgColor, 0, 0));
+  ctx.fillStyle = bg;
+  ctx.fillRect(x0, cy - halfH, w, TOAST.lineHeight);
+
+  // 上下分割线（同款横向渐隐）
+  drawToastLine(ctx, cx, cy - TOAST.dividerOffset, w * 0.92, color);
+  drawToastLine(ctx, cx, cy + TOAST.dividerOffset, w * 0.92, color);
+
+  // 文字
+  ctx.fillStyle = color;
+  ctx.fillText(text, cx, cy);
+  ctx.globalAlpha = 1;
+}
+
+/** 轻提示的上下分割线：中间实、两端渐隐 */
+function drawToastLine(ctx, cx, y, w, color) {
+  const x0 = cx - w / 2;
+  const x1 = cx + w / 2;
+  const g = ctx.createLinearGradient(x0, 0, x1, 0);
+  g.addColorStop(0, shade(color, 0, 0));
+  g.addColorStop(0.18, shade(color, 0, 0.55));
+  g.addColorStop(0.5, shade(color, 0, 0.9));
+  g.addColorStop(0.82, shade(color, 0, 0.55));
+  g.addColorStop(1, shade(color, 0, 0));
+  ctx.fillStyle = g;
+  ctx.fillRect(x0, y - 0.5, w, 1);
 }
 
 // 组合一帧的完整绘制（按场景分派）
@@ -2330,6 +2410,12 @@ function render(game) {
     bag.drawBag(game);
   } else {
     drawBattle(game);
+  }
+
+  // 宝石浮层（嵌入列表 / 宝石详情 / 合成）：模态，盖在场景内容之上、导航栏之下
+  // （与旧版选宝石浮层的层级一致 —— 导航栏始终可见可点，点导航切场景会顺带收掉浮层）
+  if ((scene === 'codex' || scene === 'bag') && gemModal.hasActive(game)) {
+    gemModal.drawGemModal(game);
   }
 
   // 战前选关界面（战斗未开始时居中弹出；画在导航栏之下，导航仍可用）
@@ -2363,7 +2449,7 @@ function render(game) {
   }
 
   // 操作轻提示
-  drawToast(game);
+  drawToasts(game);
 }
 
 module.exports = {
@@ -2384,7 +2470,7 @@ module.exports = {
   drawUI,
   drawTopBar,
   drawGameOver,
-  drawToast,
+  drawToasts,
   drawTowerPanel,
   drawTaperedDivider,
   wrapTextLines,

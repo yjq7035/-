@@ -757,16 +757,19 @@
 
 ===== 宝石嵌入闭环（真实点击）=====
   ok   存在已解锁塔型  → type=triangle 图签 Lv.1
-  ok   新档背包里有赠送宝石  → 背包 2 颗
+  ok   背包里有宝石可嵌  → 背包 3 颗
   ok   槽位在视区内可命中  → 可命中槽 5/5（面板已滚到 0）
   ok   点空槽弹出选宝石浮层  → gemPicker={"type":"triangle","index":0}
-  ok   浮层里有可选的宝石行  → 红宝石 ×1
-  ok   嵌入后宝石从背包消失  → 背包 2→1 · triangle 已嵌 [ruby]
-  ok   嵌入后浮层自动关闭
+  ok   浮层里有可选的宝石行  → 红宝石 Lv.1（逐颗列表，带 Lv）
+  ok   点宝石行弹出宝石详情浮层（不再直接嵌入）  → uid=g1 from=codex
+  ok   详情浮层打开时背包不变  → 背包 3
+  ok   详情浮层底部有「合成宝石」「嵌入宝石」两项  → 两项齐全
+  ok   嵌入后宝石从背包消失  → 背包 3→2 · triangle 已嵌 [ruby]
+  ok   嵌入后浮层全部自动关闭  → gemPicker=false gemInfo=false
   ok   宝石加成计入该塔型  → count=1 kinds=[ruby]
-  ok   点已嵌宝石的槽可取出（回背包）  → 背包 2 · triangle 已嵌 []
+  ok   点已嵌宝石的槽可取出（回背包）  → 背包 3 · triangle 已嵌 []
   ok   未解锁塔：槽位全部上锁  → 解锁槽 0 个（图签 Lv.0）
   ok   未解锁塔：点击不弹浮层  → hit.kind=none
 
 === 图签汇总：7 分辨率 × 17 塔型，失败 0 条 ===
-=== 判据戳：TOWER_ORDER=17 型 / 面板三段式(sheetHeaderH=44) / 2026-09-17T16:47:06.710Z ===
+=== 判据戳：TOWER_ORDER=17 型 / 面板三段式(sheetHeaderH=44) / 2026-09-18T11:03:47.959Z ===

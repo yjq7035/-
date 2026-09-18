@@ -125,14 +125,17 @@ function isBagScrollable(game) {
 }
 
 /** 命中检测。
- * @returns {{kind:'expand'|'cell'|'scroll'|'scrollUp'|'scrollDown', index?:number}|null}
+ * @returns {{kind:'expand'|'cell'|'scroll'|'scrollUp'|'scrollDown', index?:number, item?:object}|null}
+ *   cell 命中时带 item（背包里的宝石 {uid, kind, lv}；空格 / 未解锁格 item=null）
  */
 function hitBag(game, pos) {
   const L = getBagLayout(game);
 
   if (theme.pointInRect(pos, L.btn)) return { kind: 'expand' };
   for (const cell of L.cells) {
-    if (theme.pointInRect(pos, cell)) return { kind: 'cell', index: cell.index };
+    if (theme.pointInRect(pos, cell)) {
+      return { kind: 'cell', index: cell.index, item: cell.item || null };
+    }
   }
   return null;
 }
@@ -179,7 +182,7 @@ function actExpandBag(game) {
 
 /** 统一轻提示（本模块内部用） */
 function say(game, text, color) {
-  game.toast = { text: text, color: color || THEME.text.secondary, t0: Date.now() };
+  theme.pushToast(game, text, color);
 }
 
 // ==================== 绘制 ====================
@@ -232,7 +235,7 @@ function drawBag(game) {
   ctx.textBaseline = 'middle';
   ctx.font = '10px Arial';
   ctx.fillStyle = THEME.text.off;
-  ctx.fillText('宝石来自战斗掉落 · 在图签里点槽位嵌入，嵌入后与固有技能绑定', W / 2, lineY);
+  ctx.fillText('点宝石查看属性 / 合成 · 在图签里点槽位嵌入，嵌入后与固有技能绑定', W / 2, lineY);
   drawTaperedDivider(ctx, W / 2, lineY + 12, W - 40, 3);
 
   let label, enabled, top, bottom, stroke;
@@ -304,7 +307,16 @@ function drawBagCell(ctx, cell) {
     ctx.stroke();
 
     // 宝石本体（半径按格宽自适应，窄屏也不会糊出格子）
-    gems.drawGemIcon(ctx, x + w / 2, y + h / 2, Math.max(5, Math.min(w, h) * 0.30), item.kind);
+    gems.drawGemIcon(ctx, x + w / 2, y + h / 2 - 3, Math.max(5, Math.min(w, h) * 0.30), item.kind);
+
+    // 宝石等级角标（需求：宝石名字/展示处写上 lv 等级；格子太小放不下全名，用角标表达）
+    if (h >= 30) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 8px Arial';
+      ctx.fillStyle = THEME.text.secondary;
+      ctx.fillText(`Lv.${item.lv || 1}`, x + w / 2, y + h - 6);
+    }
   } else {
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)';
     ctx.lineWidth = 1;

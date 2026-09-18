@@ -357,7 +357,10 @@ log('\n===== ⑦ 塔型键改名 graphic → parallel 的完整性 =====');
     `parallel=${m.codex.parallel} graphic=${m.codex.graphic}`);
   ok('迁移：登场池里的旧键换成新键', m.lineup.indexOf('parallel') >= 0 && m.lineup.indexOf('graphic') < 0,
     m.lineup.join(','));
-  ok('迁移：已嵌宝石跟着搬（0/2 槽有货）', !!m.socketed.parallel && m.socketed.parallel[0] === 'ruby' && m.socketed.parallel[2] === 'topaz',
+  // 槽位自宝石系统升级起存 {kind, lv} 对象（旧字符串档由 normalize 迁移并补 Lv.1）
+  ok('迁移：已嵌宝石跟着搬（0/2 槽有货 · 对象格式）',
+    !!m.socketed.parallel && m.socketed.parallel[0] && m.socketed.parallel[0].kind === 'ruby' &&
+    m.socketed.parallel[2] && m.socketed.parallel[2].kind === 'topaz',
     JSON.stringify(m.socketed));
   ok('迁移：三张表都读得出来（没被清空）', metaMod.isUnlocked('parallel') && metaMod.socketCount('parallel') === 4,
     `socketCount=${metaMod.socketCount('parallel')}`);

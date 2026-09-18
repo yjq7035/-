@@ -108,12 +108,15 @@ class Game {
     this.codexSelected = null;    // 图签界面当前选中的塔类型
     this.codexScroll = 0;         // 图签格网的上下滚动量（0 = 顶部）
     this.codexSheetScroll = 0;    // 图签【详情面板内部】的上下滚动量（0 = 顶部）
-    this.gemPicker = null;        // 图签"选宝石嵌入"浮层：null=关闭，否则 { type, index }
+    this.gemPicker = null;        // 图签"嵌入宝石"列表浮层：null=关闭，否则 { type, index }
+    this.gemPickerScroll = 0;     // 嵌入列表的上下滚动量（逐颗列出后可滚）
+    this.gemInfo = null;          // 宝石详情浮层：null=关闭，否则 { uid, from, type, index }
+    this.gemSynth = null;         // 合成浮层：null=关闭，否则 { picked, scroll }
     this.bagScroll = 0;           // 背包格网的上下滚动量（0 = 顶部）
     this.talentScroll = 0;        // 天赋列表的上下滚动量（0 = 顶部）
     this.levelScroll = null;      // 选关天梯的上下滚动量（null = 尚未初始化，默认贴底看关卡1）
     this.enhancePicker = null;    // 强化「多选一」浮层：null=关闭，否则 { tower }
-    this.toast = null;            // 操作轻提示 { text, color, t0 }
+    this.toasts = [];             // 操作轻提示队列 [{ text, color, t0, duration, y }]
     // 涓流金库（每秒金币天赋）：小数累计，避免每帧取整丢钱
     this._goldTick = 0;
     this._goldFraction = 0;
@@ -499,11 +502,14 @@ class Game {
     this.shopSlotState = this.shopOffers.map((type) => ({ type: type, empty: false }));
 
     // 重置元进度相关 UI 状态
-    this.toast = null;
+    this.toasts = [];
     this.codexSelected = null;
     this.codexScroll = 0;
     this.codexSheetScroll = 0;
     this.gemPicker = null;
+    this.gemPickerScroll = 0;
+    this.gemInfo = null;
+    this.gemSynth = null;
     this.bagScroll = 0;
     this.talentScroll = 0;
     // levelScroll 不在 restart 里重置：保留用户滚动位置，让选关界面回到原来的位置
@@ -708,13 +714,13 @@ class Game {
     const res = meta.addGem(kind);
     if (res.ok) {
       const def = gems.gemDef(kind);
-      this.toast = {
-        text: (reason ? reason + '：' : '') + (def ? `${def.name}（${def.desc}）` : '获得宝石'),
-        color: def ? def.color : THEME.accent.violet,
-        t0: Date.now(),
-      };
+      theme.pushToast(
+        this,
+        (reason ? reason + '：' : '') + (def ? `${def.name}（${def.desc}）` : '获得宝石'),
+        def ? def.color : theme.THEME.accent.violet
+      );
     } else if (res.reason === 'full') {
-      this.toast = { text: '背包已满，宝石未能拾取（去背包解锁格子）', color: THEME.accent.danger, t0: Date.now() };
+      theme.pushToast(this, '背包已满，宝石未能拾取（去背包解锁格子）', theme.THEME.accent.danger);
     }
     return res;
   }
@@ -821,17 +827,17 @@ class Game {
     this.gemReward = { victory, triggered: true, slots, total };
 
     if (total > 0) {
-      this.toast = {
-        text: (victory ? '通关' : '失败') + '宝石奖励 · 点亮 ' + total + ' / 9 格 · 共 ' + total + ' 颗 LV1 宝石',
-        color: THEME.accent.gold,
-        t0: Date.now(),
-      };
+      theme.pushToast(
+        this,
+        (victory ? '通关' : '失败') + '宝石奖励 · 点亮 ' + total + ' / 9 格 · 共 ' + total + ' 颗 LV1 宝石',
+        theme.THEME.accent.gold
+      );
     } else if (bagFull) {
-      this.toast = {
-        text: `宝石背包已满（${meta.bagSlots()} 格），奖励未能放入`,
-        color: THEME.accent.danger,
-        t0: Date.now(),
-      };
+      theme.pushToast(
+        this,
+        `宝石背包已满（${meta.bagSlots()} 格），奖励未能放入`,
+        theme.THEME.accent.danger
+      );
     }
   }
 
@@ -842,6 +848,9 @@ class Game {
     this.codexSelected = null;
     this.codexSheetScroll = 0;
     this.gemPicker = null;      // 图签的选宝石浮层是模态，切场景必须收掉
+    this.gemPickerScroll = 0;
+    this.gemInfo = null;        // 宝石详情浮层同理
+    this.gemSynth = null;       // 合成浮层同理
     this.bagScroll = 0;
     this.showMenu = false;
     this.enhancePicker = null;   // 强化浮层是战斗内模态，切场景必须收掉

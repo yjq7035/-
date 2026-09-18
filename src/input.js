@@ -32,6 +32,7 @@ const levels = require('./levels');
 const gamemenu = require('./gamemenu');
 const enhance = require('./enhance');
 const audio = require('./audio');
+const gemModal = require('./gemModal');
 
 const DRAG_THRESHOLD = 8;        // 移动阈值（像素），超过则认定为拖放
 const TALENT_SCROLL_THRESHOLD = 6; // 天赋列表：垂直拖动超过此值即进入滚动
@@ -62,9 +63,9 @@ function dist(p1, p2) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-/** 给一条轻提示（统一入口，避免各处自己拼 game.toast） */
+/** 给一条轻提示（统一入口，避免各处自己拼游戏状态） */
 function toast(game, text, color) {
-  game.toast = { text: text, color: color || THEME.text.secondary, t0: Date.now() };
+  theme.pushToast(game, text, color);
 }
 
 function handleTouchStart(game, e) {
@@ -140,6 +141,21 @@ function handleTouchStart(game, e) {
     return;
   }
 
+  // ========== ③' 宝石浮层（嵌入列表 / 宝石详情 / 合成）：模态 ==========
+  // 盖住整个场景，所以触摸绝不允许漏到下面的面板/格网上；与强化浮层同一条规矩：
+  // 无论点到什么，这里都要把这次手势收干净再 return。
+  // 按下与抬起落在同一目标上才结算（见 settleTap），"按住滑开"不算点击。
+  if ((game.scene === 'codex' || game.scene === 'bag') && gemModal.hasActive(game)) {
+    const hit = gemModal.hitActive(game, pos);
+    game._gemModalTouch = hit;
+    game._gemModalScrolling = false;
+    game.touchStartPos = { x: pos.x, y: pos.y };
+    if (hit.kind === 'synth' || hit.kind === 'embed' || hit.kind === 'cancel' || hit.kind === 'go') {
+      pressButton(game, 'gemmodal:' + hit.kind);
+    }
+    return;
+  }
+
   // ========== ④ 战前选关界面（未开始游戏，天梯可上下拖动）==========
   if (game.scene === 'battle' && !game.battleStarted) {
     const hit = levels.hitReady(game, pos);
@@ -157,16 +173,7 @@ function handleTouchStart(game, e) {
 
   // ========== ⑤ 图签场景（格网 / 详情面板内部 均可上下拖动）==========
   if (game.scene === 'codex') {
-    // 选宝石浮层是**模态**：先于一切处理。
-    // 它盖住整个屏幕，所以触摸绝不允许漏到下面的面板/格网上。
-    // 与强化浮层同一条规矩：无论点到什么，这里都要把这次手势收干净再 return。
-    if (game.gemPicker) {
-      const hit = codex.hitGemPicker(game, pos);
-      game._gemPickTouch = { kind: hit.kind, gem: hit.gem || null };
-      if (hit.kind === 'pick') pressButton(game, 'gempick:' + hit.gem);
-      game.touchStartPos = null;
-      return;
-    }
+    // （选宝石浮层 / 宝石详情 / 合成浮层已由 ③' 模态分支统一接管）
 
     const hit = codex.hitCodex(game, pos);
     const L = codex.getCodexLayout(game);
@@ -223,6 +230,10 @@ function handleTouchStart(game, e) {
     if (hit && hit.kind === 'expand') {
       game._bagTap = { kind: 'expand' };
       pressButton(game, 'bag:expand');
+    } else if (hit && hit.kind === 'cell' && hit.item) {
+      // 点有宝石的格子 → 弹出宝石详情浮层（底部只有「合成宝石」一项）
+      game._bagTap = { kind: 'cell', uid: hit.item.uid };
+      pressButton(game, 'bag:cell');
     } else {
       game._bagTap = null;
     }
@@ -330,6 +341,32 @@ function handleTouchStart(game, e) {
 }
 
 function handleTouchMove(game, e) {
+  // ========== 宝石浮层内部滚动（嵌入列表 / 合成多选列表）==========
+  // 必须排在各场景滚动之前：浮层是模态，手指按在浮层上时滚的只能是浮层列表。
+  if ((game.scene === 'codex' || game.scene === 'bag') && gemModal.hasActive(game) &&
+      game.touchStartPos && !game._gemModalScrolling) {
+    const scrollable = (game.gemSynth && gemModal.isSynthScrollable(game)) ||
+      (!game.gemSynth && !game.gemInfo && game.gemPicker && gemModal.isEmbedPickerScrollable(game));
+    if (scrollable) {
+      const pos = getTouchPos(e);
+      const dy = pos.y - game.touchStartPos.y;
+      if (Math.abs(dy) >= 6) {
+        game._gemModalScrolling = true;
+        if (game.gemSynth) {
+          const L = gemModal.getSynthLayout(game);
+          gemModal.setSynthScroll(game, L.scroll - dy);
+        } else if (game.gemPicker) {
+          const L = gemModal.getEmbedPickerLayout(game);
+          gemModal.setEmbedPickerScroll(game, L.scroll - dy);
+        }
+        game.touchStartPos = { x: pos.x, y: pos.y };
+        game._gemModalTouch = null;   // 滚过了就不算点按
+        releaseButton(game);
+      }
+    }
+    return;
+  }
+
   // ========== 天赋列表滚动 ==========
   if (game.scene === 'talents' && game.touchStartPos && talents.isScrollable(game) && !game.pendingDrag) {
     const pos = getTouchPos(e);
@@ -546,12 +583,25 @@ function handleTouchEnd(game, e) {
     game.codexScrolling = false;
     game._codexTap = null;
     game._codexSheetTouch = false;
-    game._gemPickTouch = null;
+    game._gemModalTouch = null;
+    game._gemModalScrolling = false;
     game._bagTap = null;
     game.levelScrolling = false;
     game._readyTap = null;
-    // 模态浮层不跟着场景走：切场景就收掉（gemPicker 在 switchScene 里也会清一次）
-    game.gemPicker = null;
+    // 模态浮层不跟着场景走：切场景就收掉（switchScene 里也会清一次）
+    gemModal.closeAll(game);
+    releaseButton(game);
+    game.touchStartPos = null;
+    return;
+  }
+
+  // ========== ③' 宝石浮层结算（按下与抬起落在同一目标上才触发）==========
+  if ((game.scene === 'codex' || game.scene === 'bag') && gemModal.hasActive(game)) {
+    const touch = game._gemModalTouch;
+    const scrolled = game._gemModalScrolling;
+    game._gemModalTouch = null;
+    game._gemModalScrolling = false;
+    if (!scrolled && touch) gemModal.settleTap(game, pos, touch);
     releaseButton(game);
     game.touchStartPos = null;
     return;
@@ -595,27 +645,7 @@ function handleTouchEnd(game, e) {
 
   // ========== 图签场景：点按（滚动过就不触发）==========
   if (game.scene === 'codex') {
-    // ① 选宝石浮层（模态）优先结算
-    const gp = game._gemPickTouch;
-    if (gp) {
-      game._gemPickTouch = null;
-      const bp = game.btnPress;
-      if (gp.kind === 'pick' && gp.gem && bp && bp.id === 'gempick:' + gp.gem) {
-        const hit = codex.hitGemPicker(game, pos);
-        if (hit.kind === 'pick' && hit.gem === gp.gem) {
-          codex.actEmbedGem(game, gp.gem);
-        }
-      } else if (gp.kind === 'disabled') {
-        // 点到"持有 0"的灰行：只提示，浮层留在原地（不要因为一次误触就把它关掉）
-        toast(game, '背包里没有这种宝石', THEME.text.dim);
-      } else {
-        // 取消 / ✕ / 浮层外 → 关掉（模态必须能退出，否则整个图签点不动）
-        game.gemPicker = null;
-      }
-      releaseButton(game);
-      game.touchStartPos = null;
-      return;
-    }
+    // （选宝石浮层 / 宝石详情 / 合成浮层已由 ③' 模态结算分支统一处理）
 
     const tap = game._codexTap;
     const scrolled = game.codexScrolling;
@@ -667,7 +697,7 @@ function handleTouchEnd(game, e) {
     return;
   }
 
-  // ========== 背包场景：看广告解锁 ==========
+  // ========== 背包场景：看广告解锁 / 点宝石看详情 ==========
   if (game.scene === 'bag') {
     const bp = game.btnPress;
     const tap = game._bagTap;
@@ -679,6 +709,12 @@ function handleTouchEnd(game, e) {
         // 真发出去了才闪成功色；被拦下（广告未开放 / 已满）闪红色
         if (res.ok) flashButton(game, bag.getBagLayout(game).btn, '77,208,225', 'bag');
         else flashButton(game, bag.getBagLayout(game).btn, '255,68,68', 'bag');
+      }
+    } else if (tap && tap.kind === 'cell' && bp && bp.id === 'bag:cell') {
+      // 按下与抬起都在同一颗宝石上 → 打开详情浮层
+      const hit = bag.hitBag(game, pos);
+      if (hit && hit.kind === 'cell' && hit.item && hit.item.uid === tap.uid) {
+        gemModal.openGemInfo(game, tap.uid, { from: 'bag' });
       }
     }
     releaseButton(game);

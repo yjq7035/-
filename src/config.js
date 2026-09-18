@@ -38,7 +38,7 @@ const TOWER_DEFS = {
   semicircle:    { name: '半圆塔', color: '#44FFFF', cost: 180, rarity: 1 },
   sector:        { name: '扇塔',   color: '#FFFF44', cost: 350, rarity: 3 },
   long_rectangle:{ name: '长方塔', color: '#AA44FF', cost: 300, rarity: 2 },
-  diamond:       { name: '菱形塔', color: '#00E5FF', cost: 220, rarity: 1 },
+  diamond:       { isSupport: true, auraPenetration: 5, description: '辅助塔，不提供攻击。给周围我方图形塔增加 5 点穿透光环。' },
   pentagon:      { name: '五边塔', color: '#7CFF6B', cost: 320, rarity: 2 },
   oval:          { name: '椭圆塔', color: '#B0BEC5', cost: 260, rarity: 1 },
   star:          { name: '星形塔', color: '#FF7BAC', cost: 420, rarity: 3 },
@@ -75,21 +75,21 @@ const TOWER_DEFS = {
 //   stackMax         堆叠上限(层) —— 长方塔：同一目标可累积的最大堆叠层数
 const TOWER_STATS = {
   // 三角塔：特殊效果 = 暴击 → 唯一持有原生暴击几率的塔（5%），仍无穿透
-  triangle:      { damage: 20, range: 200, attackSpeedMultiplier: 100, attackInterval: 0.5, critChance: 5,  critMult: 1.6, penetration: 0,  isSupport: false, description: '快速射击，对单个目标造成持续伤害。' },
-  circle:        { damage: 25, range: 200, attackSpeedMultiplier: 100, attackInterval: 0.8, critChance: 0,  critMult: 1.5, penetration: 0,  isSupport: false, explosionRadius: 60, explosionRatio: 25, description: '攻击命中时触发二次爆炸，对周围敌人造成 25% 溅射伤害。适合对付聚集的敌人。' },
-  hexagon:       { damage: 50, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.2, critChance: 0,  critMult: 1.8, penetration: 0,  isSupport: false, eliteMult: 5, description: '强力狙击射击，对单一目标造成高额伤害。' },
-  square:        { damage: 30, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.5, critChance: 0,  critMult: 1.5, penetration: 0,  isSupport: false, projectileScale: 200, description: '攻击瞬间沿目标方向发射一道激光，对激光路径上的所有敌人造成单次伤害。弹道体积强化可延长激光射程。' },
+  triangle:      { damage: 20, range: 200, attackSpeedMultiplier: 100, attackInterval: 0.5, critChance: 5,  critMult: 2, penetration: 0,  isSupport: false, description: '快速射击，对单个目标造成持续伤害。' },
+  circle:        { damage: 25, range: 200, attackSpeedMultiplier: 100, attackInterval: 0.8, critChance: 0,  critMult: 2, penetration: 0,  isSupport: false, explosionRadius: 60, explosionRatio: 25, description: '攻击命中时触发二次爆炸，对周围敌人造成 25% 溅射伤害。适合对付聚集的敌人。' },
+  hexagon:       { damage: 50, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.2, critChance: 0,  critMult: 2, penetration: 0,  isSupport: false, eliteMult: 5, description: '强力狙击射击，对单一目标造成高额伤害。' },
+  square:        { damage: 30, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.5, critChance: 0,  critMult: 2, penetration: 0,  isSupport: false, projectileScale: 200, description: '攻击瞬间沿目标方向发射一道激光，对激光路径上的所有敌人造成单次伤害。弹道体积强化可延长激光射程。' },
   trapezoid:     { damage: 0,  range: 150, attackSpeedMultiplier: 0,   critChance: 0,  critMult: 1,   penetration: 0,  isSupport: true,  supportBuff: { attackSpeedMultiplier: 25 }, description: '辅助塔，不提供攻击。给周围我方图形塔增加 25% 攻击速度光环；自身每进阶一星光环强度 +100%，高阶光环覆盖低阶光环。' },
-  semicircle:    { damage: 2,  range: 200, attackSpeedMultiplier: 100, attackInterval: 0.15, critChance: 0,  critMult: 1.5, penetration: 0,  isSupport: false, description: '持续激光连接目标，对连接的敌人造成持续伤害。' },
-  sector:        { damage: 25, range: 250, attackSpeedMultiplier: 100, attackInterval: 3.0, critChance: 0,  critMult: 1.5, penetration: 0, isSupport: false, sectorHalfAngle: 45, description: '扇形范围攻击，AOE 伤害覆盖大面积区域。' },
-  long_rectangle:{ damage: 2,  range: 200, attackSpeedMultiplier: 100, attackInterval: 0.25, critChance: 0, critMult: 1.7, penetration: 0, isSupport: false, stackMax: 10, description: '堆叠火炮系统，对重复单位攻击时叠加伤害，累积层数后造成巨额爆发。适合对付 BOSS 级别敌人。' },
-  diamond:       { damage: 38, range: 210, attackSpeedMultiplier: 100, attackInterval: 1.0, critChance: 0, critMult: 1.6, penetration: 0, isSupport: false, description: '锐击穿刺，单发伤害高且射程略长。性价比优秀的前期切入塔。' },
-  pentagon:      { damage: 62, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.4, critChance: 0, critMult: 1.7, penetration: 0, isSupport: false, description: '稳重的重击塔，血厚攻高，节奏偏慢。适合站在前排槽位承担主力输出。' },
-  oval:          { damage: 12, range: 260, attackSpeedMultiplier: 100, attackInterval: 0.4, critChance: 0,  critMult: 1.5, penetration: 0,  isSupport: false, description: '超远射程的快射塔，单发伤害低但覆盖全图大部分路径。适合补刀漏网之鱼。' },
+  semicircle:    { damage: 2,  range: 200, attackSpeedMultiplier: 100, attackInterval: 0.15, critChance: 0,  critMult: 2, penetration: 0,  isSupport: false, description: '持续激光连接目标，对连接的敌人造成持续伤害。' },
+  sector:        { damage: 25, range: 250, attackSpeedMultiplier: 100, attackInterval: 3.0, critChance: 0,  critMult: 2, penetration: 0, isSupport: false, sectorHalfAngle: 45, description: '扇形范围攻击，AOE 伤害覆盖大面积区域。' },
+  long_rectangle:{ damage: 2,  range: 200, attackSpeedMultiplier: 100, attackInterval: 0.25, critChance: 0, critMult: 2, penetration: 0, isSupport: false, stackMax: 10, description: '堆叠火炮系统，对重复单位攻击时叠加伤害，累积层数后造成巨额爆发。适合对付 BOSS 级别敌人。' },
+  diamond:       { damage: 38, range: 210, attackSpeedMultiplier: 100, attackInterval: 1.0, critChance: 0, critMult: 2, penetration: 0, isSupport: false, description: '锐击穿刺，单发伤害高且射程略长。性价比优秀的前期切入塔。' },
+  pentagon:      { damage: 62, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.4, critChance: 0, critMult: 2, penetration: 0, isSupport: false, description: '稳重的重击塔，血厚攻高，节奏偏慢。适合站在前排槽位承担主力输出。' },
+  oval:          { damage: 12, range: 260, attackSpeedMultiplier: 100, attackInterval: 0.4, critChance: 0,  critMult: 2, penetration: 0,  isSupport: false, description: '超远射程的快射塔，单发伤害低但覆盖全图大部分路径。适合补刀漏网之鱼。' },
   star:          { damage: 96, range: 240, attackSpeedMultiplier: 100, attackInterval: 2.0, critChance: 0, critMult: 2.0, penetration: 0, isSupport: false, description: '六芒重炮，全塔最高单发伤害，换弹极慢。配上 200% 暴击倍率上限惊人。' },
-  octagon:       { damage: 44, range: 205, attackSpeedMultiplier: 100, attackInterval: 1.1, critChance: 0,  critMult: 1.6, penetration: 0, isSupport: false, description: '八面均衡的中坚塔，攻防兼顾没有短板。适合填满中段槽位。' },
-  cross:         { damage: 34, range: 190, attackSpeedMultiplier: 100, attackInterval: 0.9, critChance: 0, critMult: 1.5, penetration: 0, isSupport: false, description: '十字速射塔，射速快、射程偏短。适合贴身补伤。' },
-  arrow:         { damage: 46, range: 240, attackSpeedMultiplier: 100, attackInterval: 1.2, critChance: 0, critMult: 1.7, penetration: 0, isSupport: false, description: '箭形狙击塔，射程远、单发高。攻击命中敌人时会给敌人挂一个碎甲的debuff，破坏目标3点抗性。' },
+  octagon:       { damage: 44, range: 205, attackSpeedMultiplier: 100, attackInterval: 1.1, critChance: 0,  critMult: 2, penetration: 0, isSupport: false, description: '八面均衡的中坚塔，攻防兼顾没有短板。适合填满中段槽位。' },
+  cross:         { damage: 34, range: 190, attackSpeedMultiplier: 100, attackInterval: 0.9, critChance: 0, critMult: 2, penetration: 0, isSupport: false, description: '十字速射塔，射速快、射程偏短。适合贴身补伤。' },
+  arrow:         { damage: 46, range: 240, attackSpeedMultiplier: 100, attackInterval: 1.2, critChance: 0, critMult: 2, penetration: 0, isSupport: false, description: '箭形狙击塔，射程远、单发高。攻击命中敌人时会给敌人挂一个碎甲的debuff，破坏目标3点抗性。' },
   bolt:          { damage: 70, range: 220, attackSpeedMultiplier: 100, attackInterval: 1.5, critChance: 0, critMult: 2.0, penetration: 0, isSupport: false, description: '闪电炮塔，暴击倍率全塔最高（200%），原生暴击几率为 0。' },
   // ---- 第三批扩展：固有技能「连续射击」平行塔 ----
   // 攻击间隔 0.25s（100% 攻速）；攻击力 35。
@@ -99,7 +99,7 @@ const TOWER_STATS = {
   //     上限 innateStackCap（原生 100%，可被"强化"抬高，见 ENHANCE_SPECIAL）。
   // ⚠️ 攻击间隔 / 攻速这类**有专属属性行**的数字不要写进 description ——
   //    介绍只讲机制，数值交给属性表（属性面板已有「攻击间隔 每0.25秒」一行）。
-  parallel:      { damage: 35, range: 220, attackSpeedMultiplier: 100, attackInterval: 0.25, critChance: 0, critMult: 1.5, penetration: 0, isSupport: false, hasInnate: true, innateStackCap: 100, innateStackStep: 10, description: '固有技能「连续射击」：每发必定换一个不同的敌人下手。被逼着连续打同一个目标时，出手会越来越快。' },
+  parallel:      { damage: 35, range: 220, attackSpeedMultiplier: 100, attackInterval: 0.25, critChance: 0, critMult: 2, penetration: 0, isSupport: false, hasInnate: true, innateStackCap: 100, innateStackStep: 10, description: '固有技能「连续射击」：每发必定换一个不同的敌人下手。被逼着连续打同一个目标时，出手会越来越快。' },
 };
 
 // ============================================================================
@@ -202,7 +202,7 @@ const BALANCE = {
   maxFastPerWave: 3,
 
   // ---- 战斗结算口径（暴击 / 抗性穿透 / 强化）----
-  critDamageDefaultMult: 1.5, // 塔未显式配置 critMult 时的兜底暴击倍率
+  critDamageDefaultMult: 2, // 塔未显式配置 critMult 时的兜底暴击倍率
   // 抗性减伤公式（2026-09 定稿）：
   //   有效抗性 = max(0, 敌人抗性 - 塔的穿透)
   //   减伤比例 = 有效抗性 / (有效抗性 + armorK)
@@ -426,6 +426,13 @@ const GEM = {
   defeatChance: 0.15,   // 失败概率 15%
   rewardCellCount: 9,  // 结算界面奖励格子数（固定 9）
   gemRewardMax: 0,     // 0 = 每格随机 1~关卡关联数量（currentLevel）；>0 时覆盖为固定值
+
+  // 合成宝石规则（需求 2026-09-18）：
+  //   · 从 minCount 颗【同级】宝石起合成；基础成功率 baseRate%
+  //   · 每额外多选 1 颗同级宝石 +perExtra%（封顶 maxRate%）
+  //   · 成功 → 获得所选材料范围内【随机一种】+1 级宝石（材料全同名时即该种类）
+  //   · 失败 → 材料照常消耗（合成浮层上写清楚，让玩家自己权衡）
+  synth: { minCount: 3, baseRate: 50, perExtra: 10, maxRate: 100 },
 };
 
 // 宝石种类（唯一真源：图标颜色 / 效果 / 文案都由本表驱动）

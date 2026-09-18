@@ -42,6 +42,13 @@ function aliasTable(tbl) {
   return out;
 }
 
+/** 宝石等级夹取：非法值一律回落 Lv.1（坏档不许造出 0 级 / 负级 / 小数级宝石） */
+function clampGemLv(v) {
+  const n = Number(v);
+  if (!isFinite(n) || n < 1) return 1;
+  return Math.min(99, Math.floor(n));
+}
+
 /** 一份全新的存档 */
 function createDefaultMeta() {
   const codex = {};
@@ -51,7 +58,7 @@ function createDefaultMeta() {
   const gems = [];
   const starters = GEM.starterGems || [];
   for (let i = 0; i < starters.length; i++) {
-    if (GEM_BY_ID[starters[i]]) gems.push({ uid: 'g' + (i + 1), kind: starters[i] });
+    if (GEM_BY_ID[starters[i]]) gems.push({ uid: 'g' + (i + 1), kind: starters[i], lv: 1 });
   }
   return {
     version: 1,
@@ -62,9 +69,9 @@ function createDefaultMeta() {
     talents: {},                           // { [talentId]: level }
     levels: { cleared: {}, best: {} },     // cleared[id]=通关次数 / best[id]=最高波次
     selectedLevel: 1,
-    gems: gems,                            // 背包里的宝石（未嵌入）：[{ uid, kind }]
+    gems: gems,                            // 背包里的宝石（未嵌入）：[{ uid, kind, lv }]
     gemSeq: gems.length,                   // uid 自增序号（保证 uid 唯一）
-    socketed: {},                          // { [towerType]: ['ruby', null, ...] } 已嵌入的宝石（长度 = GEM.maxSlots）
+    socketed: {},                          // { [towerType]: [{kind,lv}|null, ...] } 已嵌入的宝石（长度 = GEM.maxSlots）
     bagSlots: GEM.bagSlots,                // 背包已解锁格数（默认 24 = 每行 8 格 × 3 行）
   };
 }
@@ -179,7 +186,8 @@ function normalize(raw) {
     let uid = (item && typeof item.uid === 'string' && item.uid) ? item.uid : '';
     if (!uid || seenUid[uid]) uid = 'g' + (++seq + rawGems.length);
     seenUid[uid] = 1;
-    out.gems.push({ uid: uid, kind: kind });
+    // 合成系统（2026-09）起宝石带等级；旧档没有 lv 字段 → 一律补 Lv.1
+    out.gems.push({ uid: uid, kind: kind, lv: clampGemLv(item && item.lv) });
   }
   const rawSeq = Number(raw.gemSeq);
   out.gemSeq = Math.max(
@@ -189,6 +197,8 @@ function normalize(raw) {
   );
 
   // 已嵌入的槽位：仅保留已解锁的塔型 + 合法宝石 + 不超过自身槽位数
+  // 槽位条目兼容两代格式：旧档是字符串 'ruby'（无等级概念 → Lv.1），
+  // 新档是 { kind, lv }。统一搬进新格式，读档侧永远只见对象。
   out.socketed = {};
   const rawSock = aliasTable(raw.socketed);   // 旧塔型键在此自动搬到新键
   for (const type of TOWER_ORDER) {
@@ -197,8 +207,15 @@ function normalize(raw) {
     const maxN = Math.min(GEM.maxSlots, out.codex[type] || 0);
     const slots = [];
     for (let i = 0; i < GEM.maxSlots; i++) {
-      const kind = (i < maxN && arr[i] && GEM_BY_ID[arr[i]]) ? arr[i] : null;
-      slots.push(kind);
+      if (i < maxN && arr[i]) {
+        const e = arr[i];
+        const kind = (typeof e === 'string') ? e : (e && e.kind);
+        if (kind && GEM_BY_ID[kind]) {
+          slots.push({ kind: kind, lv: (typeof e === 'string') ? 1 : clampGemLv(e.lv) });
+          continue;
+        }
+      }
+      slots.push(null);
     }
     // 全空就不存这条记录（保持存档干净）
     if (slots.some((k) => !!k)) out.socketed[type] = slots;
@@ -353,7 +370,7 @@ function toggleLineup(type) {
 
 /** 背包里的宝石（未嵌入）：返回副本，避免调用方直接改存档数组 */
 function gemList() {
-  return get().gems.map((g) => ({ uid: g.uid, kind: g.kind }));
+  return get().gems.map((g) => ({ uid: g.uid, kind: g.kind, lv: g.lv || 1 }));
 }
 
 /** 背包已解锁格数 */
@@ -382,14 +399,15 @@ function expandBag() {
 /**
  * 把一颗新宝石放进背包（掉落入口）。
  * @param {string} kind 宝石种类 id
+ * @param {number} [lv] 宝石等级（掉落永远是 1；合成产物会带更高等级进来）
  * @returns {{ok:boolean, gem?:object, reason?:string}} 背包满时 ok=false
  */
-function addGem(kind) {
+function addGem(kind, lv) {
   const m = get();
   if (!GEM_BY_ID[kind]) return { ok: false, reason: 'unknown' };
   if (m.gems.length >= m.bagSlots) return { ok: false, reason: 'full' };
   m.gemSeq = (m.gemSeq || 0) + 1;
-  const gem = { uid: 'g' + m.gemSeq, kind: kind, lv: 1 };  // 宝石无等级系统：固定 LV1 基础宝石
+  const gem = { uid: 'g' + m.gemSeq, kind: kind, lv: clampGemLv(lv === undefined ? 1 : lv) };
   m.gems.push(gem);
   save();
   return { ok: true, gem: gem };
@@ -400,16 +418,17 @@ function addGem(kind) {
  * 背包满则能放几颗放几颗，绝不"掉了但看不见"；返回实际放入数量。
  * @param {string} kind 宝石种类 id
  * @param {number} count 想放几颗
+ * @param {number} [lv] 宝石等级（默认 1）
  * @returns {{ok:boolean, added:number, reason?:string}} added<count 时 ok=false（背包满）
  */
-function addGemsByKind(kind, count) {
+function addGemsByKind(kind, count, lv) {
   const m = get();
   if (!GEM_BY_ID[kind]) return { ok: false, added: 0, reason: 'unknown' };
   let added = 0;
   for (let i = 0; i < (count || 0); i++) {
     if (m.gems.length >= m.bagSlots) break;   // 背包满，停止放入
     m.gemSeq = (m.gemSeq || 0) + 1;
-    m.gems.push({ uid: 'g' + m.gemSeq, kind: kind, lv: 1 });  // 宝石无等级系统：固定 LV1 基础宝石
+    m.gems.push({ uid: 'g' + m.gemSeq, kind: kind, lv: clampGemLv(lv === undefined ? 1 : lv) });
     added++;
   }
   if (added > 0) save();
@@ -438,16 +457,21 @@ function socketCount(type) {
 
 /**
  * 该塔型的槽位状态（长度固定 GEM.maxSlots，便于 UI 定长绘制）。
- * @returns {Array<{index:number, kind:string|null, unlocked:boolean}>}
+ * @returns {Array<{index:number, kind:string|null, lv:number, unlocked:boolean}>}
  */
 function gemSockets(type) {
   const n = socketCount(type);
   const arr = (get().socketed[type] || []);
   const out = [];
   for (let i = 0; i < GEM.maxSlots; i++) {
+    const e = (i < n && arr[i]) ? arr[i] : null;
+    // 兼容旧档字符串条目（无等级 → Lv.1）
+    const kind = e ? ((typeof e === 'string') ? e : e.kind) : null;
+    const lv = e ? ((typeof e === 'string') ? 1 : clampGemLv(e.lv)) : 1;
     out.push({
       index: i,
-      kind: (i < n && arr[i] && GEM_BY_ID[arr[i]]) ? arr[i] : null,
+      kind: (kind && GEM_BY_ID[kind]) ? kind : null,
+      lv: lv,
       unlocked: i < n,
     });
   }
@@ -459,8 +483,14 @@ function embeddedGems(type) {
   return gemSockets(type).filter((s) => !!s.kind).map((s) => s.kind);
 }
 
+/** 已嵌入的宝石条目 [{kind, lv}]（加成按等级缩放，战斗与面板共用） */
+function embeddedEntries(type) {
+  return gemSockets(type).filter((s) => !!s.kind).map((s) => ({ kind: s.kind, lv: s.lv || 1 }));
+}
+
 /**
  * 嵌入宝石：从背包移除 → 写进该塔型的槽位（宝石与技能绑定，背包里不再显示）。
+ * 槽位记录 {kind, lv} —— 加成按等级缩放，取出时等级也要原样带回背包。
  * @returns {{ok:boolean, kind?:string, reason?:string}}
  */
 function embedGem(type, index, uid) {
@@ -474,7 +504,7 @@ function embedGem(type, index, uid) {
   for (let i = 0; i < GEM.maxSlots; i++) if (!slots[i]) slots[i] = null;
   if (slots[index]) return { ok: false, reason: 'occupied' };
 
-  slots[index] = gem.kind;
+  slots[index] = { kind: gem.kind, lv: clampGemLv(gem.lv) };
   m.socketed[type] = slots;
   m.gems = m.gems.filter((g) => g.uid !== uid);   // ⚠️ 从这里开始它不在背包里了
   save(true);
@@ -488,13 +518,15 @@ function embedGem(type, index, uid) {
 function takeGem(type, index) {
   const m = get();
   const slots = m.socketed[type];
-  if (!slots || !slots[index]) return { ok: false, reason: 'empty' };
+  const entry = slots ? slots[index] : null;
+  if (!entry) return { ok: false, reason: 'empty' };
   if (m.gems.length >= m.bagSlots) return { ok: false, reason: 'full' };
-  const kind = slots[index];
+  const kind = (typeof entry === 'string') ? entry : entry.kind;
+  const lv = (typeof entry === 'string') ? 1 : clampGemLv(entry.lv);
   slots[index] = null;
   if (!slots.some((k) => !!k)) delete m.socketed[type];
   m.gemSeq = (m.gemSeq || 0) + 1;
-  m.gems.push({ uid: 'g' + m.gemSeq, kind: kind });
+  m.gems.push({ uid: 'g' + m.gemSeq, kind: kind, lv: lv });
   save(true);
   return { ok: true, kind: kind };
 }
@@ -502,6 +534,67 @@ function takeGem(type, index) {
 /** 宝石定义（配置表查表；未知返回 null） */
 function gemDef(kind) {
   return GEM_BY_ID[kind] || null;
+}
+
+// ---------- 合成宝石（需求 2026-09-18）----------
+// 规则：3 颗同级起 → 基础成功率 50%；每额外多 1 颗同级 +10%（封顶 100%）。
+// 成功 → 产物 = 所选材料范围内【随机一种】+1 级（材料全同名时即该种类）。
+// 失败 → 材料照常消耗（合成浮层上有明示，玩家自己权衡）。
+
+/** 选 n 颗同级宝石的合成成功率（0~1） */
+function synthRate(count) {
+  const s = GEM.synth;
+  const n = Math.max(0, Math.floor(count || 0));
+  const extra = Math.max(0, n - s.minCount);
+  return Math.min(s.maxRate, s.baseRate + extra * s.perExtra) / 100;
+}
+
+/**
+ * 执行一次合成：消耗所选宝石，按成功率产出 +1 级宝石。
+ *
+ * 校验（全过才动存档）：
+ *   · 至少 minCount 颗、uid 合法且不重复
+ *   · 全部同级（lv 一致）—— 不同级的混选在 UI 层就被拦住，这里再兜一道底
+ *
+ * 产物空间：材料 ≥3 颗被消耗、至多 +1 颗产出，所以背包永远不会因合成而溢出。
+ *
+ * @param {string[]} uids 所选宝石 uid 列表
+ * @returns {{ok:boolean, success?:boolean, rate?:number, gem?:object, reason?:string}}
+ */
+function synthesizeGems(uids) {
+  const m = get();
+  const list = Array.isArray(uids) ? uids : [];
+  if (list.length < GEM.synth.minCount) return { ok: false, reason: 'count' };
+
+  const chosen = [];
+  const seen = {};
+  for (const uid of list) {
+    if (seen[uid]) return { ok: false, reason: 'dup' };
+    seen[uid] = 1;
+    const g = m.gems.filter((x) => x.uid === uid)[0];
+    if (!g) return { ok: false, reason: 'nogem' };
+    chosen.push(g);
+  }
+  const lv = clampGemLv(chosen[0].lv);
+  if (chosen.some((g) => clampGemLv(g.lv) !== lv)) return { ok: false, reason: 'level' };
+
+  const rate = synthRate(chosen.length);
+  const success = Math.random() < rate;
+
+  // 无论成败，材料都消耗掉
+  m.gems = m.gems.filter((g) => !seen[g.uid]);
+
+  let made = null;
+  if (success) {
+    // 产物种类：在合成材料的种类范围内随机（全同名 → 必是该种）
+    const kinds = chosen.map((g) => g.kind);
+    const kind = kinds[Math.floor(Math.random() * kinds.length)];
+    m.gemSeq = (m.gemSeq || 0) + 1;
+    made = { uid: 'g' + m.gemSeq, kind: kind, lv: lv + 1 };
+    m.gems.push(made);
+  }
+  save(true);
+  return { ok: true, success: success, rate: rate, gem: made };
 }
 
 // ==================== 天赋 ====================
@@ -642,9 +735,12 @@ module.exports = {
   socketCount,
   gemSockets,
   embeddedGems,
+  embeddedEntries,
   embedGem,
   takeGem,
   gemDef,
+  synthRate,
+  synthesizeGems,
   // 天赋
   talentLevel,
   talentValue,

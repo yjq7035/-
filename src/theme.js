@@ -63,6 +63,47 @@ const THEME = {
   },
 };
 
+// ========== 轻提示（操作反馈）动效参数 ==========
+// 多条提示同屏浮动：各自独立计时、互相顶位。
+// 默认出现在屏幕高度 45% 处，淡入完成后开始向上漂浮。
+const TOAST = {
+  baseYRatio: 0.45,   // 基准位置：屏幕高度比例（0.45 = 45%）
+  duration: 3.0,      // 每条默认存活秒数（pushToast 第 4 个参数可覆盖）
+  fadeIn: 0.35,       // 淡入时长（秒）
+  fadeOut: 0.6,       // 淡出时长（秒）
+  rise: 26,           // 淡入后自身向上漂浮的总距离（逻辑像素）
+  lineHeight: 26,     // 单条占位高度
+  gap: 2,             // 堆叠时相邻两条的垂直间隙
+  maxCount: 10,        // 同屏最多条数（超出丢弃最旧）
+  fontSize: 14,
+  spawnScale: 1.18,   // 淡入起手的放大倍数：从「大」收缩回 1.0（大到小）
+  padX: 28,           // 背景/分割线在文字两侧的额外宽度
+  dividerOffset: 9,   // 上下分割线相对文字中心线的偏移
+  bgColor: '#000000', // 背景底色（横向渐隐：中间不透明、两端渐隐为透明）
+  bgAlpha: 0.82,      // 背景中间的最大不透明度
+};
+
+/**
+ * 推入一条轻提示（新提示系统：多条同屏、独立计时、互相顶位）。
+ * 渲染见 renderer.drawToasts。
+ * @param {object} game 游戏实例（只需能挂 toasts 数组）
+ * @param {string} text 文案
+ * @param {string} [color] 文字 / 分割线颜色（hex）
+ * @param {number} [duration] 本条存活秒数，缺省用 TOAST.duration
+ */
+function pushToast(game, text, color, duration) {
+  if (!game || text === undefined || text === null || text === '') return;
+  if (!game.toasts) game.toasts = [];
+  game.toasts.push({
+    text: String(text),
+    color: color || THEME.text.secondary,
+    t0: Date.now(),
+    duration: (typeof duration === 'number' && duration > 0) ? duration : TOAST.duration,
+    y: null,   // 当前绘制 y：首帧落到目标位，之后逐帧缓动追目标（实现"被顶上去"的顺滑位移）
+  });
+  while (game.toasts.length > TOAST.maxCount) game.toasts.shift();
+}
+
 /**
  * 颜色明暗工具：把 #RRGGBB 按比例变亮/变暗（amount: -1~1，正=变亮，负=变暗）。
  * 用于给纯色生成渐变两端 / 高光 / 阴影，让"纯色"变成有体积感的渐变。
@@ -1145,6 +1186,8 @@ function drawChevron(ctx, cx, cy, dir, color) {
 
 module.exports = {
   THEME,
+  TOAST,
+  pushToast,
   TOWER_SHAPES,
   shouldRotateTowerIcon,
   shade,

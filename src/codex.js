@@ -16,6 +16,7 @@ const towerMod = require('./tower');
 const meta = require('./meta');
 const gems = require('./gems');
 const skillSlot = require('./skillSlot');
+const gemModal = require('./gemModal');
 const { formatNum } = require('./bonusStats');
 
 const {
@@ -404,99 +405,41 @@ function hitCodex(game, pos) {
 }
 
 // ==================== 选宝石浮层（模态） ====================
+// 2026-09-18 起浮层实现整体迁往 src/gemModal.js（图签与背包共用）：
+//   · 列表从"按种类聚合"改为【逐颗】列出 —— 宝石带等级后，同一种类可能同时有
+//     Lv.1 / Lv.2，按种类聚合会让"嵌哪颗"变成猜谜；
+//   · 点宝石行【不再直接嵌入】：先弹出宝石详情浮层，由玩家选 合成 / 嵌入；
+//   · 这里保留同名转发包装，老调用方（探针 / 冒烟）不用改。
 
-const PICKER_UI = {
-  maxW: 322,
-  headH: 44,
-  rowH: 44,
-  rowGap: 6,
-  footH: 46,
-  padX: 14,
-};
-
-/**
- * 选宝石浮层布局（模态，居中）。
- *
- * 行 = 宝石【种类】而不是背包里的每一颗：6 种封顶，一屏放得下，
- * 因此**不需要滚动**（少一个会出错的交互面）。每行右侧显示持有数量。
- * @returns {{x,y,w,h,rows,close,cancel,bagUsed,bagMax,type,index}}
- */
+/** 选宝石浮层布局（gemModal.getEmbedPickerLayout 的转发） */
 function getGemPickerLayout(game) {
-  const W = game.W;
-  const H = game.H;
-  const kinds = gems.GEM_ORDER;
-  const counts = gems.bagCounts();
-
-  const w = Math.min(PICKER_UI.maxW, W - 36);
-  const h = PICKER_UI.headH + kinds.length * PICKER_UI.rowH + PICKER_UI.footH;
-  const x = Math.round((W - w) / 2);
-  const y = Math.round(Math.max(LAYOUT.topBarHeight + 14, (H - h) / 2 - 18));
-
-  const rows = kinds.map((kind, i) => {
-    const def = gems.gemDef(kind) || { name: kind, desc: '', color: '#90A4AE' };
-    const n = counts[kind] || 0;
-    return {
-      kind: kind,
-      name: def.name,
-      desc: def.desc,
-      color: def.color,
-      count: n,
-      enabled: n > 0,
-      rect: {
-        x: x + PICKER_UI.padX,
-        y: y + PICKER_UI.headH + i * PICKER_UI.rowH,
-        w: w - PICKER_UI.padX * 2,
-        h: PICKER_UI.rowH - PICKER_UI.rowGap,
-      },
-    };
-  });
-
-  return {
-    x, y, w, h, rows,
-    bagUsed: meta.gemList().length,
-    bagMax: meta.bagSlots(),
-    close: { x: x + w - 36, y: y + 9, w: 26, h: 26 },
-    cancel: {
-      x: x + PICKER_UI.padX,
-      y: y + h - PICKER_UI.footH + 6,
-      w: w - PICKER_UI.padX * 2,
-      h: 32,
-    },
-    type: game.gemPicker ? game.gemPicker.type : null,
-    index: game.gemPicker ? game.gemPicker.index : -1,
-  };
+  return gemModal.getEmbedPickerLayout(game);
 }
 
 /**
- * 浮层命中。
- * @returns {{kind:'pick'|'disabled'|'close', gem?:string}}
- *   · pick     —— 点到了持有数量 > 0 的宝石行
- *   · disabled —— 点到的是"持有 0"的灰行：**不算关闭**，只提示，浮层留在原地
- *                 （不然玩家手一抖点到灰行，整个浮层就没了）
- *   · close    —— 点了取消 / ✕ / 浮层外
+ * 浮层命中（转发）。
+ * @returns {{kind:'pick'|'close', gem?:string, uid?:string}}
+ *   · pick  —— 点到了某颗宝石行 → 打开宝石详情浮层
+ *   · close —— 取消 / ✕ / 浮层外
  */
 function hitGemPicker(game, pos) {
-  const L = getGemPickerLayout(game);
-  for (const row of L.rows) {
-    if (!theme.pointInRect(pos, row.rect)) continue;
-    return row.enabled ? { kind: 'pick', gem: row.kind } : { kind: 'disabled', gem: row.kind };
-  }
-  return { kind: 'close' };
+  return gemModal.hitEmbedPicker(game, pos);
 }
 
-/** 浮层是否需要滚动（恒 false：6 种宝石一屏放得下 —— 保留接口给输入层判断） */
-function isGemPickerScrollable() {
-  return false;
+/** 浮层列表是否需要滚动（逐颗列出后，背包多时真的需要滚了） */
+function isGemPickerScrollable(game) {
+  return gemModal.isEmbedPickerScrollable(game);
 }
 
 /** 打开"给某槽选宝石"浮层 */
 function openGemPicker(game, type, index) {
-  game.gemPicker = { type: type, index: index };
-  return game.gemPicker;
+  return gemModal.openEmbedPicker(game, type, index);
 }
 
 /**
- * 把背包里的一颗宝石嵌进浮层指向的槽位。
+ * 把背包里的一颗宝石嵌进浮层指向的槽位（旧接口：按种类嵌第一颗）。
+ * 2026-09-18 起正常流程是 浮层 → 详情浮层 → 「嵌入宝石」按钮（gemModal.actEmbedFromInfo），
+ * 本函数保留给老调用方兼容。
  *
  * 语义（需求原话"嵌入宝石后被嵌入的宝石与技能绑定会从物品栏消失"）：
  *   ① 从背包移除该 uid（meta.embedGem 内部完成，永不复制）；
@@ -545,7 +488,7 @@ function actUnsocketGem(game, type, index) {
 
 /** 统一轻提示（本模块内部用） */
 function say(game, text, color) {
-  game.toast = { text: text, color: color || THEME.text.secondary, t0: Date.now() };
+  theme.pushToast(game, text, color);
 }
 
 
@@ -621,109 +564,8 @@ function drawCodex(game) {
   // ---- 详情面板 ----
   if (game.codexSelected) drawSheet(game, L);
 
-  // ---- 选宝石浮层（模态，必须盖在详情面板之上）----
-  if (game.gemPicker) drawGemPicker(game);
-}
-
-/**
- * 选宝石浮层：列出 6 种宝石与背包持有数，点一行即嵌入。
- * 持有 0 的行置灰不可点（看得见"这种宝石长什么样"，但点不动）。
- */
-function drawGemPicker(game) {
-  const ctx = game.ctx;
-  const L = getGemPickerLayout(game);
-  const W = game.W;
-  const H = game.H;
-
-  // 遮罩
-  ctx.save();
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
-  ctx.fillRect(0, 0, W, H);
-  ctx.restore();
-
-  // 面板底
-  ctx.save();
-  const bg = ctx.createLinearGradient(0, L.y, 0, L.y + L.h);
-  bg.addColorStop(0, 'rgba(20, 20, 36, 0.99)');
-  bg.addColorStop(1, 'rgba(10, 10, 20, 1)');
-  ctx.fillStyle = bg;
-  ctx.strokeStyle = 'rgba(179, 136, 255, 0.55)';
-  ctx.lineWidth = 1.4;
-  roundRectPath(ctx, L.x, L.y, L.w, L.h, THEME.radius.large);
-  ctx.fill();
-  ctx.stroke();
-
-  // 标题：目标槽位 + 绑定的固有技能名
-  const towerDef = L.type ? TOWER_DEFS[L.type] : null;
-  const skillName = L.type ? gems.skillNameOf(L.type) : '';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.font = 'bold 13px Arial';
-  ctx.fillStyle = THEME.text.primary;
-  ctx.fillText(`嵌入宝石 · 第 ${L.index + 1} 槽`, L.x + PICKER_UI.padX, L.y + 17);
-
-  ctx.font = '10px Arial';
-  ctx.fillStyle = THEME.text.dim;
-  const sub = towerDef
-    ? `${towerDef.name}${skillName ? ' · 绑定「' + skillName + '」' : ''}`
-    : '';
-  ctx.fillText(ellipsize(ctx, sub, L.w - PICKER_UI.padX * 2 - 40), L.x + PICKER_UI.padX, L.y + 33);
-
-  // 关闭 ✕
-  ctx.textAlign = 'center';
-  ctx.font = 'bold 14px Arial';
-  ctx.fillStyle = THEME.text.dim;
-  ctx.fillText('✕', L.close.x + L.close.w / 2, L.close.y + L.close.h / 2);
-
-  // 宝石行
-  for (const row of L.rows) {
-    const r = row.rect;
-
-    ctx.fillStyle = row.enabled ? 'rgba(255, 255, 255, 0.06)' : 'rgba(255, 255, 255, 0.02)';
-    roundRectPath(ctx, r.x, r.y, r.w, r.h, THEME.radius.medium);
-    ctx.fill();
-    ctx.strokeStyle = row.enabled ? theme.shade(row.color, -0.1, 0.42) : THEME.border.subtle;
-    ctx.lineWidth = 1;
-    roundRectPath(ctx, r.x, r.y, r.w, r.h, THEME.radius.medium);
-    ctx.stroke();
-
-    // 左：宝石图标
-    gems.drawGemIcon(ctx, r.x + 22, r.y + r.h / 2, 12, row.kind, { dim: !row.enabled });
-
-    // 中：名称 + 效果
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.font = 'bold 12px Arial';
-    ctx.fillStyle = row.enabled ? row.color : THEME.text.off;
-    ctx.fillText(row.name, r.x + 42, r.y + r.h / 2 - 7);
-
-    ctx.font = '10px Arial';
-    ctx.fillStyle = row.enabled ? THEME.text.secondary : THEME.text.off;
-    ctx.fillText(row.desc, r.x + 42, r.y + r.h / 2 + 9);
-
-    // 右：持有数量（0 就写明"无"，而不是画个 0 让人猜）
-    ctx.textAlign = 'right';
-    ctx.font = 'bold 13px Arial';
-    ctx.fillStyle = row.enabled ? THEME.accent.green : THEME.text.off;
-    ctx.fillText(row.enabled ? `×${row.count}` : '无', r.x + r.w - 12, r.y + r.h / 2);
-  }
-
-  // 底部：背包占用 + 取消
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = '10px Arial';
-  ctx.fillStyle = THEME.text.off;
-  ctx.fillText(`背包 ${L.bagUsed}/${L.bagMax} 格`, L.x + L.w / 2, L.y + L.h - PICKER_UI.footH + 2);
-
-  drawButton(ctx, {
-    x: L.cancel.x, y: L.cancel.y, w: L.cancel.w, h: L.cancel.h,
-    top: THEME.track.soft, bottom: THEME.track.faint, stroke: THEME.border.subtle,
-    label: '取消', labelColor: THEME.text.secondary,
-    fontSize: 13, radius: THEME.radius.medium,
-    pressed: false,
-  });
-
-  ctx.restore();
+  // 注意：选宝石浮层 / 宝石详情 / 合成浮层改由 renderer 统一调 gemModal.drawGemModal
+  // 绘制（图签与背包两处共用），这里不再各画各的。
 }
 
 /** 单个图形塔格子 */
@@ -1045,7 +887,7 @@ function drawSheetGems(ctx, L, block, y, left, contentW) {
     }
 
     if (sock.kind) {
-      // 已嵌入：深色槽底 + 彩色描边 + 宝石
+      // 已嵌入：深色槽底 + 彩色描边 + 宝石 + 等级角标
       const col = gems.gemColor(sock.kind);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.40)';
       roundRectPath(ctx, x, sy, size, size, 8);
@@ -1054,7 +896,14 @@ function drawSheetGems(ctx, L, block, y, left, contentW) {
       ctx.lineWidth = 1.4;
       roundRectPath(ctx, x, sy, size, size, 8);
       ctx.stroke();
-      gems.drawGemIcon(ctx, x + size / 2, sy + size / 2, size * 0.34, sock.kind);
+      gems.drawGemIcon(ctx, x + size / 2, sy + size / 2 - 3, size * 0.32, sock.kind);
+
+      // 宝石等级角标（合成产物会高于 Lv.1，不写等级玩家分不出强弱）
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 8px Arial';
+      ctx.fillStyle = THEME.text.secondary;
+      ctx.fillText(`Lv.${sock.lv || 1}`, x + size / 2, sy + size - 6);
     } else {
       gems.drawEmptySocket(ctx, x, sy, size, size, 'rgba(179, 136, 255, 0.45)');
     }
@@ -1068,9 +917,9 @@ function drawSheetGems(ctx, L, block, y, left, contentW) {
   const bagEmpty = meta.gemList().length === 0;
   let hint;
   if (unlockedN === 0) hint = '解锁 / 升级图签，每级解锁 1 个宝石槽';
-  else if (bagEmpty) hint = '背包里还没有宝石 · 战斗清波与精英怪会掉落';
-  else if (filledN > 0) hint = '点空槽嵌入宝石 · 点已嵌的宝石取出';
-  else hint = '点槽位选择要嵌入的宝石（与固有技能绑定）';
+  else if (bagEmpty) hint = '背包里还没有宝石 · 战斗结算与精英怪会掉落';
+  else if (filledN > 0) hint = '点空槽选宝石 · 点已嵌的宝石取出';
+  else hint = '点槽位选宝石（与固有技能绑定）';
   ctx.fillText(ellipsize(ctx, hint, contentW), left, top + CODEX_UI.socketSize + CODEX_UI.socketHintH / 2);
 }
 
@@ -1111,7 +960,7 @@ function drawSheetAttrs(ctx, L, block, y, left, contentW) {
   }
 
   if (!isSupport) {
-    const critMult = stats.critMult || 1.5;
+    const critMult = stats.critMult || BALANCE.critDamageDefaultMult;
     ctx.fillStyle = THEME.accent.cyan;
     ctx.fillText(`暴击 ${stats.critChance || 0}%`, left, row2);
     ctx.fillStyle = THEME.text.dim;
@@ -1157,17 +1006,13 @@ function actCodex(game, action, type) {
   if (action === 'upgrade') {
     const res = meta.upgradeCodex(type);
     if (res.ok) {
-      game.toast = {
-        text: `图签提升 → Lv.${res.level}（+${res.level * CODEX.bonusPerLevel}% 攻击力）`,
-        color: THEME.accent.violet,
-        t0: Date.now(),
-      };
+      theme.pushToast(game, `图签提升 → Lv.${res.level}（+${res.level * CODEX.bonusPerLevel}% 攻击力）`, THEME.accent.violet);
     } else {
-      game.toast = {
-        text: res.reason === 'points' ? '特殊积分不足' : (res.reason === 'maxed' ? '图签已满级' : '无法提升'),
-        color: THEME.accent.danger,
-        t0: Date.now(),
-      };
+      theme.pushToast(
+        game,
+        res.reason === 'points' ? '特殊积分不足' : (res.reason === 'maxed' ? '图签已满级' : '无法提升'),
+        THEME.accent.danger
+      );
     }
     return res;
   }
@@ -1175,15 +1020,15 @@ function actCodex(game, action, type) {
   if (action === 'lineup') {
     const res = meta.toggleLineup(type);
     if (res.ok) {
-      game.toast = {
-        text: res.on ? `${TOWER_DEFS[type].name} 已登场` : `${TOWER_DEFS[type].name} 已下架`,
-        color: res.on ? THEME.accent.green : THEME.text.secondary,
-        t0: Date.now(),
-      };
+      theme.pushToast(
+        game,
+        res.on ? `${TOWER_DEFS[type].name} 已登场` : `${TOWER_DEFS[type].name} 已下架`,
+        res.on ? THEME.accent.green : THEME.text.secondary
+      );
     } else {
       const msg = res.reason === 'full' ? `登场池已满（${CODEX.lineupMax}）`
         : (res.reason === 'min6' ? `至少需要 ${CODEX.lineupMin} 个登场图形塔（当前 ${res.count}）` : '需先解锁');
-      game.toast = { text: msg, color: THEME.accent.danger, t0: Date.now() };
+      theme.pushToast(game, msg, THEME.accent.danger);
     }
     return res;
   }
@@ -1193,7 +1038,7 @@ function actCodex(game, action, type) {
 
 module.exports = {
   CODEX_UI,
-  PICKER_UI,
+  PICKER_UI: gemModal.PICKER_UI,   // 浮层实现已迁往 gemModal.js，这里转发常量保持兼容
   getCodexLayout,
   getSheetButtons,
   getDescLines,
@@ -1205,7 +1050,7 @@ module.exports = {
   isCodexScrollable,
   isSheetScrollable,
   hitCodex,
-  // 选宝石浮层
+  // 选宝石浮层（转发 gemModal；点行现在打开详情浮层而不是直接嵌入）
   getGemPickerLayout,
   hitGemPicker,
   isGemPickerScrollable,

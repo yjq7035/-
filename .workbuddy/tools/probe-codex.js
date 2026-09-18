@@ -27,7 +27,7 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const out = [];
 const log = (s) => out.push(s);
 
-let Game, codex, meta, gems, renderer, input, config;
+let Game, codex, meta, gems, renderer, input, config, gemModal;
 try {
   Game = require(path.join(ROOT, 'src', 'game_core'));
   codex = require(path.join(ROOT, 'src', 'codex'));
@@ -36,6 +36,7 @@ try {
   renderer = require(path.join(ROOT, 'src', 'renderer'));
   input = require(path.join(ROOT, 'src', 'input'));
   config = require(path.join(ROOT, 'src', 'config'));
+  gemModal = require(path.join(ROOT, 'src', 'gemModal'));
 } catch (e) {
   fs.writeFileSync(path.join(__dirname, '_codex_error.txt'), (e && e.stack) || String(e), 'utf8');
   process.exit(1);
@@ -212,8 +213,12 @@ log('\n===== 宝石嵌入闭环（真实点击）=====');
   ok('存在已解锁塔型', !!type, `type=${type} 图签 Lv.${type ? meta.codexLevel(type) : '-'}`);
 
   if (type) {
+    // 保证背包里有宝石可嵌（新档 starterGems 为空，掉落又不保证有）
+    for (const k of ['ruby', 'sapphire', 'emerald']) {
+      if (!meta.gemList().some((x) => x.kind === k)) meta.addGem(k);
+    }
     const bagBefore = meta.gemList().length;
-    ok('新档背包里有赠送宝石', bagBefore > 0, `背包 ${bagBefore} 颗`);
+    ok('背包里有宝石可嵌', bagBefore > 0, `背包 ${bagBefore} 颗`);
 
     // 把面板滚到"宝石槽完整可见"的位置，再取屏幕坐标
     g.codexSelected = type;
@@ -233,19 +238,34 @@ log('\n===== 宝石嵌入闭环（真实点击）=====');
       ok('点空槽弹出选宝石浮层', !!g.gemPicker && g.gemPicker.index === 0,
         g.gemPicker ? `gemPicker=${JSON.stringify(g.gemPicker)}` : '未打开');
 
-      // 点浮层里第一只"持有 > 0"的宝石行
+      // 点浮层里第一颗"可见"的宝石行 → 现在弹详情浮层，不再直接嵌入
       if (g.gemPicker) {
         const pl = codex.getGemPickerLayout(g);
-        const row = pl.rows.filter((r) => r.enabled)[0];
-        ok('浮层里有可选的宝石行', !!row, row ? `${row.name} ×${row.count}` : '一行都点不了');
+        const row = pl.rows.filter((r) => r.visible)[0];
+        ok('浮层里有可选的宝石行', !!row, row ? `${row.name}（逐颗列表，带 Lv）` : '一行都点不了');
         if (row) {
           const kind = row.kind;
           tapAt(g, row.rect.x + row.rect.w / 2, row.rect.y + row.rect.h / 2);
-          const afterBag = meta.gemList().length;
-          const embedded = meta.embeddedGems(type);
-          ok('嵌入后宝石从背包消失', afterBag === bagBefore - 1 && embedded.indexOf(kind) >= 0,
-            `背包 ${bagBefore}→${afterBag} · ${type} 已嵌 [${embedded.join(',')}]`);
-          ok('嵌入后浮层自动关闭', g.gemPicker === null);
+          ok('点宝石行弹出宝石详情浮层（不再直接嵌入）',
+            !!g.gemInfo && g.gemInfo.uid === row.uid,
+            g.gemInfo ? `uid=${g.gemInfo.uid} from=${g.gemInfo.from}` : '未打开');
+          ok('详情浮层打开时背包不变', meta.gemList().length === bagBefore,
+            `背包 ${meta.gemList().length}`);
+
+          // 详情浮层底部必须有两项选择：合成宝石 / 嵌入宝石（图签来源）
+          const il = gemModal.getGemInfoLayout(g);
+          ok('详情浮层底部有「合成宝石」「嵌入宝石」两项', !!(il && il.synthBtn && il.embedBtn),
+            il ? (il.embedBtn ? '两项齐全' : '缺嵌入按钮') : '浮层布局为空');
+
+          if (il && il.embedBtn) {
+            tapAt(g, il.embedBtn.x + il.embedBtn.w / 2, il.embedBtn.y + il.embedBtn.h / 2);
+            const afterBag = meta.gemList().length;
+            const embedded = meta.embeddedGems(type);
+            ok('嵌入后宝石从背包消失', afterBag === bagBefore - 1 && embedded.indexOf(kind) >= 0,
+              `背包 ${bagBefore}→${afterBag} · ${type} 已嵌 [${embedded.join(',')}]`);
+            ok('嵌入后浮层全部自动关闭', g.gemPicker === null && g.gemInfo === null,
+              `gemPicker=${!!g.gemPicker} gemInfo=${!!g.gemInfo}`);
+          }
 
           // 加成必须能算出来（战斗口径同源）
           const bonus = gems.bonusForType(type);

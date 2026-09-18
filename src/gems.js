@@ -31,10 +31,46 @@ function gemDef(kind) {
   return GEM_DEFS[kind] || null;
 }
 
-/** 宝石展示文案，如「攻击力 +8%」 */
+/** 宝石展示文案（基础值，即 Lv.1 的效果），如「攻击力 +8%」 */
 function effectText(kind) {
   const def = gemDef(kind);
   return def ? def.desc : '';
+}
+
+/** 宝石名字带上等级（需求：宝石名字那边要写上宝石的 lv 等级），如「红宝石 Lv.2」 */
+function gemName(kind, lv) {
+  const def = gemDef(kind);
+  const base = def ? def.name : String(kind || '');
+  return `${base} Lv.${Math.max(1, Math.floor(lv || 1))}`;
+}
+
+/**
+ * 宝石在指定等级下的效果数值（效果随等级线性放大：Lv.N = 基础值 × N）。
+ * 合成产物 +1 级 → 加成翻倍一档，这是"合成值得做"的数值根基。
+ */
+function effectAt(kind, lv) {
+  const def = gemDef(kind);
+  if (!def) return {};
+  const mult = Math.max(1, Math.floor(lv || 1));
+  const e = def.effect || {};
+  const out = {};
+  for (const k of Object.keys(e)) out[k] = e[k] * mult;
+  return out;
+}
+
+/** 宝石在指定等级下的效果文案，如 红宝石 Lv.2 → 「攻击力 +16%」 */
+function effectTextAt(kind, lv) {
+  const def = gemDef(kind);
+  if (!def) return '';
+  const e = effectAt(kind, lv);
+  const parts = [];
+  if (e.damagePercent) parts.push(`攻击力 +${e.damagePercent}%`);
+  if (e.attackSpeedMultiplier) parts.push(`攻速 +${e.attackSpeedMultiplier}`);
+  if (e.critChance) parts.push(`暴击率 +${e.critChance}%`);
+  if (e.penetration) parts.push(`穿透 +${e.penetration}`);
+  if (e.range) parts.push(`射程 +${e.range}`);
+  if (e.skillLevels) parts.push(`固有技能 +${e.skillLevels} 级`);
+  return parts.length ? parts.join(' · ') : def.desc;
 }
 
 /** 宝石颜色（未知 id 用中性灰，绝不返回 undefined —— 画布会把它变成"透明"） */
@@ -51,6 +87,7 @@ function skillNameOf(type) {
 
 /**
  * 某塔型已嵌入宝石的加成汇总（纯函数，全项目唯一口径）。
+ * 效果按宝石等级线性放大：Lv.N 的宝石提供 N 倍基础加成（合成产物的意义所在）。
  *
  * @param {string} type 塔类型
  * @returns {{
@@ -72,13 +109,12 @@ function bonusForType(type) {
   };
   if (!type || !TOWER_DEFS[type]) return out;
 
-  const kinds = meta.embeddedGems(type);
-  for (const kind of kinds) {
-    const def = gemDef(kind);
+  for (const entry of meta.embeddedEntries(type)) {
+    const def = gemDef(entry.kind);
     if (!def) continue;
-    const e = def.effect || {};
+    const e = effectAt(entry.kind, entry.lv);
     out.count++;
-    out.kinds.push(kind);
+    out.kinds.push(entry.kind);
     out.damagePercent += e.damagePercent || 0;
     out.attackSpeedMultiplier += e.attackSpeedMultiplier || 0;
     out.critChance += e.critChance || 0;
@@ -117,7 +153,12 @@ function embeddedGems(type) {
   return meta.embeddedGems(type);
 }
 
-/** 背包里每种宝石各有多少颗 —— 汇总成 { kind: 数量 }（图签选宝石浮层用） */
+/** 某塔型已嵌入的宝石条目 [{kind, lv}]（需要显示/计算等级的场合用这个） */
+function embeddedEntries(type) {
+  return meta.embeddedEntries(type);
+}
+
+/** 背包里每种宝石各有多少颗 —— 汇总成 { kind: 数量 }（旧版按种类聚合计数） */
 function bagCounts() {
   const counts = {};
   for (const g of meta.gemList()) counts[g.kind] = (counts[g.kind] || 0) + 1;
@@ -130,10 +171,10 @@ function randomKind() {
   return GEM_ORDER[Math.floor(Math.random() * GEM_ORDER.length)];
 }
 
-/** 掉落文案，如「获得宝石 · 红宝石（攻击力 +8%）」 */
-function dropText(kind) {
+/** 掉落文案，如「获得宝石 · 红宝石 Lv.1（攻击力 +8%）」 */
+function dropText(kind, lv) {
   const def = gemDef(kind);
-  return def ? `获得宝石 · ${def.name}（${def.desc}）` : '获得宝石';
+  return def ? `获得宝石 · ${gemName(kind, lv)}（${def.desc}）` : '获得宝石';
 }
 
 // ==================== 绘制 ====================
@@ -268,6 +309,9 @@ module.exports = {
   GEM_ORDER,
   gemDef,
   effectText,
+  effectTextAt,
+  effectAt,
+  gemName,
   gemColor,
   skillNameOf,
   bonusForType,
@@ -275,6 +319,7 @@ module.exports = {
   skillLevels,
   gemAt,
   embeddedGems,
+  embeddedEntries,
   bagCounts,
   randomKind,
   dropText,

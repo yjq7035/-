@@ -12,6 +12,7 @@
   ok   src\eventBus.js
   ok   src\gamemenu.js
   ok   src\game_core.js
+  ok   src\gemModal.js
   ok   src\gems.js
   ok   src\geometry.js
   ok   src\input.js
@@ -27,4 +28,4 @@
   ok   src\units.js
   ok   src\wave.js
 
-=== 语法体检：28 个文件，失败 0 个 ===
+=== 语法体检：29 个文件，失败 0 个 ===
