@@ -1,0 +1,7 @@
+长度 6061
+--- 尾部 700 字 ---
+STATS` 字段**——不是把 base 写成 0 糊弄。现役起点：箭形塔破解 3 / 半圆塔穿透 3 / 星形塔暴击 5% / 闪电塔暴击 5%（三角塔暴击 5% + 爆伤 10%）。`ZERO_BASE_ALLOWED` 是**空**逃生舱；`audit()` 第⑤项对任何未登记的 base=0 报红，`probe-skill` ⑧ 组断言「不存在生效却 base=0 的技能」。
+- ⚠️ `audit()` **抓不出"原生值本身写错"**（原生=0 时 base=0 一路绿灯）；它只核 base↔原生是否一致。所以新增"某属性从 0 起"的技能时，必须人工确认那是设计而不是漏登记字段。
+- 战斗侧别再写死塔型：`game_core.applyDamage` 的 `brk` 原为 `type === 'arrow' ? …break : 0`，已改成读 `getAttackProfile().break`——写死塔型会让后加的破解技能静默失效。
+- 依赖方向单向：`skills → config/gems`；**gems 不许反向 require skills**（成环），调用方直接用 `skills.skillName`。
+- 展示层四处同口径：面板 `bonusStats`（每条生效效果都要有行——菱形塔「穿透光环」、箭形塔「破解」历史缺口已由 `probe-skill.js` ⑦ 守死）/ 技能槽 `skillSlot`（按可用宽度 ellipsize）/ 强化浮层 `enhance`（一技能一张卡，卡片高度随 effects 条数变）/ 图签 `codex`。

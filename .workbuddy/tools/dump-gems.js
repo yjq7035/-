@@ -162,7 +162,7 @@ const html = `<!DOCTYPE html>
     <p>每个固有技能一个槽：<b>左边技能图标，右边技能名 + <code>Lv{等级}</code> + 当前值 + 说明</b>。</p>
     <ul>
       <li>槽内说明文字走 <code>wrapTextLines</code> 换行，<b>槽高由同一个函数算</b> —— 曾经"文本捅出面板 116px"的病因就是算行数和画文字用了两套逻辑。</li>
-      <li><code>Lv</code> 的口径 = 强化等级 + <b>宝石等级</b>。所以嵌了猫眼石之后，这里会立刻显示 <code>Lv.1</code> 而强化还是 0 —— 面板与战斗取值同源（<code>tower.getEffectiveSkillLevel</code>）。</li>
+      <li><code>Lv</code> 的口径 = <b>Lv.1（默认）</b> + 强化次数 + <b>宝石等级</b>。所以嵌了猫眼石之后，这里会立刻显示 <code>Lv.2</code> 而强化还是 0 次 —— 面板与战斗取值同源（<code>tower.getEffectiveSkillLevel</code>）。</li>
       <li>面板整体可拖动滚动；内容塞不下时按"装饰优先级"让位：分隔线 → 页脚留白 → 内边距，<b>按钮和数值绝不让位</b>。</li>
       <li>这里曾有一个致命 bug：内容超出时调用了<b>全项目不存在</b>的 <code>drawScrollIndicator()</code> → 矮屏上必抛 <code>ReferenceError</code> → 面板整块画不出来，玩家只看到"点了塔没反应"。现已统一改用 <code>theme.drawScrollBar</code>。</li>
     </ul>

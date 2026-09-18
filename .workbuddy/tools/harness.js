@@ -11,6 +11,53 @@
 
 const CJK = /[\u2e80-\u9fff\u3000-\u303f\uff00-\uffef\u2605\u25cf\u2728\u{1F300}-\u{1FAFF}]/u;
 
+// ----------------------------------------------------------------------------
+// 颜色校验：照**真平台**行为，而不是"宽容通过"。
+// 事故背景（2026-09）：真实 canvas 的 addColorStop 遇到解析不出来的颜色会
+//   抛 SyntaxError: The value provided ('undefined') could not be parsed as a color。
+// 而这里原先写成空函数 addColorStop(){}，于是"某座塔的 TOWER_DEFS.color 没登记"
+// 这种数据错误在 10 套无头回归里一路绿灯，却在模拟器里每帧炸一次。
+// 结论：mock 太宽容 = 假绿。凡是"真平台会抛错"的，mock 必须跟着抛。
+// ----------------------------------------------------------------------------
+const COLOR_RE = /^(#[0-9a-f]{3,8}|rgba?\([^)]*\)|hsla?\([^)]*\)|[a-z]{3,})$/i;
+
+function assertColor(c) {
+  if (typeof c !== 'string' || !COLOR_RE.test(c)) {
+    throw new SyntaxError(
+      `Failed to execute 'addColorStop' on 'CanvasGradient': The value provided ('${c}') could not be parsed as a color.`);
+  }
+  const m = /^rgba?\(([^)]*)\)$/i.exec(c);
+  if (m) {
+    const nums = m[1].split(',').map((s) => Number(s.trim()));
+    // rgba(NaN, NaN, NaN, 1) 在真平台上同样解析失败（常见于 shade(color, undefined)）
+    if (!nums.length || nums.some((n) => !isFinite(n))) {
+      throw new SyntaxError(
+        `Failed to execute 'addColorStop' on 'CanvasGradient': 颜色分量不是有限数字（'${c}'）`);
+    }
+  }
+}
+
+/** 渐变几何参数必须有限（真平台对 NaN/Infinity 会抛 NotSupportedError） */
+function assertFinite(args, what) {
+  for (const v of args) {
+    if (typeof v !== 'number' || !isFinite(v)) {
+      throw new Error(`${what}: 参数必须是有限数字，收到 ${v}`);
+    }
+  }
+}
+
+function makeGradient(kind, args) {
+  return {
+    __grad: true, kind,
+    addColorStop(offset, color) {
+      assertColor(color);
+      if (typeof offset !== 'number' || !isFinite(offset)) {
+        throw new SyntaxError(`Failed to execute 'addColorStop' on 'CanvasGradient': 偏移量非法（${offset}）`);
+      }
+    },
+  };
+}
+
 function fontPx(font) {
   const m = /(\d+(?:\.\d+)?)px/.exec(String(font || ''));
   return m ? parseFloat(m[1]) : 10;
@@ -114,10 +161,13 @@ function makeCtx(rec) {
 
     // ---- 渐变 ----
     createLinearGradient(x0, y0, x1, y1) {
-      return { __grad: true, x0, y0, x1, y1, addColorStop() {} };
+      assertFinite([x0, y0, x1, y1], 'createLinearGradient');
+      return makeGradient('linear', [x0, y0, x1, y1]);
     },
     createRadialGradient(x0, y0, r0, x1, y1, r1) {
-      return { __grad: true, x0, y0, r0, x1, y1, r1, addColorStop() {} };
+      assertFinite([x0, y0, r0, x1, y1, r1], 'createRadialGradient');
+      if (r0 < 0 || r1 < 0) throw new Error(`createRadialGradient: 半径不能为负（${r0}, ${r1}）`);
+      return makeGradient('radial', [x0, y0, r0, x1, y1, r1]);
     },
     createPattern() { return null; },
 

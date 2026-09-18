@@ -1,10 +1,10 @@
 // 塔：工厂 + 造价（从原 Game.createTower / getTowerCost 抽离）
 const {
   TOWER_DEFS, TOWER_STATS, PLAYER, ATTACK_SPEED_BASE, MAX_STAGE, STAGE_BOOSTS, BALANCE,
-  ENHANCE_SPECIAL,
 } = require('./config');
 const { createUnit } = require('./units');
 const gems = require('./gems');
+const skills = require('./skills');
 
 function createTower(type, x, y) {
   const stats = TOWER_STATS[type] || TOWER_STATS.triangle;
@@ -32,8 +32,8 @@ function createTower(type, x, y) {
   tower.attackPowerBoost = 0;   // 攻击力增幅百分比（0 = 无增幅）
   // 强化等级（局内花金币逐级提升，见 game_core.enhanceTower；需先进阶到 3★）
   tower.enhanceLevel = 0;
-  // 强化带来的专属属性增量：{ critChance: 10, ... } —— 值 = per × 强化等级，
-  // 叠加在 TOWER_STATS 的原生值之上（取值口径见 config.ENHANCE_SPECIAL）
+  // 强化带来的技能属性增量：{ critChance: 10, ... } —— 值 = per × 强化等级，
+  // 叠加在 TOWER_STATS 的原生值之上（取值口径见 src/skills.js）
   tower.enhanceAttrs = {};
   // 每次强化落在哪一项上（顺序记录，供面板/浮层展示）
   tower.enhancePicks = [];
@@ -123,17 +123,37 @@ function calculateFinalDamage(baseDamage, level, attackPowerBoost) {
 }
 
 // ============================================================================
-// 强化（局内花钱，需先进阶到 3★）—— 每塔一项「专属特殊属性」，逐级抬高
+// 技能（固有技能）—— 数值表在 src/skills.js，这里只做"塔实例 × 技能"的转接头
 // ----------------------------------------------------------------------------
-// 取值口径（与 config.ENHANCE_SPECIAL 严格一致）：
-//   当前值(L) = base + per × L          —— 面板/浮层展示用
-//   强化增量    = per × L               —— 存进 tower.enhanceAttrs，叠加在原生值上
-// 两个式子等价的前提是 base === TOWER_STATS 里的原生值（verify.js 会逐塔断言）。
+// 口径（与 skills.js 严格一致，本文件不再自己维护第二份规则）：
+//   强化次数 n      = clamp(局内强化等级 + 宝石等级, 0, BALANCE.enhance.maxLevel)  —— 0..5
+//   有效技能等级 Lv = 1 + n  —— 塔一放下就是 Lv.1（不存在 Lv.0），范围 1..6
+//   当前值(Lv)      = base + per × n      —— 面板 / 技能槽 / 浮层展示
+//   强化增量(n)     = per × n             —— 存进 tower.enhanceAttrs，叠加在原生值之上
+// 一条技能可以有多条效果（三角塔 = 暴击几率 + 暴击伤害），强化一次全部一起涨。
 // ============================================================================
 
-/** 该塔的专属特殊属性定义（副本外的只读引用；无定义返回 null） */
-function getSpecialDef(type) {
-  return ENHANCE_SPECIAL[type] || null;
+/** 该塔的固有技能定义（副本外的只读引用；无技能返回 null） */
+function getSkillDef(type) {
+  return skills.getInnateSkill(type);
+}
+
+/**
+ * 该塔强化到 level 级时，某条技能效果的「当前值」= base + per × level。
+ * level 是【有效技能等级】（强化 + 宝石），与战斗口径 getEnhanceAttr 完全同源。
+ * @param {object} [effect] 指定效果行；缺省取技能的首条效果（单效果塔 = 完全等价）
+ */
+function getSpecialValue(type, level, effect) {
+  const list = skills.getEffects(type);
+  if (!list.length) return 0;
+  return skills.valueOf(effect || list[0], level);
+}
+
+/** 该塔强化到 level 级时的「强化增量」= per × level（写进 enhanceAttrs 的那份） */
+function getSpecialBonus(type, level, effect) {
+  const list = skills.getEffects(type);
+  if (!list.length) return 0;
+  return skills.bonusOf(effect || list[0], level);
 }
 
 // ============================================================================
@@ -156,103 +176,80 @@ function getGemDamageMultiplier(type) {
 
 /** 宝石绑定的固有技能等级加成（猫眼石 +1 级/颗） */
 function getSkillGemLevels(type) {
-  return gems.skillLevels(type);
+  return skills.gemLevels(type);
 }
 
 /**
- * 该塔的【有效固有技能等级】= 局内强化等级 + 宝石等级。
- * 面板上的「技能名 Lv.x」、强化浮层的「x → x+1」都用它，避免"珠子嵌了但等级没涨"的错觉。
+ * 该塔的【有效技能等级】= Lv.1 + (局内强化等级 + 宝石等级) —— 1..6。
+ * 面板上的「技能名 Lv.x」、强化浮层的「x → x+1」、技能槽都用它，
+ * 避免"珠子嵌了但等级没涨"的错觉。
+ * ⚠️ 它是【展示等级】（1 起）；报价 / 写 enhanceAttrs 要的是【强化次数】（0 起，见 getEnhanceTimes）。
  */
 function getEffectiveSkillLevel(tower) {
-  if (!tower) return 0;
-  return clampEnhanceLevel((tower.enhanceLevel || 0) + getSkillGemLevels(tower.type));
+  return skills.levelOf(tower);
 }
 
 /**
- * 该塔强化到 level 级时，专属特殊属性的「当前值」= base + per × level。
- * level 是【有效技能等级】（强化 + 宝石），与战斗口径 getEnhanceAttr 完全同源。
+ * 该塔的【强化次数】= clamp(局内强化等级 + 宝石等级) —— 0..5（0 起，存盘口径）。
+ * 报价 / canEnhance / applyEnhanceAttrs 全用这一份；展示才 +1 变成技能等级 Lv。
  */
-function getSpecialValue(type, level) {
-  const sp = getSpecialDef(type);
-  if (!sp) return 0;
-  const lv = clampEnhanceLevel(level);
-  return sp.base + sp.per * lv;
+function getEnhanceTimes(tower) {
+  return skills.enhanceTimesOf(tower);
 }
 
-/** 该塔强化到 level 级时的「强化增量」= per × level（写进 enhanceAttrs 的那份） */
-function getSpecialBonus(type, level) {
-  const sp = getSpecialDef(type);
-  if (!sp) return 0;
-  return sp.per * clampEnhanceLevel(level);
-}
-
-/** 把等级夹到 [0, maxLevel]，越界输入一律当合法值处理 */
-function clampEnhanceLevel(level) {
-  const lv = level || 0;
-  if (lv <= 0) return 0;
-  return Math.min(BALANCE.enhance.maxLevel, lv);
+/** 把【强化次数】夹到 [0, maxLevel]（0 起 —— 不是技能等级），越界输入一律当合法值处理 */
+function clampEnhanceLevel(times) {
+  return skills.clampEnhanceTimes(times);
 }
 
 /**
- * 某项强化属性的增量（叠加在原生值之上的那份）。
+ * 某项技能属性的增量（叠加在原生值之上的那份）。
  *
- * 口径（2026-09 宝石版）：
+ * 口径（2026-09 技能系统版，实现全在 skills.bonusFor）：
  *   有效技能等级 = clamp(局内强化等级 + 宝石等级)
- *   · 招牌属性（sp.key）：增量 = per × 有效技能等级
- *     —— 也就是 getSpecialBonus(type, enhanceLevel + 宝石等级)，与 ESC 展示完全一致；
- *     「技能宝石」就是从这里生效的：它不需要任何额外分支，全项目的取属性入口
- *     本来就是这一个函数（战斗 / 属性面板 / 强化浮层）。
- *   · 其它键：照旧只读 tower.enhanceAttrs（applyEnhanceAttrs 写入的那份）
+ *   · 该属性是本塔技能里的一条效果 → 增量 = per × 有效技能等级
+ *     —— 与面板 / 技能槽展示完全一致；「技能宝石（猫眼石）」就是从这里生效的：
+ *        它不需要任何额外分支，全项目的取属性入口本来就是这一个函数
+ *        （战斗 / 属性面板 / 强化浮层）。
+ *   · 其它键 → 照旧只读 tower.enhanceAttrs
+ *   · 三角塔的两条效果（暴击几率 / 暴击伤害）都走第一条：一个技能、两条属性同时涨。
  *
- * ⚠️ 别把 sp.key 那条改回"只读 enhanceAttrs" —— 那样宝石加的技能等级会在战斗里蒸发。
+ * ⚠️ 别把第一条改回"只读 enhanceAttrs" —— 那样宝石加的技能等级会在战斗里蒸发。
  */
 function getEnhanceAttr(tower, key) {
-  if (!tower) return 0;
-  const sp = getSpecialDef(tower.type);
-  if (sp && sp.key === key) {
-    return sp.per * clampEnhanceLevel((tower.enhanceLevel || 0) + getSkillGemLevels(tower.type));
-  }
-  if (!tower.enhanceAttrs) return 0;
-  return tower.enhanceAttrs[key] || 0;
+  return skills.bonusFor(tower, key);
 }
 
-/** 该塔的强化选项（现在每塔只有一项，返回单元素数组以兼容浮层渲染） */
+/** 该塔的强化选项（一个固有技能 = 一个选项，选项里带该技能的全部效果） */
 function getEnhanceOptions(type) {
-  const sp = getSpecialDef(type);
-  return sp ? [specialToOption(sp)] : [];
+  return skills.getOptions(type);
 }
 
-/** 按 key 取该塔的强化选项；key 不是它的专属属性时返回 null */
+/** 按 key 取该塔的强化选项；key 可以是技能 id 或任一效果属性键（兼容旧调用） */
 function getEnhanceOption(type, key) {
-  const sp = getSpecialDef(type);
-  if (!sp) return null;
-  return (!key || key === sp.key) ? specialToOption(sp) : null;
+  return skills.getOption(type, key);
 }
 
-/** 专属属性定义 → 浮层用的选项结构 */
-function specialToOption(sp) {
-  return {
-    key: sp.key,
-    name: sp.name,
-    perLevel: sp.per,   // 每次强化的增量
-    base: sp.base,      // 默认（未强化）取值
-    unit: sp.unit,
-    desc: sp.desc,
-  };
+/** 文案：技能当前值，如「30%」/「×6」/「暴击几率 30% · 暴击伤害 50%」 */
+function specialText(type, level, key) {
+  const list = skills.getEffects(type);
+  if (!list.length) return '';
+  if (key) {
+    const one = skills.findEffect(type, key);
+    return one ? skills.valueTextOf(one, level) : '';
+  }
+  return skills.skillValueText(type, level);
 }
 
-/** 文案：属性值，如「25%」/「×5」/「45°」/「10层」/「260」（`倍` 前缀 ×） */
-function specialText(type, level) {
-  const sp = getSpecialDef(type);
-  if (!sp) return '';
-  const v = getSpecialValue(type, level);
-  return sp.unit === '倍' ? `×${v}` : `${v}${sp.unit}`;
-}
-
-/** 文案：本次强化的收益，如「+5%」/「+1倍」/「+15」 */
-function specialGainText(type) {
-  const sp = getSpecialDef(type);
-  return sp ? `+${sp.per}${sp.unit}` : '';
+/** 文案：本次强化的收益，如「+5%」/「暴击几率 +5% · 暴击伤害 +10%」 */
+function specialGainText(type, key) {
+  const list = skills.getEffects(type);
+  if (!list.length) return '';
+  if (key) {
+    const one = skills.findEffect(type, key);
+    return one ? skills.gainTextOf(one) : '';
+  }
+  return skills.skillGainText(type);
 }
 
 // ============================================================================
@@ -293,7 +290,7 @@ function getStackMax(tower) {
 
 /**
  * 平行塔：固有技能「连续射击」的攻速叠加上限（原生 100%，强化每级 +20%）。
- * 战斗口径 = 原生值 + 强化增量，与 ENHANCE_SPECIAL.parallel 的 base + per×L 同源；
+ * 战斗口径 = 原生值 + 强化增量，与 skills.SKILLS.parallel 的 base + per×L 同源；
  * 技能宝石加的等级同样由 getEnhanceAttr 折算进来。
  */
 function getInnateStackCap(tower) {
@@ -310,16 +307,12 @@ function getInnateStackStep(tower) {
 /**
  * 把塔的强化等级重新结算成 enhanceAttrs。
  * 单一真源：先清空再按「per × 等级」写入，等级回退（理论上不会发生）也不会残留旧的增量。
+ * 一条技能的全部效果都会写进 enhanceAttrs[key]（三角塔 = critChance + critDamage 两条），
+ * 让 getEnhanceAttr(tower, key) 可以直接查 enhanceAttrs 兜底。
  * @returns {object} tower.enhanceAttrs
  */
 function applyEnhanceAttrs(tower) {
-  const sp = tower ? getSpecialDef(tower.type) : null;
-  if (!tower) return {};
-  tower.enhanceAttrs = {};
-  if (!sp) return tower.enhanceAttrs;
-  const lv = clampEnhanceLevel(tower.enhanceLevel);
-  if (lv > 0) tower.enhanceAttrs[sp.key] = sp.per * lv;
-  return tower.enhanceAttrs;
+  return skills.applyTo(tower);
 }
 
 /** 是否已进阶到可强化的星级（3★封顶） */
@@ -329,36 +322,47 @@ function isStageReady(tower) {
 
 /**
  * 强化到下一级所需金币。
- * 目标等级 L 的造价 = 塔基础造价 × costRate × L（越强化越贵）
+ * @param {number} enhanceTimes 【强化次数】（0 起，存盘口径 —— 不是技能等级 Lv）
+ * 造价 = 塔基础造价 × costRate × (次数 + 1)（越强化越贵）
  * @returns {number} 已满级返回 Infinity
  */
-function getEnhanceCost(type, enhanceLevel) {
-  const lv = Math.max(0, enhanceLevel || 0);
-  if (lv >= BALANCE.enhance.maxLevel) return Infinity;
+function getEnhanceCost(type, enhanceTimes) {
+  const n = Math.max(0, enhanceTimes || 0);
+  if (n >= BALANCE.enhance.maxLevel) return Infinity;
   const base = getTowerCost(type);
-  return Math.max(1, Math.round(base * BALANCE.enhance.costRate * (lv + 1)));
+  return Math.max(1, Math.round(base * BALANCE.enhance.costRate * (n + 1)));
 }
 
 /** 是否还能继续强化（只判等级上限；星级门槛另用 isStageReady）
- *  ⚠️ 判的是【有效技能等级】（强化 + 宝石）—— 宝石已经把技能顶到上限时，
- *     按钮必须变灰，否则玩家会花金币买一个 clamp 掉的等级（白扣钱）。 */
+ *  ⚠️ 判的是【强化次数】（强化 + 宝石），**不是技能等级 Lv** ——
+ *     拿 Lv 去和 maxLevel 比会把 Lv.5 误判成满级，技能就永远到不了 Lv.6。
+ *  ⚠️ 宝石也计入次数：宝石已经把技能顶到上限时按钮必须变灰，
+ *     否则玩家会花金币买一个 clamp 掉的等级（白扣钱）。 */
 function canEnhance(tower) {
-  return !!tower && getEffectiveSkillLevel(tower) < BALANCE.enhance.maxLevel;
+  return !!tower && getEnhanceTimes(tower) < skills.MAX_ENHANCE_TIMES;
 }
 
 /**
- * 塔的一次攻击参数（暴击率 / 暴击倍率 / 穿透），已并入强化累计属性。
+ * 塔的一次攻击参数（暴击率 / 暴击倍率 / 穿透），已并入技能与宝石的累计属性。
  * 战斗结算与属性面板共用此函数，保证"显示的"与"结算的"同口径。
- * @returns {{ critChance:number, critMult:number, penetration:number }}
+ *
+ * 暴击倍率三条来源（与 bonusStats 的 暴击伤害 行同口径）：
+ *   ① critMult   原生倍率（三角塔 2.1）
+ *   ② critDamage 原生「+N% 暴击伤害」（三角塔 +10%）→ 直接加到倍率上（+0.1）
+ *   ③ 技能「暴击伤害」的增量 per × 有效技能等级（同样按 % 加算）
+ *   另有 critMult 百分比放大（乘算，当前没有塔用它，保留给将来）
+ * @returns {{ critChance:number, critMult:number, penetration:number, break:number }}
  */
 function getAttackProfile(tower) {
   const type = tower ? tower.type : null;
   const st = TOWER_STATS[type] || TOWER_STATS.triangle;
   const gem = getGemBonus(type);
-  const critMultPct = getEnhanceAttr(tower, 'critMult'); // 百分比放大
+  const critMultPct = getEnhanceAttr(tower, 'critMult');       // 百分比放大（乘算）
+  const baseNative = (st.critMult || BALANCE.critDamageDefaultMult) + (st.critDamage || 0) / 100;
+  const critDamagePts = getEnhanceAttr(tower, 'critDamage');   // 技能增量（点值 %）
   return {
     critChance: Math.max(0, (st.critChance || 0) + gem.critChance + getEnhanceAttr(tower, 'critChance')),
-    critMult: Math.max(1, (st.critMult || BALANCE.critDamageDefaultMult) * (1 + critMultPct / 100)),
+    critMult: Math.max(1, baseNative * (1 + critMultPct / 100) + critDamagePts / 100),
     penetration: Math.max(0, (st.penetration || 0) + gem.penetration + getEnhanceAttr(tower, 'penetration')),
     break:       Math.max(0, (st.break || 0) + getEnhanceAttr(tower, 'break')),
   };
@@ -379,7 +383,10 @@ function getTowerRuntimeStats(tower) {
   // 宝石挂在塔型上（跨局永久），所以即使强化等级为 0 也要参与结算
   const gem = getGemBonus(type);
   const hasGem = gem.count > 0;
-  if (lv <= 0 && !hasGem) return st;
+  // 没有任何强化/宝石来源、且原生也没有"额外暴击伤害"时，直接返回原生表（省一次拷贝）。
+  // ⚠️ st.critDamage 这个条件不能省：三角塔原生就带 +10% 暴击伤害，必须走下面的合成，
+  //    否则 runtimeStats.critMult 会漏掉那 0.1，与 getAttackProfile 对不上。
+  if (lv <= 0 && !hasGem && !st.critDamage) return st;
 
   const out = Object.assign({}, st);
   const add = (key) => getEnhanceAttr(tower, key);
@@ -389,11 +396,20 @@ function getTowerRuntimeStats(tower) {
   out.penetration = (st.penetration || 0) + gem.penetration + add('penetration');
   out.break = (st.break || 0) + add('break');
   out.critChance = (st.critChance || 0) + gem.critChance + add('critChance');
-  out.critMult = (st.critMult || BALANCE.critDamageDefaultMult) * (1 + add('critMult') / 100);
+  // 暴击倍率：原生倍率 + 原生「+N% 暴击伤害」（三角塔 +10%）+ 技能增量（点值，单位 %）
+  // ⚠️ critDamage 已经并进 critMult，这里不再单独输出 critDamage 字段 ——
+  //    两边都留会让"读 critMult 又读 critDamage"的调用点重复计算（+10% 变成 +20%）。
+  const critBase = (st.critMult || BALANCE.critDamageDefaultMult) + (st.critDamage || 0) / 100;
+  out.critMult = critBase * (1 + add('critMult') / 100) + add('critDamage') / 100;
   if (st.isSupport) {
-    // 辅助塔：专属属性"光环强度"直接加成在光环数值上
+    // 辅助塔：技能"光环强度"直接加成在光环数值上
     const base = (st.supportBuff && st.supportBuff.attackSpeedMultiplier) || 0;
     out.supportBuff = { attackSpeedMultiplier: base + add('auraPower') };
+    // 菱形塔的技能是"穿透光环"（原生值在 st.auraPenetration 上）——
+    // 这里必须跟着算，否则技能槽显示 Lv.5、光环却还是 5 点（"面板涨了、光环没涨"）。
+    if (st.auraPenetration !== undefined) {
+      out.auraPenetration = (st.auraPenetration || 0) + add('auraPenetration');
+    }
   }
   return out;
 }
@@ -437,13 +453,16 @@ module.exports = {
   getStageStars,
   getAttackPowerBoost,
   calculateFinalDamage,
-  getSpecialDef,
+  // ---- 固有技能（数值表在 src/skills.js，这里是与塔实例结合的转接头）----
+  skills,                 // 直接把技能系统暴露出去（面板/浮层/图签需要更细的接口时用它）
+  getSkillDef,
   getSpecialValue,
   getSpecialBonus,
   getGemBonus,
   getGemDamageMultiplier,
   getSkillGemLevels,
   getEffectiveSkillLevel,
+  getEnhanceTimes,
   clampEnhanceLevel,
   getEnhanceAttr,
   getEnhanceOptions,

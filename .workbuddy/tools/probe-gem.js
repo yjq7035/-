@@ -30,7 +30,7 @@ const ok = (name, cond, detail) => {
   log(`${cond ? '  ok  ' : ' FAIL '} ${name}${detail ? '  → ' + detail : ''}`);
 };
 
-let Game, config, meta, gems, towerMod, skillSlot, bag, renderer, input, gemModal;
+let Game, config, meta, gems, towerMod, skillSlot, bag, renderer, input, gemModal, skills;
 try {
   Game = require(path.join(ROOT, 'src', 'game_core'));
   config = require(path.join(ROOT, 'src', 'config'));
@@ -38,6 +38,7 @@ try {
   gems = require(path.join(ROOT, 'src', 'gems'));
   towerMod = require(path.join(ROOT, 'src', 'tower'));
   skillSlot = require(path.join(ROOT, 'src', 'skillSlot'));
+  skills = require(path.join(ROOT, 'src', 'skills'));
   bag = require(path.join(ROOT, 'src', 'bag'));
   renderer = require(path.join(ROOT, 'src', 'renderer'));
   input = require(path.join(ROOT, 'src', 'input'));
@@ -311,15 +312,15 @@ log('\n===== ④ 战斗口径：宝石必须真的改变战斗数值 =====');
   const slotsP = meta.socketCount('parallel');
   const r = meta.embedGem('parallel', slotsP - 1, opal.uid);
   const capAfter = towerMod.getInnateStackCap(pt);
-  const spDef = config.ENHANCE_SPECIAL.parallel;
+  const spDef = skills.getEffects('parallel')[0];
   ok('猫眼石让固有技能等级 +1',
-    towerMod.getSkillGemLevels('parallel') === 1 && towerMod.getEffectiveSkillLevel(pt) === 1,
+    towerMod.getSkillGemLevels('parallel') === 1 && towerMod.getEffectiveSkillLevel(pt) === 2,
     `宝石等级=${towerMod.getSkillGemLevels('parallel')} 有效等级=${towerMod.getEffectiveSkillLevel(pt)}`);
   ok('固有技能等级 +1 真的抬高了战斗数值（叠加上限）',
     r.ok && Math.abs(capAfter - (capBefore + spDef.per)) < 1e-6,
     `${spDef.name}: ${capBefore} → ${capAfter}（per=${spDef.per}${spDef.unit}）`);
-  ok('技能槽显示的 Lv 与战斗口径一致',
-    skillSlot.buildSkillSlots(null, 'parallel', null, 280)[0].level === 1,
+  ok('技能槽显示的 Lv 与战斗口径一致（Lv.1 默认 + 宝石 1 级 = Lv.2）',
+    skillSlot.buildSkillSlots(null, 'parallel', null, 280)[0].level === 2,
     `槽内 Lv.${skillSlot.buildSkillSlots(null, 'parallel', null, 280)[0].level}`);
 
   // —— 宝石加成汇总（面板 / 图签 / 战斗共用的那一份）——

@@ -13,7 +13,7 @@
 // ============================================================================
 
 const {
-  SHOP_TOWERS, TOWER_ORDER, TOWER_DEFS, CODEX, TALENTS, TALENT_EFFECT, LEVELS, GEM, GEM_KINDS,
+  SHOP_TOWERS, TOWER_ORDER, TOWER_DEFS, CODEX, TALENTS, TALENT_COST, TALENT_EFFECT, LEVELS, GEM, GEM_KINDS,
 } = require('./config');
 
 const STORAGE_KEY = 'graphic_td_meta_v1';
@@ -622,6 +622,32 @@ function talentValue(id, key) {
   return lv * (eff[k] !== undefined ? eff[k] : 0);
 }
 
+/**
+ * 学习天赋到第 level 级需要多少天赋点。
+ *
+ * 口径（2026-09-18 定稿）：**花费 = 等级 × 基础花费**，线性增长。
+ *   基础花费 = def.cost（配置里没写就用 TALENT_COST.default），
+ *   于是 cost=1 的天赋 Lv.1..Lv.10 = 1,2,…,10；cost=2 的 = 2,4,…,20。
+ *
+ * ⚠️ 唯一真源：talents.js 的按钮报价与 learnTalent 的扣费都必须调这里，
+ *    别再各自去读"每条天赋手写的那串价格"（旧静态价格表已随本次改造删除，
+ *    probe-talent.js 会扫源码守住这条）。
+ *
+ * @param {string} id 天赋 id
+ * @param {number} level 目标等级（1 起；会夹到 [1, def.max]）
+ * @returns {number} 需要的天赋点；天赋不存在返回 Infinity（视为不可学）
+ */
+function talentCost(id, level) {
+  const def = TALENTS.filter((t) => t.id === id)[0];
+  if (!def) return Infinity;
+  const base = (typeof def.cost === 'number' && def.cost > 0)
+    ? def.cost
+    : (TALENT_COST.default || 1);
+  const n = Math.floor(Number(level) || 0);
+  if (!isFinite(n) || n <= 0) return 0;
+  return Math.min(def.max, n) * base;
+}
+
 /** 学习下一级天赋 */
 function learnTalent(id) {
   const m = get();
@@ -630,7 +656,7 @@ function learnTalent(id) {
   const cur = m.talents[id] || 0;
   if (cur >= def.max) return { ok: false, reason: 'maxed', level: cur };
 
-  const cost = def.costs[cur] || 1;
+  const cost = talentCost(id, cur + 1);
   if (m.talentPoints < cost) return { ok: false, reason: 'points', cost: cost, level: cur };
 
   m.talentPoints -= cost;
@@ -743,6 +769,7 @@ module.exports = {
   synthesizeGems,
   // 天赋
   talentLevel,
+  talentCost,
   talentValue,
   learnTalent,
   // 关卡

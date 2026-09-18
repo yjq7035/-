@@ -341,6 +341,13 @@ function shouldRotateTowerIcon(type) {
  * @param {number} [scale] 整体缩放（默认 1；图签卡片/导航可放大）
  */
 function drawTowerIcon(ctx, x, y, color, type, scale) {
+  // ⚠️ 主色最终交给 CanvasGradient.addColorStop，而它对"解析不出来的颜色"是**抛错**的
+  //    （SyntaxError: The value provided ('undefined') could not be parsed as a color）。
+  //    历史事故：菱形塔改辅助塔时 TOWER_DEFS 丢了 color，图签一解锁就每帧抛；
+  //    栈里只有 addColorStop + applyTowerStyle，看不出是哪座塔。这里提前喊停并**点名塔型**。
+  if (typeof color !== 'string' || color === '') {
+    throw new Error(`drawTowerIcon: 塔型「${type}」没有可用主色 —— 去补 TOWER_DEFS.${type}.color`);
+  }
   const s = scale === undefined ? 1 : scale;
   ctx.save();
   if (s !== 1) {
@@ -916,6 +923,7 @@ function drawDashedBox(ctx, x, y, w, h, r, color) {
 const SKILL_GLYPH = {
   critChance: 'crosshair',
   critMult: 'crosshair',
+  critDamage: 'crosshair',
   explosionDamage: 'burst',
   explosionRadius: 'burst',
   eliteMult: 'scope',
@@ -923,6 +931,7 @@ const SKILL_GLYPH = {
   penetration: 'pierce',
   break: 'pierce',
   auraPower: 'aura',
+  auraPenetration: 'aura',
   range: 'aura',
   sectorAngle: 'sector',
   stackMax: 'stack',

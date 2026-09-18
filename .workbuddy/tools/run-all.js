@@ -24,7 +24,11 @@ const JOBS = [
   ['probe-panel',   path.join(TOOLS, 'probe-panel.js'),   [path.join(TOOLS, '_panel.txt')]],
   ['probe-codex',   path.join(TOOLS, 'probe-codex.js'),   [path.join(TOOLS, '_codex.txt')]],
   ['probe-gem',     path.join(TOOLS, 'probe-gem.js'),     [path.join(TOOLS, '_gem.txt')]],
+  // 技能系统专项：技能表契约 + "一技能多效果"（三角塔暴击/爆伤）+ 强化与宝石链路
+  ['probe-skill',   path.join(TOOLS, 'probe-skill.js'),   [path.join(TOOLS, '_skill.txt')]],
   ['smoke',         path.join(TOOLS, 'smoke.js'),         [path.join(TOOLS, '_smoke.txt')]],
+  // 天赋花费专项：公式（Lv.N = N × 基础花费）+ 真扣点 + 按钮报价与结算同口径
+  ['probe-talent',  path.join(TOOLS, 'probe-talent.js'),  [path.join(TOOLS, '_talent.txt')]],
   // 背景音乐专项：伪造 wx 跑音频状态机 + 顶栏开关几何/图标/真实点按 + 各场景可见性
   ['probe-audio',   path.join(TOOLS, 'probe-audio.js'),   [path.join(TOOLS, '_audio.txt')]],
   ['probe-graphic', path.join(TOOLS, 'probe-graphic.js'), [path.join(TMP, '_graphic.txt')]],

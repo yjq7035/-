@@ -22,6 +22,7 @@ const { LAYOUT, GEM, TOWER_DEFS } = require('./config');
 const theme = require('./theme');
 const meta = require('./meta');
 const gems = require('./gems');
+const skills = require('./skills');
 
 const { THEME, roundRectPath, drawButton, drawScrollBar, drawScrollHint, ellipsize } = theme;
 
@@ -196,9 +197,9 @@ function drawEmbedPicker(game) {
 
   drawModalPanel(ctx, L.x, L.y, L.w, L.h);
 
-  // 标题：目标槽位 + 绑定的固有技能名
+  // 标题：目标槽位 + 绑定的固有技能名（技能表见 src/skills.js）
   const towerDef = L.type ? TOWER_DEFS[L.type] : null;
-  const skillName = L.type ? gems.skillNameOf(L.type) : '';
+  const skillName = L.type ? skills.skillName(L.type) : '';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.font = 'bold 13px Arial';

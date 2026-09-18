@@ -1,0 +1,9 @@
+src/meta.js  函数 49 个  重名: 无
+src/talents.js  函数 10 个  重名: 无
+src/config.js  函数 0 个  重名: 无
+
+talentCost 落地: 有
+learnTalent 用公式: 有
+导出 talentCost: 有
+config 导出 TALENT_COST: 有
+talents 按钮取价: 有

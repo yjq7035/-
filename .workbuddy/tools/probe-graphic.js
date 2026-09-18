@@ -31,6 +31,7 @@ const theme = require(path.join(ROOT, 'src', 'theme'));
 const config = require(path.join(ROOT, 'src', 'config'));
 const codex = require(path.join(ROOT, 'src', 'codex'));
 const towerMod = require(path.join(ROOT, 'src', 'tower'));
+const skills = require(path.join(ROOT, 'src', 'skills'));
 
 const out = [];
 let fails = 0;
@@ -101,11 +102,18 @@ log('\n===== ② 介绍文案与固有技能登记 =====');
   ok('description 仍讲清机制（含「连续射击」）', String(st.description).indexOf('连续射击') >= 0);
   ok('攻击间隔仍在属性表里（只是不在文案里）', st.attackInterval === 0.25, `attackInterval=${st.attackInterval}`);
 
-  const sp = config.ENHANCE_SPECIAL.parallel;
-  ok('平行塔有专属特殊属性（不再是空标题）', !!sp, sp ? `${sp.name} base=${sp.base} per=${sp.per}${sp.unit}` : '缺失');
-  ok('专属属性 base 与 TOWER_STATS 原生值一致', sp && sp.base === st.innateStackCap, `${sp && sp.base} vs ${st.innateStackCap}`);
-  ok('全部塔型都有专属属性（17/17）', config.TOWER_ORDER.every((t) => !!config.ENHANCE_SPECIAL[t]),
-    config.TOWER_ORDER.filter((t) => !config.ENHANCE_SPECIAL[t]).join(',') || '无遗漏');
+  // 技能表 2026-09 迁到 src/skills.js：这里是"平行塔的固有技能登记完整"的哨兵
+  const sk = skills.getInnateSkill('parallel');
+  const sp = skills.getEffects('parallel')[0];
+  ok('平行塔有固有技能（不再是空标题）', !!sk && !!sp,
+    sk ? `${sk.name} / ${sp.name} base=${sp.base} per=${sp.per}${sp.unit}` : '缺失');
+  ok('技能效果 base 与 TOWER_STATS 原生值一致', sp && sp.base === st.innateStackCap, `${sp && sp.base} vs ${st.innateStackCap}`);
+  ok('全部塔型都登记了固有技能且至少有一条效果（17/17）',
+    config.TOWER_ORDER.every((t) => skills.hasSkill(t) && skills.getEffects(t).length > 0),
+    config.TOWER_ORDER.filter((t) => !skills.hasSkill(t) || !skills.getEffects(t).length).join(',') || '无遗漏');
+  const problems = skills.audit();
+  ok('技能表自检全绿（id/名称/效果键/单位/base 对齐）', problems.length === 0,
+    problems.slice(0, 3).join(' ; ') || `${Object.keys(skills.SKILLS).length} 型`);
 }
 
 // ============================================================================
@@ -113,13 +121,16 @@ log('\n===== ③ 战斗口径：叠加上限走 getter（不再硬编码 100）=
 {
   const bare = { type: 'parallel', enhanceAttrs: {} };
   ok('原生叠加上限 = 100%', towerMod.getInnateStackCap(bare) === 100, `${towerMod.getInnateStackCap(bare)}`);
-  // ⚠️ 别用"手写 enhanceAttrs"来模拟强化：tower.getEnhanceAttr 对**招牌属性**
-  //    （sp.key）走的是 per × clamp(强化等级 + 宝石等级)，压根不读 enhanceAttrs
-  //    （宝石版引入的口径，见 tower.js getEnhanceAttr 的注释）。写 enhanceAttrs 会静默无效。
+  // ⚠️ 别用"手写 enhanceAttrs"来模拟强化：tower.getEnhanceAttr 对**技能效果键**
+  //    走的是 per × clamp(强化等级 + 宝石等级)，压根不读 enhanceAttrs
+  //    （宝石版引入、技能系统沿用的口径，见 src/skills.js bonusFor 的注释）。
+  //    写 enhanceAttrs 会静默无效。
   const lv2 = { type: 'parallel', enhanceLevel: 2, enhanceAttrs: {} };
   ok('强化 2 级（+20%/级）→ 140%', towerMod.getInnateStackCap(lv2) === 140, `${towerMod.getInnateStackCap(lv2)}`);
   ok('每次攻击叠加步长 = 10%', towerMod.getInnateStackStep(bare) === 10);
-  ok('专属属性当前值口径 base+per×L 自洽', towerMod.getSpecialValue('parallel', 2) === 140, `${towerMod.getSpecialValue('parallel', 2)}`);
+  // 展示口径的入参是【技能等级 Lv】（1 起）：强化 2 次 = Lv.3 = 100 + 20×2 = 140%
+  ok('专属属性当前值口径 base+per×(等级-1) 自洽（Lv.3 = 强化 2 次）',
+    towerMod.getSpecialValue('parallel', 3) === 140, `${towerMod.getSpecialValue('parallel', 3)}`);
   const src = fs.readFileSync(path.join(ROOT, 'src', 'game_core.js'), 'utf8');
   ok('game_core 已不再硬编码叠加上限 100', src.indexOf('Math.min(100, tower._innateStack') < 0);
   ok('game_core 已不再记账 _dmgBuf', src.indexOf('_dmgBuf') < 0);
@@ -312,7 +323,7 @@ log('\n===== ⑦ 塔型键改名 graphic → parallel 的完整性 =====');
   ok('TOWER_DEFS 里名字是「平行塔」', config.TOWER_DEFS.parallel && config.TOWER_DEFS.parallel.name === '平行塔',
     config.TOWER_DEFS.parallel && config.TOWER_DEFS.parallel.name);
   ok('旧键 graphic 已从所有配置表消失',
-    !config.TOWER_DEFS.graphic && !config.TOWER_STATS.graphic && !config.ENHANCE_SPECIAL.graphic
+    !config.TOWER_DEFS.graphic && !config.TOWER_STATS.graphic && !skills.SKILLS.graphic
     && theme.TOWER_SHAPES.indexOf('graphic') < 0);   // TOWER_SHAPES 住在 theme，不在 config
   ok('TOWER_ORDER 仍是 17 且不含旧键',
     config.TOWER_ORDER.length === 17 && config.TOWER_ORDER.indexOf('graphic') < 0 && config.TOWER_ORDER.indexOf('parallel') >= 0,

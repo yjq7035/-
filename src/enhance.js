@@ -2,19 +2,21 @@
 // 强化（升级）确认浮层 —— src/enhance.js
 // ----------------------------------------------------------------------------
 // 入口：塔属性面板里的「强化」按钮（只有进阶到 3★ 的图形塔按钮才可用）。
-// 内容（2026-09 二次重做）：强化**不再发放任何伤害加成**，只把该塔的
-//       【专属特殊属性】抬一级：当前值 = base + per × 等级（见 config.ENHANCE_SPECIAL）。
+// 内容：强化**不再发放任何伤害加成**，只把该塔的【固有技能】抬一级：
+//       技能等级 +1 → 该技能的全部效果一起涨（当前值 = base + per × 等级）。
+//       数值表在 src/skills.js —— 本文件只负责"把这次升级摆到玩家面前"。
 // 交互：一次性确认 —— 点卡片＝立即强化并扣金币；点空白＝取消。
-//       （旧版是"从 2 项里多选一"，现在每塔只有一项属性，所以浮层退化为
-//         "看一眼当前值 → 点确认"的预览卡，不再让玩家做无意义的选择。）
+//       一个【技能】= 一张卡片（不是一条属性一张卡）：三角塔的「致命一击」只有一张卡，
+//       卡上把暴击几率 / 暴击伤害两条效果逐条列出来（各自显示 当前 → 下一级 与增量）。
 //
-// 为什么单独一个文件：强化规则（属性表 / 数值）在 config.ENHANCE_SPECIAL，
-// 结算在 game_core.enhanceTower，这里只负责"把这次升级摆到玩家面前"。
+// 为什么单独一个文件：技能表在 src/skills.js，结算在 game_core.enhanceTower，
+// 这里只负责"把这次升级摆到玩家面前"。
 // ============================================================================
 
 const { BALANCE, TOWER_DEFS } = require('./config');
 const theme = require('./theme');
 const towerMod = require('./tower');
+const skills = require('./skills');
 
 const { THEME, roundRectPath, drawTaperedDivider, ellipsize } = theme;
 
@@ -25,11 +27,20 @@ const ENHANCE_UI = {
   padTop: 16,
   titleH: 24,
   infoH: 42,        // 收益 + 花费 两行
-  optionH: 58,
+  cardPadY: 10,     // 卡片上下内边距
+  cardTitleH: 20,   // 卡片里"技能名"一行
+  cardLineH: 16,    // 卡片里每条效果一行
+  cardRadius: 10,
   gap: 8,
   padBottom: 14,
   hintH: 16,
 };
+
+/** 一张强化卡的高度：技能名 + N 条效果（N 随技能效果条数变化） */
+function cardH(nEffects) {
+  const n = Math.max(1, nEffects || 0);
+  return ENHANCE_UI.cardPadY * 2 + ENHANCE_UI.cardTitleH + n * ENHANCE_UI.cardLineH;
+}
 
 /**
  * 浮层布局（纯函数，渲染 / 输入共用）
@@ -44,9 +55,11 @@ function getEnhanceLayout(game) {
   const type = tower ? tower.type : null;
   const options = type ? towerMod.getEnhanceOptions(type) : [];
   const n = options.length;
+  const heights = options.map((o) => cardH((o.effects || []).length));
 
   const panelW = Math.min(ENHANCE_UI.maxW, W - ENHANCE_UI.marginX * 2);
-  const listH = n * ENHANCE_UI.optionH + Math.max(0, n - 1) * ENHANCE_UI.gap;
+  let listH = 0;
+  for (let i = 0; i < n; i++) listH += heights[i] + (i > 0 ? ENHANCE_UI.gap : 0);
   const panelH = ENHANCE_UI.padTop + ENHANCE_UI.titleH + ENHANCE_UI.infoH
     + ENHANCE_UI.gap + listH + ENHANCE_UI.gap + ENHANCE_UI.hintH + ENHANCE_UI.padBottom;
 
@@ -58,15 +71,20 @@ function getEnhanceLayout(game) {
   const infoTop = panelY + ENHANCE_UI.padTop + ENHANCE_UI.titleH + 8;
   const listTop = panelY + ENHANCE_UI.padTop + ENHANCE_UI.titleH + ENHANCE_UI.infoH + ENHANCE_UI.gap;
 
-  const cards = options.map((o, i) => ({
-    key: o.key,
-    opt: o,
-    idx: i,
-    x: panelX + ENHANCE_UI.padX,
-    y: listTop + i * (ENHANCE_UI.optionH + ENHANCE_UI.gap),
-    w: inner,
-    h: ENHANCE_UI.optionH,
-  }));
+  const cards = [];
+  let cy = listTop;
+  options.forEach((o, i) => {
+    cards.push({
+      key: o.key,
+      opt: o,
+      idx: i,
+      x: panelX + ENHANCE_UI.padX,
+      y: cy,
+      w: inner,
+      h: heights[i],
+    });
+    cy += heights[i] + ENHANCE_UI.gap;
+  });
 
   return {
     panel: { x: panelX, y: panelY, w: panelW, h: panelH },
@@ -98,23 +116,30 @@ function pickCount(tower, key) {
   return n;
 }
 
-/** 本次强化的收益文案，如「+5%」/「+1倍」/「+15」 */
+/** 本次强化的收益文案，如「+5%」/「暴击几率 +5% · 暴击伤害 +10%」 */
 function gainText(type) {
   return towerMod.specialGainText(type);
 }
 
-/** 属性取值文案，如「30%」/「×6」/「45°」/「12层」 */
+/** 技能当前取值文案，如「30%」/「暴击几率 30% · 暴击伤害 50%」 */
 function valueText(type, level) {
   return towerMod.specialText(type, level);
 }
 
-/** 「当前 → 下一级」文案，如「10% → 15%」 */
+/** 「当前 → 下一级」文案，如「5% → 10% · 0% → 10%」 */
 function stepText(type, level) {
-  return `${valueText(type, level)} → ${valueText(type, level + 1)}`;
+  return skills.skillStepText(type, level);
 }
 
-/** 兼容旧调用点：选项的本次收益文案 */
+/** 单条效果的「当前 → 下一级」文案（卡片里每行一份） */
+function effectStepText(effect, level) {
+  return skills.stepTextOf(effect, level);
+}
+
+/** 选项的本次收益文案（多效果用 · 连接；兼容旧调用点） */
 function optionGainText(opt) {
+  if (!opt) return '';
+  if (opt.gainText) return opt.gainText;
   return `+${opt.perLevel}${opt.unit || ''}`;
 }
 
@@ -131,11 +156,12 @@ function drawEnhancePicker(game) {
   const towerDef = TOWER_DEFS[tower.type];
   if (!towerDef) return;
 
-  const sp = towerMod.getSpecialDef(tower.type);
+  const sk = skills.getInnateSkill(tower.type);
   const L = getEnhanceLayout(game);
-  const lv = tower.enhanceLevel || 0;
-  const maxLv = BALANCE.enhance.maxLevel;
-  const cost = towerMod.getEnhanceCost(tower.type, lv);
+  // ⚠️ 两套口径别混：展示用【技能等级 Lv】（1 起、含宝石），报价用【强化次数】（0 起）
+  const lv = towerMod.getEffectiveSkillLevel(tower);
+  const maxLv = skills.MAX_LEVEL;
+  const cost = towerMod.getEnhanceCost(tower.type, towerMod.getEnhanceTimes(tower));
   const affordable = game.gold >= cost;
   const maxed = lv >= maxLv;
 
@@ -161,22 +187,23 @@ function drawEnhancePicker(game) {
   ctx.textBaseline = 'middle';
   ctx.font = 'bold 15px Arial';
   ctx.fillStyle = THEME.text.primary;
-  ctx.fillText(`固有技能 · ${towerDef.name}`, L.panel.x + ENHANCE_UI.padX, L.titleCY);
+  ctx.fillText(`${skills.INNATE_LABEL} · ${towerDef.name}`, L.panel.x + ENHANCE_UI.padX, L.titleCY);
 
   ctx.textAlign = 'right';
   ctx.font = 'bold 13px Arial';
   ctx.fillStyle = THEME.accent.green;
-  ctx.fillText(`${lv} → ${lv + 1}`, L.panel.x + L.panel.w - ENHANCE_UI.padX, L.titleCY);
+  // 标题右侧：技能等级（1 起）→ 下一级；已满级时用 nextLevel 夹住，绝不写出 Lv.7
+  ctx.fillText(maxed ? `Lv.${lv} 已满` : `Lv.${lv} → Lv.${skills.nextLevel(lv)}`, L.panel.x + L.panel.w - ENHANCE_UI.padX, L.titleCY);
 
   // 分隔线（标题与正文之间，风格统一）
   drawTaperedDivider(ctx, W / 2, L.titleCY + ENHANCE_UI.titleH / 2 + 8, L.panel.w - ENHANCE_UI.padX * 2);
 
-  // 信息两行：左 = 本次收益 / 此时取值 → 下一级取值；右 = 花费
+  // 信息两行：左 = 本次提升哪个技能 / 技能说明；右 = 花费
   ctx.textAlign = 'left';
   ctx.font = 'bold 12px Arial';
   ctx.fillStyle = THEME.accent.green;
   ctx.fillText(
-    sp ? `本次提升固有技能 ${sp.name} ${gainText(tower.type)}` : '本次获得',
+    sk ? `本次提升 ${sk.name} ${skills.skillGainText(tower.type)}` : '本次提升',
     L.panel.x + ENHANCE_UI.padX, L.infoLines[0]
   );
 
@@ -189,12 +216,12 @@ function drawEnhancePicker(game) {
   ctx.font = '11px Arial';
   ctx.fillStyle = THEME.text.secondary;
   let subText;
-  if (maxed) subText = '强化属性已达上限';
+  if (maxed) subText = '技能等级已达上限';
   else if (!affordable) subText = `金币不足（现有 💰${game.gold}）`;
-  else subText = sp ? `${sp.name} ${stepText(tower.type, lv)}` : '';
+  else subText = sk ? ellipsize(ctx, sk.desc || '', L.panel.w - ENHANCE_UI.padX * 2) : '';
   ctx.fillText(subText, L.panel.x + ENHANCE_UI.padX, L.infoLines[1]);
 
-  // 卡片（现在只有一张：确认本次升级）
+  // 卡片（一个技能一张：确认本次升级）
   for (const card of L.cards) {
     drawOptionCard(game, card, tower);
   }
@@ -204,18 +231,23 @@ function drawEnhancePicker(game) {
   ctx.textBaseline = 'middle';
   ctx.font = '10px Arial';
   ctx.fillStyle = THEME.text.off;
-  ctx.fillText('点卡片提升固有技能 · 点空白取消', W / 2, L.hintY);
+  ctx.fillText(`点卡片提升固有技能 · 点空白取消`, W / 2, L.hintY);
 
   ctx.restore();
 }
 
-/** 强化卡：左侧属性名 + 说明，右侧"本次获得"数值 */
+/**
+ * 强化卡：技能名 + 逐条效果（属性名 · 当前值 → 下一级 · 本次增量）。
+ * 效果条数决定卡高（见 cardH / getEnhanceLayout），所以"一技能多效果"不会画到卡外。
+ */
 function drawOptionCard(game, card, tower) {
   const ctx = game.ctx;
   const opt = card.opt;
   const { x, y, w, h } = card;
   const pressed = theme.isButtonPressed(game, 'enhance:opt:' + opt.key);
   const picked = pickCount(tower, opt.key);
+  // 与浮层标题同口径：技能等级（Lv.1 起、含宝石）—— 卡片里的「当前 → 下一级」才对得上面板
+  const lv = towerMod.getEffectiveSkillLevel(tower);
 
   ctx.save();
 
@@ -231,45 +263,64 @@ function drawOptionCard(game, card, tower) {
   ctx.fillStyle = grad;
   ctx.strokeStyle = pressed ? 'rgba(165, 214, 167, 0.95)' : 'rgba(129, 199, 132, 0.5)';
   ctx.lineWidth = pressed ? 2 : 1.2;
-  roundRectPath(ctx, x, y, w, h, THEME.radius.medium);
+  roundRectPath(ctx, x, y, w, h, ENHANCE_UI.cardRadius);
   ctx.fill();
   ctx.stroke();
 
   ctx.textBaseline = 'middle';
+  const left = x + 14;
+  const right = x + w - 14;
 
-  // 左：属性名
+  // 第 1 行：技能名（左） + 已强化次数（右，暗）
   ctx.textAlign = 'left';
   ctx.font = 'bold 15px Arial';
   ctx.fillStyle = THEME.text.primary;
-  ctx.fillText(opt.name, x + 14, y + h / 2 - 9);
+  ctx.fillText(ellipsize(ctx, opt.name, w - 92), left, y + ENHANCE_UI.cardPadY + ENHANCE_UI.cardTitleH / 2);
 
-  // 左：说明 + 已强化次数
-  ctx.font = '10px Arial';
-  ctx.fillStyle = THEME.text.dim;
-  const sub = (opt.desc || '') + (picked > 0 ? `　已强化 ${picked} 次` : '');
-  ctx.fillText(ellipsize(ctx, sub, w - 116), x + 14, y + h / 2 + 11);
+  if (picked > 0) {
+    ctx.textAlign = 'right';
+    ctx.font = '10px Arial';
+    ctx.fillStyle = THEME.text.dim;
+    ctx.fillText(`已强化 ${picked} 次`, right, y + ENHANCE_UI.cardPadY + ENHANCE_UI.cardTitleH / 2);
+  }
 
-  // 右：本次收益（绿字）+ 小标
-  ctx.textAlign = 'right';
-  ctx.font = 'bold 17px Arial';
-  ctx.fillStyle = THEME.accent.green;
-  ctx.fillText(optionGainText(opt), x + w - 14, y + h / 2 - 7);
+  // 第 2 行起：每条效果一行 —— 属性名（暗） · 当前 → 下一级（白） · 本次增量（绿，右对齐）
+  let cy = y + ENHANCE_UI.cardPadY + ENHANCE_UI.cardTitleH + ENHANCE_UI.cardLineH / 2;
+  for (const eff of (opt.effects || [])) {
+    ctx.textAlign = 'left';
+    ctx.font = '11px Arial';
+    ctx.fillStyle = THEME.text.secondary;
+    ctx.fillText(eff.name, left, cy);
+    const nameW = ctx.measureText(eff.name).width;
 
-  ctx.font = '9px Arial';
-  ctx.fillStyle = THEME.text.off;
-  ctx.fillText('本次提升', x + w - 14, y + h / 2 + 11);
+    const gainStr = eff.gainText;
+    ctx.font = 'bold 12px Arial';
+    const gainW = ctx.measureText(gainStr).width;
+
+    const stepStr = effectStepText(eff, lv);
+    const availW = Math.max(20, w - 28 - nameW - 6 - gainW - 8);
+    ctx.fillStyle = THEME.text.primary;
+    ctx.fillText(ellipsize(ctx, stepStr, availW), left + nameW + 6, cy);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = THEME.accent.green;
+    ctx.fillText(gainStr, right, cy);
+    cy += ENHANCE_UI.cardLineH;
+  }
 
   ctx.restore();
 }
 
 module.exports = {
   ENHANCE_UI,
+  cardH,
   getEnhanceLayout,
   hitEnhancePicker,
   drawEnhancePicker,
   gainText,
   valueText,
   stepText,
+  effectStepText,
   optionGainText,
   pickCount,
 };

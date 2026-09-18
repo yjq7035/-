@@ -19,6 +19,7 @@ const gamemenu = require('./gamemenu');
 const enhanceMod = require('./enhance');
 const meta = require('./meta');
 const gems = require('./gems');
+const skills = require('./skills');
 const skillSlot = require('./skillSlot');
 const gemModal = require('./gemModal');
 const { anchorPointOf } = require('./geometry');
@@ -648,6 +649,7 @@ const ROW_LABEL_COLOR = {
   critChance: THEME.accent.cyan,
   critMult: THEME.accent.cyan,
   penetration: THEME.accent.gold,
+  break: THEME.accent.gold,
 };
 
 /**
@@ -1061,7 +1063,7 @@ function drawPanelSkill(ctx, block, panelX, y, panelW) {
   ctx.textBaseline = 'middle';
   ctx.font = 'bold 12px Arial';
   ctx.fillStyle = THEME.text.secondary;
-  ctx.fillText('固有技能', left, y + PANEL_UI.sectionTitleH / 2);
+  ctx.fillText(skills.INNATE_LABEL, left, y + PANEL_UI.sectionTitleH / 2);
 
   skillSlot.drawSkillSlots(ctx, left, y + PANEL_UI.sectionTitleH, contentW, block.slots, {
     towerColor: block.color,
@@ -1110,11 +1112,11 @@ function drawPanelGems(ctx, block, panelX, y, panelW) {
 }
 
 /**
- * 强化区：花金币提升该塔（局内，不跨局）。
- * 2026-09 二次重做后的规则：
+ * 强化区：花金币提升该塔的【固有技能】等级（局内，不跨局）。
+ * 规则：
  *   · 只有【进阶到 3★】的图形塔才能强化（橙色提示当前星级）
- *   · 每次强化只把该塔的【专属特殊属性】抬一级，**不再发放任何攻击力加成**
- *     （属性表见 config.ENHANCE_SPECIAL；当前取值在下方属性行里看）
+ *   · 强化 = 技能等级 +1 = 该技能的全部效果一起涨，**不再发放任何攻击力加成**
+ *     （技能表见 src/skills.js；每条效果的当前取值在下方属性行里看）
  * 商店预览（没有实体塔）时不可用，提示"放置后可强化"。
  * 按钮矩形写入 game.panelEnhanceBtn，供输入层命中（渲染每帧刷新，永不失效）。
  */
@@ -1147,9 +1149,9 @@ function drawPanelEnhance(ctx, block, panelX, y, panelW, game) {
     return;
   }
 
-  // 兜底：该塔类型没有登记专属属性（config.ENHANCE_SPECIAL 漏配）→ 直接说清楚，
+  // 兜底：该塔类型没有登记固有技能（src/skills.js 漏配）→ 直接说清楚，
   // 绝不把"需 3★"这种假门槛画出来，更不许把按钮挂上去（点了会白花金币）。
-  if (!towerMod.getSpecialDef(tower.type)) {
+  if (!skills.hasSkill(tower.type)) {
     game.panelEnhanceBtn = null;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
@@ -1162,13 +1164,14 @@ function drawPanelEnhance(ctx, block, panelX, y, panelW, game) {
     return;
   }
 
-  const maxLv = BALANCE.enhance.maxLevel;
-  const lv = tower.enhanceLevel || 0;
+  // ⚠️ 两套口径别混：显示/上限用【技能等级 Lv】（1 起、含宝石），报价用【强化次数】（0 起）
+  const maxLv = skills.MAX_LEVEL;
+  const lv = towerMod.getEffectiveSkillLevel(tower);
   const stage = tower.stage || 0;
   const needStage = BALANCE.enhance.minStage;
   const stageReady = towerMod.isStageReady(tower);
   const maxed = lv >= maxLv;
-  const cost = maxed ? Infinity : towerMod.getEnhanceCost(tower.type, lv);
+  const cost = maxed ? Infinity : towerMod.getEnhanceCost(tower.type, towerMod.getEnhanceTimes(tower));
   const affordable = !maxed && game.gold >= cost;
   const usable = stageReady && !maxed;
 
@@ -1181,7 +1184,7 @@ function drawPanelEnhance(ctx, block, panelX, y, panelW, game) {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.font = 'bold 13px Arial';
-  ctx.fillStyle = lv > 0 ? THEME.accent.green : THEME.text.primary;
+  ctx.fillStyle = lv > skills.LEVEL_BASE ? THEME.accent.green : THEME.text.primary;
   ctx.fillText(`固有技能 Lv.${lv}/${maxLv}`, left, y + 20);
 
   ctx.font = '10px Arial';
@@ -1192,10 +1195,11 @@ function drawPanelEnhance(ctx, block, panelX, y, panelW, game) {
     ctx.fillStyle = THEME.text.off;
     ctx.fillText('已满级：专属属性已达上限', left, y + 37);
   } else {
-    const sp = towerMod.getSpecialDef(tower.type);
+    // 每次强化的收益（多效果技能拼成「暴击几率 +5% · 暴击伤害 +10%」，宽了自动省略）
+    const gainLabel = skills.skillGainLabel(tower.type);
     ctx.fillStyle = THEME.text.off;
     ctx.fillText(
-      ellipsize(ctx, sp ? `每次强化 ${sp.name} +${sp.per}${sp.unit}` : '每次强化提升专属属性', availW),
+      ellipsize(ctx, gainLabel ? `每次强化 ${gainLabel}` : '每次强化提升固有技能', availW),
       left, y + 37
     );
   }

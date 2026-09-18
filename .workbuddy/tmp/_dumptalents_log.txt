@@ -1,0 +1,17 @@
+Game initialized: {
+  mapX: 58.5,
+  mapY: 126.28,
+  mapWidth: 273,
+  mapHeight: 489.52,
+  slots: 12,
+  towers: 0
+}
+Game initialized: {
+  mapX: 48,
+  mapY: 93.16,
+  mapWidth: 224,
+  mapHeight: 262.84000000000003,
+  slots: 12,
+  towers: 0
+}
+ok

@@ -304,6 +304,90 @@ log('\n===== 宝石嵌入闭环（真实点击）=====');
   }
 }
 
+// ============================================================================
+// ⑧ 全塔型「已解锁」绘制 + TOWER_DEFS 元数据完整性
+// ----------------------------------------------------------------------------
+// 事故背景（2026-09-18）：菱形塔从"穿刺输出塔"改造成"辅助塔"时，TOWER_DEFS 那一行被
+// 替换成了 TOWER_STATS 形状的对象，name/color/cost/rarity 四个字段一起蒸发。
+// 后果：图签里一旦解锁菱形塔，drawTowerIcon 就把 undefined 喂给 gradient.addColorStop，
+// 每帧抛 SyntaxError: The value provided ('undefined') could not be parsed as a color；
+// 塔名还会画出字面量 "undefined"。
+// 为什么 10 套回归全绿？两个盲区叠加：
+//   ① 旧 harness 的 addColorStop 是空函数（mock 太宽容＝假绿，已改为照真平台抛错）；
+//   ② 上面的用例只在【默认档】下画图签，而默认档里菱形塔是未解锁的 —— 恰好绕过这颗雷。
+// 所以本节强制把每一型都解锁到 Lv.1 再画，并单独把"四件套"当数据契约断言。
+// ============================================================================
+log('\n===== 全塔型已解锁绘制（图签）+ 定义完整性 =====');
+{
+  // ⑧a 数据契约：TOWER_DEFS 每一型都必须有「展示 + 图签定价」四件套
+  const miss = [];
+  for (const type of config.TOWER_ORDER) {
+    const def = config.TOWER_DEFS[type] || {};
+    const lack = ['name', 'color', 'cost', 'rarity'].filter((k) => def[k] === undefined);
+    if (lack.length) miss.push(`${type}(缺 ${lack.join('/')})`);
+  }
+  ok('每个塔型都登记了 name/color/cost/rarity', miss.length === 0,
+    miss.length ? miss.join('；') : `共 ${config.TOWER_ORDER.length} 型`);
+
+  // ⑧b 全部解锁到 Lv.1，再逐个走"格网（含滚到底）+ 详情面板"的真实绘制路径
+  const store = meta.get();
+  const savedCodex = Object.assign({}, store.codex);
+  for (const type of config.TOWER_ORDER) store.codex[type] = 1;
+
+  try {
+    let drew = 0;
+    let expect = 0;
+    for (const [W, H] of RES) {
+      const g = mkGame(W, H);
+      g.scene = 'codex';
+      g.codexSelected = null;
+
+      // --- 格网：顶部 + 滚到底 各画一次（覆盖所有格子，别只画首屏）---
+      let maxScroll = 0;
+      try {
+        maxScroll = codex.getCodexLayout(g).maxScroll;
+      } catch (e) {
+        ok(`${W}x${H} getCodexLayout`, false, `${e.constructor.name}: ${e.message}`);
+      }
+      for (const scroll of [0, maxScroll]) {
+        g.codexScroll = scroll;
+        rec.texts.length = 0;
+        expect++;
+        try {
+          codex.drawCodex(g);
+          drew++;
+        } catch (e) {
+          ok(`${W}x${H} 已解锁：格网(滚动 ${scroll.toFixed(0)}) 绘制`, false, `${e.constructor.name}: ${e.message}`);
+        }
+      }
+
+      // --- 详情面板：逐型打开（drawSheetHeader 必画该型图标）---
+      for (const type of config.TOWER_ORDER) {
+        g.codexSelected = type;
+        g.codexSheetScroll = 0;
+        rec.texts.length = 0;
+        expect++;
+        try {
+          codex.drawCodex(g);
+          drew++;
+        } catch (e) {
+          ok(`${W}x${H} 已解锁：详情面板「${type}」绘制`, false, `${e.constructor.name}: ${e.message}`);
+          continue;
+        }
+        // 字段缺失会以字面量 "undefined" 的形式漏到画面上，这里当场截住
+        const bad = rec.texts.filter((t) => t.text.indexOf('undefined') >= 0)[0];
+        if (bad) ok(`${type} 解锁后文字不含 undefined`, false, `「${bad.text.slice(0, 40)}」`);
+      }
+    }
+    ok('全塔型已解锁：格网 + 详情面板都画得完', drew === expect,
+      `${drew}/${expect} 次绘制无异常（${RES.length} 分辨率 × (格网 2 次 + 面板 ${config.TOWER_ORDER.length} 次)）`);
+  } finally {
+    // 还原存档快照：⑦ 依赖"存在未解锁塔型"，别污染后面的用例
+    for (const k of Object.keys(store.codex)) if (!(k in savedCodex)) delete store.codex[k];
+    for (const k of Object.keys(savedCodex)) store.codex[k] = savedCodex[k];
+  }
+}
+
 log(`\n=== 图签汇总：${RES.length} 分辨率 × ${config.TOWER_ORDER.length} 塔型，失败 ${fails} 条 ===`);
 log(`=== 判据戳：TOWER_ORDER=${config.TOWER_ORDER.length} 型 / 面板三段式(sheetHeaderH=${codex.CODEX_UI.sheetHeaderH}) / ${new Date().toISOString()} ===`);
 

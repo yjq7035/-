@@ -13,10 +13,13 @@
 // 绑定关系（需求原话"嵌入宝石后被嵌入的宝石与技能绑定"）：
 //   宝石嵌进某个图形塔的槽 → 与该塔的【固有技能】绑定 → 从背包消失 →
 //   加成按塔型永久生效（跨局，写进 meta.socketed）。
-//   effect.skillPercent 这一项更是直接作用于固有技能那项属性本身。
+//   effect.skillLevels 这一项更是直接给固有技能加等级（见 skills.gemLevels）。
+//
+// ⚠️ 依赖方向：gems **不许** require skills（会成环：skills → gems）。
+//    需要技能名/技能表的地方，调用方直接 require('./skills')。
 // ============================================================================
 
-const { GEM, GEM_KINDS, ENHANCE_SPECIAL, TOWER_DEFS } = require('./config');
+const { GEM, GEM_KINDS, TOWER_DEFS } = require('./config');
 const meta = require('./meta');
 
 const GEM_DEFS = {};
@@ -77,12 +80,6 @@ function effectTextAt(kind, lv) {
 function gemColor(kind) {
   const def = gemDef(kind);
   return def ? def.color : '#90A4AE';
-}
-
-/** 该塔型固有技能的名字（宝石绑定的对象；无技能返回空串） */
-function skillNameOf(type) {
-  const sp = type ? ENHANCE_SPECIAL[type] : null;
-  return sp ? sp.name : '';
 }
 
 /**
@@ -313,7 +310,6 @@ module.exports = {
   effectAt,
   gemName,
   gemColor,
-  skillNameOf,
   bonusForType,
   damageMultiplier,
   skillLevels,

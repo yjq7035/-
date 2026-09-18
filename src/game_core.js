@@ -667,17 +667,20 @@ class Game {
 
     // ① 暴击
     if (sourceTower && o.allowCrit !== false) {
+      // 暴击率 / 暴击倍率都取自同一个口径函数（含技能「致命一击」的暴击伤害加成），
+      // 面板显示什么，这里就结算什么。
       const prof = towerMod.getAttackProfile(sourceTower);
-      let critMult = prof.critMult;
       if (prof.critChance > 0 && Math.random() * 100 < prof.critChance) {
-        dmg = dmg * critMult;
+        dmg = dmg * prof.critMult;
         crit = true;
       }
     }
 
     // ②③ 抗性 / 穿透 + 破解 + 递减减伤
     const pen = sourceTower ? towerMod.getAttackProfile(sourceTower).penetration : 0;
-    const brk = sourceTower ? (sourceTower.type === 'arrow' ? towerMod.getAttackProfile(sourceTower).break : 0) : 0;
+    // 破解与穿透共用同一条公式（都是直接抵扣敌人抗性）。别写成 `type === 'arrow' ? … : 0` ——
+    // 破解现在是 TOWER_STATS 上的真实字段，写死塔型会让后加的"破解"技能静默失效。
+    const brk = sourceTower ? towerMod.getAttackProfile(sourceTower).break : 0;
     const armor = enemy.armor || 0;
     const effectiveArmor = Math.max(0, armor - pen - brk);
     if (effectiveArmor > 0 && dmg > 0) {
@@ -942,7 +945,9 @@ class Game {
    *  会按更低的等级报价 —— 越强化越便宜，属于送钱。 */
   enhanceCost(tower) {
     if (!tower) return Infinity;
-    return towerMod.getEnhanceCost(tower.type, towerMod.getEffectiveSkillLevel(tower));
+    // 报价按【强化次数】（0 起）报；宝石等级也算进次数里 —— 嵌了猫眼石的塔本该更贵，
+    // 否则会按更低的等级报价（越强化越便宜，等于送钱）。
+    return towerMod.getEnhanceCost(tower.type, towerMod.getEnhanceTimes(tower));
   }
 
   /** 该塔能否在属性面板里强化（需 3★ + 未满级 + 有实体塔） */
@@ -956,21 +961,22 @@ class Game {
   }
 
   /**
-   * 强化选中的塔：扣金币 → 强化等级 +1 → 重算专属特殊属性。
+   * 强化选中的塔：扣金币 → 技能等级 +1 → 重算技能效果增量。
    *
-   * 与旧版的区别（2026-09 二次重做）：
+   * 与旧版的区别：
    *   · 不再发放「固定攻击力点数」，因此塔的攻击力完全不受强化影响；
-   *   · 不再多选一，每塔只有一项专属属性（见 config.ENHANCE_SPECIAL），
-   *     强化只是把它的取值从 base + per×L 推到 base + per×(L+1)。
+   *   · 强化的是【固有技能】而不是某一条属性（技能表见 src/skills.js）：
+   *     一个技能可以带多条效果（三角塔 = 暴击几率 + 暴击伤害），一次强化
+   *     把这些效果一起从 base + per×L 推到 base + per×(L+1)。
    *
    * @param {object} tower 目标塔
-   * @param {string} [optionKey] 兼容参数：必须等于该塔的专属属性 key（不传则无条件通过）
+   * @param {string} [optionKey] 技能 id（也兼容传效果属性键；不传则取该塔唯一的技能）
    * @returns {{ok:boolean, level?:number, cost?:number, option?:object, special?:object, reason?:string}}
    */
   enhanceTower(tower, optionKey) {
     const gate = this.canEnhanceTower(tower);
     if (!gate.ok) {
-      return Object.assign({}, gate, { level: tower ? (tower.enhanceLevel || 0) : 0 });
+      return Object.assign({}, gate, { level: towerMod.getEffectiveSkillLevel(tower) });
     }
     const opt = towerMod.getEnhanceOption(tower.type, optionKey);
     if (!opt) return { ok: false, reason: 'option' };
@@ -984,21 +990,29 @@ class Game {
     towerMod.applyEnhanceAttrs(tower);
     tower.enhancePicks = tower.enhancePicks || [];
     tower.enhancePicks.push(opt.key);
-    // 展示口径同样走【有效技能等级】（强化 + 宝石），否则嵌了技能宝石的塔
-    // 会报出"强化到 Lv.1"这种和面板 Lv.3 对不上的数字。
+    // 展示口径同样走【有效技能等级】（Lv.1 起，含宝石），否则嵌了技能宝石的塔
+    // 会报出"强化到 Lv.1"这种和面板 Lv.3 对不上的数字（skillLv 就是面板上的那个数）。
     const effLv = towerMod.getEffectiveSkillLevel(tower);
     return {
       ok: true,
-      level: tower.enhanceLevel,
+      level: effLv,                     // 面板口径：技能等级（1..6）
+      enhanceTimes: tower.enhanceLevel, // 存盘口径：强化次数（0..5）
       effectiveLevel: effLv,
       cost: cost,
       option: opt,
       special: {
         name: opt.name,
+        // 本次提升的每一条效果（多效果技能逐条列出）
+        gains: (opt.effects || []).map((e) => ({
+          key: e.key,
+          name: e.name,
+          gain: e.per,
+          unit: e.unit,
+          text: e.gainText,
+        })),
+        text: towerMod.specialText(tower.type, effLv),
         gain: opt.perLevel,
         unit: opt.unit,
-        value: towerMod.getSpecialValue(tower.type, effLv),
-        text: towerMod.specialText(tower.type, effLv),
       },
     };
   }
@@ -1332,12 +1346,17 @@ class Game {
 
       const stats = towerMod.getTowerRuntimeStats(tower);
       const range = stats.range || 150;
+      // 梯塔：supportBuff（攻速光环）；菱形塔：auraPenetration（穿透光环）
       const baseBuff = stats.supportBuff || { attackSpeedMultiplier: 25 };
+      const auraPen = stats.auraPenetration || 0;
       // 光环强度随自身阶段提升（1星+50、2星+75、3星+100），3星封顶
       const stage = Math.max(0, Math.min(tower.stage || 0, MAX_STAGE));
       // 图签等级同样放大光环强度（与属性面板 bonusStats 的口径一致）
       const codexMult = meta.codexDamageMultiplier(tower.type);
       const buff = { attackSpeedMultiplier: baseBuff.attackSpeedMultiplier * (1 + stage) * codexMult };
+      if (auraPen > 0) {
+        buff.penetration = auraPen;
+      }
 
       // 遍历所有我方塔，检查是否在光环范围内
       for (const other of this.towers) {

@@ -1,0 +1,29 @@
+type            skill           key                     base   per  unit  active  native  verdict
+--------------------------------------------------------------------------------------------------------------
+triangle        致命一击           critChance                5    5     %   true       5  ok
+triangle        致命一击           critDamage               10   10     %   true      10  ok
+circle          二次爆炸           explosionDamage          25    5     %   true      25  ok
+hexagon         精英猎手           eliteMult                 5    1     倍   true       5  ok
+square          巨型弹道           projectileScale         200   20     %   true     200  ok
+trapezoid       攻速光环           auraPower                25    5     %   true      25  ok
+semicircle      激光穿透           penetration               3    5     -   true       3  ok
+sector          广域扫射           sectorAngle              45    5     °   true      45  ok
+long_rectangle  叠层炮击           stackMax                 10    2     层   true      10  ok
+diamond         穿透光环           auraPenetration           5    3     -   true       5  ok
+pentagon        坚壁             hp                      260   45     -  false     N/A  active:false 但显示非0
+oval            远程校准           range                   260   15     -   true     260  ok
+star            星芒暴击           critChance                5    6     %   true       5  ok
+octagon         均衡护体           hp                      210   40     -  false     N/A  active:false 但显示非0
+cross           极速射击           attackSpeedMultiplier   100    8     %   true     100  ok
+arrow           碎甲箭            break                     3    3     -   true       3  ok
+bolt            雷霆暴击           critChance                5    4     %   true       5  ok
+parallel        连续射击           innateStackCap          100   20     %   true     100  ok
+
+===== 汇总 =====
+效果总数        : 18
+ok（base=原生且非0）: 16  [triangle.critChance, triangle.critDamage, circle.explosionDamage, hexagon.eliteMult, square.projectileScale, trapezoid.auraPower, semicircle.penetration, sector.sectorAngle, long_rectangle.stackMax, diamond.auraPenetration, oval.range, star.critChance, cross.attackSpeedMultiplier, arrow.break, bolt.critChance, parallel.innateStackCap]
+★ base 与原生不一致 : 0  
+⚠ active 但 base=0  : 0  
+active:false 却非0   : 2  → pentagon.hp (260) | octagon.hp (210)
+
+skills.audit() 报告的问题数: 0

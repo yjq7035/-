@@ -835,8 +835,9 @@ function handleTouchEnd(game, e) {
 // ==================== 强化结算 ====================
 
 /**
- * 执行一次强化（确认该塔的专属特殊属性升一级）并给出反馈。
- * 扣金币 / 提升专属属性 / 重算 enhanceAttrs 都在 game.enhanceTower 里完成，这里只负责提示。
+ * 执行一次强化（确认把该塔的【固有技能】升一级）并给出反馈。
+ * 扣金币 / 提升技能等级 / 重算技能效果增量都在 game.enhanceTower 里完成，这里只负责提示。
+ * 一个技能可能有多条效果（三角塔 = 暴击几率 + 暴击伤害），提示里逐条列出。
  */
 function applyEnhancePick(game, key) {
   const tower = game.enhancePicker ? game.enhancePicker.tower : game.selectedTower;
@@ -845,7 +846,9 @@ function applyEnhancePick(game, key) {
     game.enhancePicker = null;   // 选完就收，避免连点重复扣钱
     if (game.panelEnhanceBtn) flashButton(game, game.panelEnhanceBtn, '129,199,132', 'panel');
     const sp = res.special || {};
-    const gain = sp.name ? `　${sp.name} +${sp.gain}${sp.unit || ''}（现 ${sp.text}）` : '';
+    const gains = (sp.gains || []).map((g) => `${g.name} +${g.gain}${g.unit || ''}`).join(' · ')
+      || (sp.gain ? `${sp.gain}${sp.unit || ''}` : '');
+    const gain = gains ? `　${sp.name} ${gains}（现 ${sp.text}）` : '';
     toast(game, `强化 Lv.${res.level}${gain}`, THEME.accent.green);
   } else {
     const msg = res.reason === 'gold' ? `金币不足（需要 ${res.cost}）`

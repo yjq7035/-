@@ -23,7 +23,8 @@
 const towerMod = require('./tower');
 const meta = require('./meta');
 const gems = require('./gems');
-const { CODEX, BALANCE, ENHANCE_SPECIAL } = require('./config');
+const skills = require('./skills');
+const { CODEX, BALANCE } = require('./config');
 
 // ---------- 属性键 ----------
 const ATTR = {
@@ -31,10 +32,12 @@ const ATTR = {
   ATTACK_SPEED: 'attackSpeedMultiplier',
   ATTACK_INTERVAL: 'attackInterval',
   AURA_POWER: 'auraPower',   // 辅助塔光环强度（虚拟属性，非 TOWER_STATS 原生字段）
+  AURA_PENETRATION: 'auraPenetration', // 菱形塔：穿透光环（虚拟属性，原生值在 st.auraPenetration）
   RANGE: 'range',
   HP: null, // 已移除：图形塔无敌，不再显示生命
-  CRIT: 'critChance',        // 暴击率(%) —— 基础值 + 强化专属属性
-  CRIT_MULT: 'critMult',     // 暴击伤害倍率（1.5 = 150%）
+  CRIT: 'critChance',        // 暴击率(%) —— 基础值 + 技能/宝石增量
+  CRIT_MULT: 'critMult',     // 暴击倍率（2.1 = 210%）；百分比来源乘算
+  CRIT_DAMAGE: 'critDamage', // 暴击伤害(%) —— 技能「致命一击」的第二条效果；点值加算到倍率上
   PENETRATION: 'penetration', // 穿透（固定值）：抵扣敌人护甲
   BREAK: 'break',             // 破解（固定值）：额外抵消敌人抗性（箭形塔专属）
   EXPLOSION_DAMAGE: 'explosionDamage', // 圆塔二段爆炸的溅射伤害比例(%)
@@ -75,12 +78,14 @@ const BUFF_LABELS = {
   range:                 { name: '射程', unit: '' },
   // hp:                  { name: '生命', unit: '' },  // 已移除
   critChance:            { name: '暴击率', unit: '%' },
-  critMult:              { name: '暴击伤害', unit: '' },
+  critMult:              { name: '暴击倍率', unit: '' },
+  critDamage:            { name: '暴击伤害', unit: '%' },
   penetration:           { name: '穿透', unit: '' },
   break:                { name: '破解', unit: '' },
   explosionDamage:       { name: '二段爆炸伤害', unit: '%' },
   explosionRadius:       { name: '爆炸范围', unit: '' },
   auraPower:             { name: '光环强度', unit: '%' },
+  auraPenetration:       { name: '穿透光环', unit: '' },
   eliteMult:             { name: '精英伤害倍率', unit: '倍' },
   projectileScale:       { name: '弹道体积', unit: '%' },
   sectorAngle:           { name: '扇面张角', unit: '°' },
@@ -88,10 +93,11 @@ const BUFF_LABELS = {
   innateStackCap:        { name: '叠加上限', unit: '%' },
 };
 
-// 强化专属属性 key → ATTR key（两者同名；这里显式列出，新增属性别漏登记）
+// 技能属性 key → ATTR key（两者同名；这里显式列出，新增技能效果别漏登记）
 const ENHANCE_ATTR_MAP = {
   critChance: ATTR.CRIT,
   critMult: ATTR.CRIT_MULT,
+  critDamage: ATTR.CRIT_DAMAGE,
   penetration: ATTR.PENETRATION,
   break: ATTR.BREAK,
   attackSpeedMultiplier: ATTR.ATTACK_SPEED,
@@ -100,6 +106,7 @@ const ENHANCE_ATTR_MAP = {
   explosionDamage: ATTR.EXPLOSION_DAMAGE,
   explosionRadius: ATTR.EXPLOSION_RADIUS,
   auraPower: ATTR.AURA_POWER,
+  auraPenetration: ATTR.AURA_PENETRATION,
   eliteMult: ATTR.ELITE_MULT,
   projectileScale: ATTR.PROJECTILE_SCALE,
   sectorAngle: ATTR.SECTOR_ANGLE,
@@ -250,8 +257,10 @@ function collectTowerStats(game, tower, stats, towerType) {
   // 1.32 宝石（嵌入图签槽位、与固有技能绑定，跨局永久）
   //   与图签同档的"永久加成"，但走独立的 GEM 来源 —— 明细里能一眼看出这几点加成
   //   是珠子给的还是图签给的。
-  //   技能宝石（skillLevels）折算成【招牌属性】上的点值增量：per × 宝石等级，
-  //   与 tower.getEnhanceAttr（= per × (强化 + 宝石)）严格同口径。
+  //   技能宝石（skillLevels）折算成技能【每一条效果】的点值增量：per × 宝石等级，
+  //   与 tower.getEnhanceAttr（= per × (强化 + 宝石)）严格同口径 —— 所以三角塔嵌一颗
+  //   猫眼石，暴击几率与暴击伤害两条明细会同时出现。遍历技能效果而不是写死某一条，
+  //   就是为了不让"多效果技能"漏掉第二条。
   const gemBonus = tType ? gems.bonusForType(tType) : null;
   if (gemBonus && gemBonus.count > 0) {
     const kinds = gemBonus.kinds;
@@ -272,22 +281,22 @@ function collectTowerStats(game, tower, stats, towerType) {
       pushSource(sources, { attr: ATTR.RANGE, source: SOURCE.GEM, label: label((e) => e.range), kind: 'points', value: gemBonus.range });
     }
     if (gemBonus.skillLevels && tType) {
-      const sp = ENHANCE_SPECIAL[tType];
-      const attr = sp ? (ENHANCE_ATTR_MAP[sp.key] || sp.key) : null;
-      if (sp && attr) {
+      for (const eff of skills.getEffects(tType)) {
+        const attr = ENHANCE_ATTR_MAP[eff.key] || eff.key;
         pushSource(sources, {
           attr: attr,
           source: SOURCE.GEM,
           label: `${label((e) => e.skillLevels)} Lv.+${gemBonus.skillLevels}`,
           kind: 'points',
-          value: sp.per * gemBonus.skillLevels,
+          value: eff.per * gemBonus.skillLevels,
         });
       }
     }
   }
 
   // 1.35 塔强化（局内花金币，需 3★）
-  //   专属特殊属性增量登记成点值来源（绿字），不混入 base.damage。
+  //   技能等级带来的增量登记成点值来源（绿字），不混入 base.damage。
+  //   一条技能的全部效果都会各出一条明细（三角塔 = 暴击几率 + 暴击伤害两行）。
   //   但 3★ 阶段强化会给白字基础攻击力 +5%/级（见下方 section 2 原生值）。
   const enhanceLv = (tower && tower.enhanceLevel > 0) ? tower.enhanceLevel : 0;
   const enhanceAttrs = (tower && tower.enhanceAttrs) ? tower.enhanceAttrs : null;
@@ -299,7 +308,8 @@ function collectTowerStats(game, tower, stats, towerType) {
       pushSource(sources, {
         attr: attr,
         source: SOURCE.ENHANCE,
-        label: '强化 Lv.' + enhanceLv + ' · ' + buffMeta(key).name,
+        // 用【技能等级】（Lv.1 起）而不是强化次数，才能和技能槽的「Lv.x」对得上
+        label: '强化 Lv.' + (skills.LEVEL_BASE + enhanceLv) + ' · ' + buffMeta(key).name,
         kind: 'points',
         value: v,
       });
@@ -337,8 +347,12 @@ function collectTowerStats(game, tower, stats, towerType) {
     range: st.range || 0,
     hp: st.hp || 0,
     auraPower: (st.supportBuff && st.supportBuff.attackSpeedMultiplier) || 0,
+    auraPenetration: st.auraPenetration || 0,
     critChance: st.critChance || 0,
-    critMult: st.critMult || BALANCE.critDamageDefaultMult,
+    // 暴击倍率的原生值 = 倍率 + 原生「+N% 暴击伤害」（三角塔 2.1 + 10% = 2.2）
+    // 与 tower.getAttackProfile 的 baseNative 同一口径，改一处必须改另一处。
+    critMult: (st.critMult || BALANCE.critDamageDefaultMult) + (st.critDamage || 0) / 100,
+    break: st.break || 0,
     penetration: st.penetration || 0,
     explosionDamage: st.explosionRatio || 0,
     explosionRadius: st.explosionRadius || 0,
@@ -368,8 +382,14 @@ function collectTowerStats(game, tower, stats, towerType) {
   // 暴击率 / 穿透：点值相加（可为负 = 负面效果）
   const finalCrit = Math.max(0, base.critChance + pointsSum(sources, ATTR.CRIT));
   const finalPen = Math.max(0, base.penetration + pointsSum(sources, ATTR.PENETRATION));
-  // 暴击伤害：倍率 × Π(1 + 百分比来源/100)
-  const finalCritMult = Math.max(1, base.critMult * percentMultiplier(sources, ATTR.CRIT_MULT));
+  // 暴击倍率（与 tower.getAttackProfile 同一条公式，改一处必须改另一处）：
+  //   倍率 × Π(1 + 百分比来源/100)  ← 百分比放大（乘算）
+  //         + Σ暴击伤害点值/100     ← 三角塔固有技能「致命一击」的第二条效果（加算，单位 %）
+  const finalCritMult = Math.max(1,
+    base.critMult * percentMultiplier(sources, ATTR.CRIT_MULT)
+    + pointsSum(sources, ATTR.CRIT_DAMAGE) / 100);
+  // 破解（箭形塔）：固定值相加，直接抵消敌人抗性
+  const finalBreak = Math.max(0, base.break + pointsSum(sources, ATTR.BREAK));
   // 射程 / 生命：点值相加
   const finalRange = Math.max(0, base.range + pointsSum(sources, ATTR.RANGE));
   const finalHp = Math.max(1, base.hp + pointsSum(sources, ATTR.HP));
@@ -392,8 +412,10 @@ function collectTowerStats(game, tower, stats, towerType) {
     range: finalRange,
   // hp: finalHp,  // 已移除：图形塔无敌，不再显示
     auraPower: (base.auraPower + auraPoints) * auraMult,
+    auraPenetration: Math.max(0, base.auraPenetration + pointsSum(sources, ATTR.AURA_PENETRATION)),
     critChance: finalCrit,
     critMult: finalCritMult,
+    break: finalBreak,
     penetration: finalPen,
     explosionDamage: finalExplDmg,
     explosionRadius: finalExplRadius,
@@ -410,10 +432,12 @@ function collectTowerStats(game, tower, stats, towerType) {
     attackSpeedMultiplier: final.attackSpeedMultiplier - base.attackSpeedMultiplier,
     attackInterval: final.attackInterval - base.attackInterval,
     auraPower: final.auraPower - base.auraPower,
+    auraPenetration: final.auraPenetration - base.auraPenetration,
     range: final.range - base.range,
     // hp: final.hp - base.hp,  // 已移除
     critChance: final.critChance - base.critChance,
     critMult: final.critMult - base.critMult,
+    break: final.break - base.break,
     penetration: final.penetration - base.penetration,
     explosionDamage: final.explosionDamage - base.explosionDamage,
     explosionRadius: final.explosionRadius - base.explosionRadius,
@@ -504,14 +528,15 @@ function buildRows(ctx) {
       parts: pointParts(sources, ATTR.CRIT),
     });
 
-    // 暴击伤害：暴击时的伤害倍率（1.5 → 150%）；强化可把它按百分比放大
+    // 暴击伤害：暴击时的伤害倍率（210% = 2.1 倍）
+    //   两条来源都要列：百分比放大（倍率类）+ 暴击伤害点值（三角塔技能的第二条效果）
     rows.push({
       key: ATTR.CRIT_MULT,
       label: '暴击伤害',
       baseText: `${Math.round(base.critMult * 100)}%`,
       bonusText: signed(bonus.critMult * 100, '%'),
       sign: Math.sign(bonus.critMult),
-      parts: percentParts(sources, ATTR.CRIT_MULT),
+      parts: percentParts(sources, ATTR.CRIT_MULT).concat(pointParts(sources, ATTR.CRIT_DAMAGE)),
     });
 
     // 穿透：固定值，抵扣敌人护甲
@@ -557,6 +582,18 @@ function buildRows(ctx) {
     });
   }
 
+  // 穿透光环（菱形塔）：原生值 + 技能增量，与 game_core.applyTrapezoidAuras 同口径
+  if (base.auraPenetration > 0) {
+    rows.push({
+      key: ATTR.AURA_PENETRATION,
+      label: '穿透光环',
+      baseText: `${round2(base.auraPenetration)}`,
+      bonusText: signed(bonus.auraPenetration, ''),
+      sign: Math.sign(bonus.auraPenetration),
+      parts: pointParts(sources, ATTR.AURA_PENETRATION),
+    });
+  }
+
   // 射程 / 光环范围
   if (isSupport) {
     rows.push({
@@ -580,8 +617,9 @@ function buildRows(ctx) {
   //   parts: pointParts(sources, ATTR.HP),
   // });
 
-  // ---- 强化专属属性行：原生值或强化增量只要有一项非 0 就显示 ----
+  // ---- 强化专属属性行：原生值或技能增量只要有一项非 0 就显示 ----
   // （避免了给 16 种塔都塞 4 行 "0倍 / 0° / 0层" 的噪音）
+  pushSpecialRow(rows, sources, { key: ATTR.BREAK, label: '破解', unit: '', base: base.break, bonus: bonus.break });
   pushSpecialRow(rows, sources, { key: ATTR.ELITE_MULT, label: '精英伤害倍率', unit: '倍', base: base.eliteMult, bonus: bonus.eliteMult });
   pushSpecialRow(rows, sources, { key: ATTR.PROJECTILE_SCALE, label: '弹道体积', unit: '%', base: base.projectileScale, bonus: bonus.projectileScale });
   pushSpecialRow(rows, sources, { key: ATTR.SECTOR_ANGLE, label: '扇面张角', unit: '°', base: base.sectorAngle, bonus: bonus.sectorAngle });

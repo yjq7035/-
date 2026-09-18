@@ -182,8 +182,10 @@ function drawTalents(game) {
   ctx.textBaseline = 'middle';
   ctx.font = '10px Arial';
   ctx.fillStyle = THEME.text.off;
+  // 底栏一行说明"怎么涨的" + "天赋点从哪来"：文案长度必须能吃下最窄分辨率（320），
+  // 改文案后跑 probe-talent.js ⑤ 组（会断言 x0 ≥ 0 且 x1 ≤ W，越界就是红）
   ctx.fillText(
-    `天赋点来源：每过 ${TALENT_POINTS.perWaveGroup.every} 波 +${TALENT_POINTS.perWaveGroup.amount} · 通关 +${TALENT_POINTS.clearLevel} · 击杀 BOSS +${TALENT_POINTS.bossKill}`,
+    `花费 = 等级 × 基础花费 · 天赋点：${TALENT_POINTS.perWaveGroup.every}波+${TALENT_POINTS.perWaveGroup.amount}、通关+${TALENT_POINTS.clearLevel}、BOSS+${TALENT_POINTS.bossKill}`,
     W / 2, L.hintY
   );
 }
@@ -236,7 +238,8 @@ function drawTalentRow(game, row) {
   const def = row.def;
   const lv = meta.talentLevel(def.id);
   const maxed = lv >= def.max;
-  const cost = maxed ? 0 : (def.costs[lv] || 1);
+  // 学习花费 = 目标等级 × 基础花费（公式唯一真源在 meta.talentCost）
+  const cost = maxed ? 0 : meta.talentCost(def.id, lv + 1);
   const points = meta.get().talentPoints;
   const canLearn = !maxed && points >= cost;
   const { x, y, w, h } = row;

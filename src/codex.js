@@ -15,6 +15,7 @@ const theme = require('./theme');
 const towerMod = require('./tower');
 const meta = require('./meta');
 const gems = require('./gems');
+const skills = require('./skills');
 const skillSlot = require('./skillSlot');
 const gemModal = require('./gemModal');
 const { formatNum } = require('./bonusStats');
@@ -831,7 +832,7 @@ function drawSheetBlock(ctx, L, block, y) {
       ctx.textBaseline = 'middle';
       ctx.font = 'bold 11px Arial';
       ctx.fillStyle = THEME.text.primary;
-      ctx.fillText('固有技能', left, y + CODEX_UI.sectionTitleH / 2);
+      ctx.fillText(skills.INNATE_LABEL, left, y + CODEX_UI.sectionTitleH / 2);
       skillSlot.drawSkillSlots(ctx, left, y + CODEX_UI.sectionTitleH, contentW, block.slots, {
         towerColor: L.sheetAccent,
       });
@@ -960,7 +961,8 @@ function drawSheetAttrs(ctx, L, block, y, left, contentW) {
   }
 
   if (!isSupport) {
-    const critMult = stats.critMult || BALANCE.critDamageDefaultMult;
+    // 暴伤 = 原生倍率 + 原生「+N% 暴击伤害」（三角塔 2.1 + 0.1 = 220%），与 getAttackProfile 同口径
+    const critMult = (stats.critMult || BALANCE.critDamageDefaultMult) + (stats.critDamage || 0) / 100;
     ctx.fillStyle = THEME.accent.cyan;
     ctx.fillText(`暴击 ${stats.critChance || 0}%`, left, row2);
     ctx.fillStyle = THEME.text.dim;
