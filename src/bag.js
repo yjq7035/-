@@ -2,8 +2,8 @@
 // 背包栏 —— src/bag.js
 // ----------------------------------------------------------------------------
 // 需求（导航第 5 格）：
-//   · 默认 20 个格子，每行 10 个格子
-//   · 可以通过观看广告视频解锁（每次 +1 行 = 10 格，上限 40 格）
+//   · 默认 24 个格子，每行 8 个格子
+//   · 可以通过观看广告视频解锁（每次 +1 行 = 8 格，上限 120 格）
 //   · 广告位 ID 尚未申请 → AD.enabled=false 时解锁按钮与「再次挑战」同款禁用
 //
 // 与宝石系统的关系：
@@ -34,17 +34,20 @@ const BAG_UI = {
   cellRadius: 7,
 };
 
-/**
- * 背包布局（纯函数，渲染/输入共用）。
- * @returns {{cols,rows,cellW,cellH,gridY,x0,header,cells,footer,btn,unlocked,used,max,adReady,canExpand}}
- */
+  /**
+   * 背包布局（纯函数，渲染/输入共用）。
+   * 滚动约定：
+   *   · 视口 = [gridY, navTop - footerH]
+   *   · 内容比视口高 → 可上下拖拽；渲染时 clip 视口；cells.y 减去 scroll
+   * @returns {{cols,rows,cellW,cellH,gridY,x0,header,cells,footer,btn,unlocked,used,max,adReady,canExpand,viewport,contentH,maxScroll,scroll}}
+   */
 function getBagLayout(game) {
   const W = game.W;
   const H = game.H;
   const navTop = H - LAYOUT.navHeight;
 
-  const cols = GEM.bagCols;                              // 10（需求：每行 10 格）
-  const rows = Math.ceil(GEM.bagMaxSlots / cols);         // 4 行封顶
+  const cols = GEM.bagCols;                              // 8
+  const rows = Math.ceil(GEM.bagMaxSlots / cols);         // 15 行封顶
   const unlocked = meta.bagSlots();
   const list = meta.gemList();
 
@@ -59,6 +62,11 @@ function getBagLayout(game) {
   const gridW = cols * cellW + (cols - 1) * BAG_UI.gap;
   const x0 = Math.round((W - gridW) / 2);
 
+  // 滚动（内容高 vs 视口高）
+  const contentH = rows * cellH + (rows - 1) * BAG_UI.gap;
+  const maxScroll = Math.max(0, contentH - avail);
+  const scroll = Math.max(0, Math.min(maxScroll, game.bagScroll || 0));
+
   const cells = [];
   for (let i = 0; i < GEM.bagMaxSlots; i++) {
     const r = Math.floor(i / cols);
@@ -69,7 +77,7 @@ function getBagLayout(game) {
       unlocked: isUnlocked,
       item: isUnlocked ? (list[i] || null) : null,
       x: x0 + c * (cellW + BAG_UI.gap),
-      y: gridY + r * (cellH + BAG_UI.gap),
+      y: gridY + r * (cellH + BAG_UI.gap) - scroll,
       w: cellW,
       h: cellH,
     });
@@ -99,15 +107,29 @@ function getBagLayout(game) {
     unlocked, used: list.length, max: GEM.bagMaxSlots,
     adReady: !!AD.enabled,
     canExpand: meta.canExpandBag(),
+    viewport: { x: BAG_UI.padX, y: gridY, w: W - BAG_UI.padX * 2, h: avail },
+    contentH, maxScroll, scroll,
   };
 }
 
-/**
- * 命中检测。
- * @returns {{kind:'expand'|'cell', index?:number}|null}
+/** 把滚动值夹到合法区间并写回 game（输入层拖动手势用） */
+function setBagScroll(game, value) {
+  const L = getBagLayout(game);
+  game.bagScroll = Math.max(0, Math.min(L.maxScroll, value || 0));
+  return game.bagScroll;
+}
+
+/** 背包格网当前是否需要滚动 */
+function isBagScrollable(game) {
+  return getBagLayout(game).maxScroll > 0;
+}
+
+/** 命中检测。
+ * @returns {{kind:'expand'|'cell'|'scroll'|'scrollUp'|'scrollDown', index?:number}|null}
  */
 function hitBag(game, pos) {
   const L = getBagLayout(game);
+
   if (theme.pointInRect(pos, L.btn)) return { kind: 'expand' };
   for (const cell of L.cells) {
     if (theme.pointInRect(pos, cell)) return { kind: 'cell', index: cell.index };
@@ -129,7 +151,7 @@ function actExpandBag(game) {
     return { ok: false, reason: 'max' };
   }
   if (!AD.enabled) {
-    say(game, '广告位尚未开放，暂时无法解锁背包', THEME.accent.danger);
+    say(game, '功能未开放');
     return { ok: false, reason: 'ad' };
   }
 
@@ -192,10 +214,16 @@ function drawBag(game) {
     bg: 'rgba(77, 208, 225, 0.10)', stroke: 'rgba(77, 208, 225, 0.32)',
   });
 
-  // ---- 格网 ----
-  for (const cell of L.cells) {
+  // ---- 格网（裁剪在视口内，超出部分靠上下拖动看）----
+  const BL = getBagLayout(game);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(BL.viewport.x, BL.viewport.y, BL.viewport.w, BL.viewport.h);
+  ctx.clip();
+  for (const cell of BL.cells) {
     drawBagCell(ctx, cell);
   }
+  ctx.restore();
 
   // ---- 页脚：规则说明 + 解锁按钮 ----
   const foot = L.footer;
@@ -214,7 +242,7 @@ function drawBag(game) {
     top = THEME.track.soft; bottom = THEME.track.faint; stroke = THEME.border.subtle;
   } else if (!L.adReady) {
     // 与「再次挑战」同款：广告未开放 → 置灰不可点，但把话说清楚
-    label = `看广告解锁 +${GEM.bagStep} 格（广告未开放）`;
+    label = `功能未开放`;
     enabled = false;
     top = THEME.track.soft; bottom = THEME.track.faint; stroke = THEME.border.subtle;
   } else {
@@ -293,6 +321,8 @@ module.exports = {
   BAG_UI,
   getBagLayout,
   hitBag,
+  setBagScroll,
+  isBagScrollable,
   actExpandBag,
   drawBag,
 };

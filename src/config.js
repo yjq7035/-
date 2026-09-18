@@ -407,23 +407,23 @@ SHOP.panelHeight = SHOP.padTop + SHOP.headerH + SHOP.cardH + SHOP.padBottom;
 // 数值口径：GEM_KINDS[].effect 的键与 bonusStats.ATTR / ENHANCE_SPECIAL 同名字段，
 //   战斗侧由 tower.js 的 getGemBonus 统一叠加（见 src/gems.js）。
 //
-// ⚠️ 袋口（bagSlots）之外还有 bagMaxSlots：广告解锁是"每次 +1 行（10 格）"，
-//    上限 40 格。广告未开放（AD.enabled=false）时解锁按钮与「再次挑战」同款禁用。
+// ⚠️ 袋口（bagSlots）之外还有 bagMaxSlots：广告解锁是"每次 +1 行（8 格）"，
+//    上限 120 格。广告未开放（AD.enabled=false）时解锁按钮与「再次挑战」同款禁用。
 // ============================================================================
 const GEM = {
   maxSlots: 5,          // 单个图形塔最多 5 个嵌入槽（与 CODEX.maxLevel 对齐：每升 1 级 +1 槽）
   slotFromLevel: 1,     // 图签 Lv.1（即解锁）就送 1 个槽
-  bagCols: 10,          // 背包每行 10 格
-  bagSlots: 20,         // 默认解锁 20 格
-  bagStep: 10,          // 看一次激励视频解锁 10 格（= 1 行）
-  bagMaxSlots: 40,      // 背包上限 40 格（4 行）
-  starterGems: ['ruby', 'emerald'],  // 新档赠送：让宝石系统一开局就能玩到
+  bagCols: 8,          // 背包每行 8 格
+  bagSlots: 24,         // 默认解锁 24 格（3 行）
+  bagStep: 8,          // 看一次激励视频解锁 1 行（8 格）
+  bagMaxSlots: 120,     // 背包上限 120 格（15 行 × 8 列）
+  starterGems: [],  // 新档不再赠送宝石
   // 掉落：每清空 N 波必掉 1 颗（第 N、2N、… 波）；精英/BOSS 另按概率掉
   dropEveryWaves: 99, // 改为 99 使战斗过程不再掉落（> 最大波次 20）
   dropTierChance: null, // 精英/BOSS 不再掉落，改为通关/失败结算
   // 通关/失败结算宝石奖励概率
-  victoryChance: 0.9,  // 通关概率 90%
-  defeatChance: 0.2,   // 失败概率 20%
+  victoryChance: 0.35,  // 通关概率 35%
+  defeatChance: 0.15,   // 失败概率 15%
   rewardCellCount: 9,  // 结算界面奖励格子数（固定 9）
   gemRewardMax: 0,     // 0 = 每格随机 1~关卡关联数量（currentLevel）；>0 时覆盖为固定值
 };

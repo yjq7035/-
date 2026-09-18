@@ -65,7 +65,7 @@ function createDefaultMeta() {
     gems: gems,                            // 背包里的宝石（未嵌入）：[{ uid, kind }]
     gemSeq: gems.length,                   // uid 自增序号（保证 uid 唯一）
     socketed: {},                          // { [towerType]: ['ruby', null, ...] } 已嵌入的宝石（长度 = GEM.maxSlots）
-    bagSlots: GEM.bagSlots,                // 背包已解锁格数（默认 20 = 每行 10 格 × 2 行）
+    bagSlots: GEM.bagSlots,                // 背包已解锁格数（默认 24 = 每行 8 格 × 3 行）
   };
 }
 

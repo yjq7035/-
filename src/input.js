@@ -36,6 +36,7 @@ const audio = require('./audio');
 const DRAG_THRESHOLD = 8;        // 移动阈值（像素），超过则认定为拖放
 const TALENT_SCROLL_THRESHOLD = 6; // 天赋列表：垂直拖动超过此值即进入滚动
 const LIST_SCROLL_THRESHOLD = 6;   // 图签格网 / 选关天梯：垂直拖动超过此值即进入滚动
+const BAG_SCROLL_THRESHOLD = 6;    // 背包格网：垂直拖动超过此值即进入滚动
 
 const { THEME } = theme;
 
@@ -218,6 +219,7 @@ function handleTouchStart(game, e) {
   if (game.scene === 'bag') {
     const hit = bag.hitBag(game, pos);
     game.touchStartPos = { x: pos.x, y: pos.y };
+    game._bagScrolling = false;
     if (hit && hit.kind === 'expand') {
       game._bagTap = { kind: 'expand' };
       pressButton(game, 'bag:expand');
@@ -404,6 +406,21 @@ function handleTouchMove(game, e) {
       game.panelScrollOffset = Math.max(0, Math.min(game.panelScrollMax,
         (game.panelScrollOffset || 0) - dy));
       game.touchStartPos = { x: pos.x, y: pos.y };
+      releaseButton(game);
+    }
+    return;
+  }
+
+  // ========== 背包格网滚动（在通用拖放之前处理，避免"想滚变成拖放"）==========
+  if (game.scene === 'bag' && game.touchStartPos && bag.isBagScrollable(game) && !game.pendingDrag) {
+    const pos = getTouchPos(e);
+    const dy = pos.y - game.touchStartPos.y;
+    if (Math.abs(dy) >= BAG_SCROLL_THRESHOLD) {
+      game._bagScrolling = true;
+      const L = bag.getBagLayout(game);
+      bag.setBagScroll(game, L.scroll - dy);
+      game.touchStartPos = { x: pos.x, y: pos.y };
+      game._bagTap = null;          // 滚过了就不算点按
       releaseButton(game);
     }
     return;
