@@ -2,14 +2,14 @@
   ok   init() 报告可用  → available=true
   ok   配置正确落到实例上  → src=audio/snowfall.mp3 loop=true volume=0.55
   ok   设置了音频会话选项（静音键/混音）  → {"obeyMuteSwitch":false,"mixWithOther":false}
- FAIL  启动即自动播放（play 调了 1 次）  → play=0
- FAIL  isPlaying() 反映真实播放态  → paused=true
+  ok   启动即自动播放（play 调了 1 次）  → play=1
+  ok   isPlaying() 反映真实播放态  → paused=false
   ok   init() 幂等（只创建过 1 个实例）  → instances=1
- FAIL  toggle() 关闭并返回 false  → enabled=true
- FAIL  关闭后真的暂停了  → pause=0
- FAIL  关闭状态写进了存档（重启后不该自己响）  → {"enabled":true}
- FAIL  toggle() 再开启并返回 true  → enabled=false
- FAIL  开启后真的续播了  → play=1
+  ok   toggle() 关闭并返回 false  → enabled=false
+  ok   关闭后真的暂停了  → pause=1
+  ok   关闭状态写进了存档（重启后不该自己响）  → {"enabled":false}
+  ok   toggle() 再开启并返回 true  → enabled=true
+  ok   开启后真的续播了  → play=2
   ok   切后台：暂停  → pause 1→2
   ok   回前台：自动续播（用户没关音乐）  → play 2→3
   ok   回前台：用户已关音乐 → 绝不自己复活  → play 3→3（应不变）
@@ -17,13 +17,14 @@
   ok   onError / onEnded 回调不抛异常（音乐坏了不能带崩游戏）  → ok
   ok   错误被记进状态快照（便于诊断）  → decode fail
   ok   onEnded 兜底续播（防某些环境不循环）  → play 4→5
+  ok   无存档：默认开关遵循 config.MUSIC.defaultEnabled（不自动越权打开）  → defaultEnabled=false enabled=false play=0
   ok   存档记录"用户关过音乐" → 启动不自动播放  → play=0 enabled=false
- FAIL  自动播放被静默拦截：调了 play 却没真的响（不报错）  → play=0 playing=false
+  ok   自动播放被静默拦截：调了 play 却没真的响（不报错）  → play=1 playing=false
   ok   已挂上一次性触摸解锁监听  → start 监听 1 个
- FAIL  首次触摸补一次 play（这是静默失败唯一的兜底手段）  → play=0
- FAIL  兜底之后真的响了  → playing=false paused=true play次数=0 available=true enabled=false error=null
+  ok   首次触摸补一次 play（这是静默失败唯一的兜底手段）  → play=2
+  ok   兜底之后真的响了  → playing=true paused=false play次数=2 available=true enabled=true error=null
   ok   解锁后监听被摘掉（不在触摸回调里长期占位）  → start 监听 0 个
-  ok   用户已关音乐 → 触摸兜底不会把它偷偷打开  → play=0→0
+  ok   用户已关音乐 → 触摸兜底不会把它偷偷打开  → play=2→2
   ok   无 wx：init() 返回 false 且接口全都安全  → init=false available=false enabled=false
   ok   无 wx：任何接口都不抛异常（否则整条冒烟测试会挂在这）  → ok
 
@@ -58,4 +59,4 @@
   ok   天赋场景：当前**没有**音乐开关  → talents=0
   ok   背包场景：当前**没有**音乐开关  → bag=0
 
-=== 音频专项汇总：失败 10 条 ===
+=== 音频专项汇总：失败 0 条 ===

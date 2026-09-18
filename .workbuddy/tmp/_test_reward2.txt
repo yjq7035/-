@@ -1,0 +1,13 @@
+require ok; Game=yes
+PASS addGem 返回宝石对象  [ok=true]
+PASS 新增宝石 lv===1  [lv=1]
+PASS addGemsByKind 放入 2 颗  [added=2]
+PASS 80 次真实调用不抛错
+PASS slots 长度恒为 9  [bad=0]
+PASS 每格 count 恒为 1（无单格×N）  [bad=0]
+PASS 点亮格数 === total（含背包满走 0 分支）  [bad=0]
+PASS 算法：slots 长度恒为 9  [bad=0]
+PASS 算法：每格 count 恒为 1  [bad=0]
+PASS 算法：点亮格数 === total  [bad=0]
+PASS 算法：触发时 total ∈ [1, min(9,关卡)]  [bad=0]
+算法统计: 6000 次通关触发 5379 次，触发率=0.896（理论 0.9），平均获得=3.48 颗

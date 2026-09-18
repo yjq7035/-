@@ -419,8 +419,13 @@ const GEM = {
   bagMaxSlots: 40,      // 背包上限 40 格（4 行）
   starterGems: ['ruby', 'emerald'],  // 新档赠送：让宝石系统一开局就能玩到
   // 掉落：每清空 N 波必掉 1 颗（第 N、2N、… 波）；精英/BOSS 另按概率掉
-  dropEveryWaves: 3,
-  dropTierChance: { 3: 0.35, 4: 0.65, 5: 1.0 },
+  dropEveryWaves: 99, // 改为 99 使战斗过程不再掉落（> 最大波次 20）
+  dropTierChance: null, // 精英/BOSS 不再掉落，改为通关/失败结算
+  // 通关/失败结算宝石奖励概率
+  victoryChance: 0.9,  // 通关概率 90%
+  defeatChance: 0.2,   // 失败概率 20%
+  rewardCellCount: 9,  // 结算界面奖励格子数（固定 9）
+  gemRewardMax: 0,     // 0 = 每格随机 1~关卡关联数量（currentLevel）；>0 时覆盖为固定值
 };
 
 // 宝石种类（唯一真源：图标颜色 / 效果 / 文案都由本表驱动）

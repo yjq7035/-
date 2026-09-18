@@ -1,0 +1,12 @@
+PASS 初始背包=2（starter gems）  got 2
+PASS 加5颗 added=5  {"ok":true,"added":5}
+PASS 加后背包=7  got 7
+PASS 超容量 added=13  {"ok":false,"added":13,"reason":"full"}
+PASS 背包满=20  got 20
+PASS randomKind 合法  kind=amethyst
+PASS reset 后背包=2  got 2
+PASS 200次模拟不抛错
+PASS slots 长度恒为9  bad=0
+PASS total 恒在 [9,45]  badRange=0
+PASS total 实际区间  min=16 max=18
+统计：200次通关中触发 172 次，未触发 28 次（理论~90%）

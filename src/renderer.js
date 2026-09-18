@@ -1699,7 +1699,10 @@ function drawGameOver(game) {
 
   // 居中圆角面板（自适应宽度，风格与塔属性面板一致）
   const panelW = Math.min(360, width - 32);
-  const panelH = 290;
+  // 有宝石奖励时把面板加高，给 9 格奖励区留位置；没有（理论上 gameOver 时必已结算）保持原高
+  const reward = game.gemReward;
+  const showReward = !!reward;
+  const panelH = showReward ? 388 : 290;
   const panelX = (width - panelW) / 2;
   const panelY = (height - panelH) / 2;
   const accent = showFail
@@ -1740,6 +1743,11 @@ function drawGameOver(game) {
       : '本次收获的特殊积分已全部入账',
     cx, panelY + 142
   );
+
+  // 宝石奖励（9 格）：观看视频复活的倒计时状态下不画，避免和倒计时文字重叠
+  if (reward && !game.watchingVideo) {
+    drawGemReward(ctx, game, panelX, panelY, panelW);
+  }
 
   if (showWin) {
     // 胜利：单个"返回主页"按钮（主操作 = 增益绿）
@@ -1805,6 +1813,76 @@ function drawGameOver(game) {
 
   // 结算按钮的点击波纹（只画 gameover 层的）
   drawButtonFx(game, ctx, 'gameover');
+}
+
+/**
+ * 结算界面的「宝石奖励」9 格面板。
+ * 数据来自 game.gemReward.slots（9 项，每项 {kind,count} 或 null）—— 由 game_core.grantRewardGems 写入。
+ * 与背包页共用 gems.drawGemIcon，保证"奖励里长什么样、嵌进塔就长什么样"。
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {object} game
+ * @param {number} panelX, panelY, panelW
+ */
+function drawGemReward(ctx, game, panelX, panelY, panelW) {
+  const reward = game.gemReward;
+  const cx = game.W / 2;
+  const labelY = panelY + 166;
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 13px Arial';
+  if (reward.triggered && reward.total > 0) {
+    ctx.fillStyle = THEME.accent.gold;
+    ctx.fillText(`宝石奖励 · 共 ${reward.total} 颗（均为 LV1 基础宝石）`, cx, labelY);
+  } else if (reward.triggered) {
+    ctx.fillStyle = THEME.text.off;
+    ctx.fillText('宝石奖励 · 本次未获得', cx, labelY);
+  } else {
+    ctx.fillStyle = THEME.text.off;
+    ctx.fillText('宝石奖励', cx, labelY);
+  }
+
+  // 3×3 格子（9 格固定）
+  const cols = 3, rows = 3;
+  const slot = 30, gap = 8;
+  const gridW = cols * slot + (cols - 1) * gap;
+  const x0 = cx - gridW / 2;
+  const y0 = labelY + 14;
+
+  for (let i = 0; i < cols * rows; i++) {
+    const c = i % cols, r = Math.floor(i / cols);
+    const x = x0 + c * (slot + gap);
+    const y = y0 + r * (slot + gap);
+    const cell = reward.slots && reward.slots[i];
+
+    ctx.save();
+    // 格底
+    ctx.fillStyle = cell ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.028)';
+    if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, slot, slot, 7);
+    else ctx.rect(x, y, slot, slot);
+    ctx.fill();
+
+    // 边框：有宝石=该宝石色描边；空=虚线灰
+    ctx.strokeStyle = cell ? gems.shadeColor(gems.gemColor(cell.kind), -0.1, 0.6) : 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 1;
+    if (typeof ctx.setLineDash === 'function' && !cell) ctx.setLineDash([3, 3]);
+    if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, slot, slot, 7);
+    else ctx.rect(x, y, slot, slot);
+    ctx.stroke();
+    if (typeof ctx.setLineDash === 'function') ctx.setLineDash([]);
+
+    // 宝石本体（每格恰好 1 颗 LV1 基础宝石）+ "Lv1" 标记
+    if (cell && cell.count > 0) {
+      gems.drawGemIcon(ctx, x + slot / 2, y + slot / 2 - 3, 10, cell.kind);
+      ctx.font = 'bold 9px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = 'rgba(255,255,255,0.72)';
+      ctx.fillText('Lv1', x + slot / 2, y + slot - 4);
+    }
+    ctx.restore();
+  }
 }
 
 /**
@@ -2128,6 +2206,21 @@ function drawProjectiles(game) {
         ctx.fill();
         ctx.stroke();
         break;
+
+      case 'parallel': {
+        // 平行塔弹道：迷你双横（"二"字，两条小横杠）。
+        // ⚠️ 塔本体在 NO_ROTATE_SHAPES 里（双横转 90° 变双竖，辨识度崩），
+        //    弹道同理：外层已按攻击朝向 rotate，这里反向转回来保持正立。
+        ctx.rotate(-(proj.angle || 0));
+        const pBarW = size * 2.2, pBarH = size * 0.8, pBarGap = size * 0.5;
+        ctx.beginPath();
+        ctx.roundRect(-pBarW / 2, -pBarGap / 2 - pBarH, pBarW, pBarH, 1);
+        ctx.roundRect(-pBarW / 2, pBarGap / 2, pBarW, pBarH, 1);
+        ctx.fill();
+        ctx.stroke();
+        break;
+      }
+      // 注：梯形塔（trapezoid）是辅助光环塔，无攻击手段，永远不走这里，无需弹道。
     }
 
     ctx.restore();

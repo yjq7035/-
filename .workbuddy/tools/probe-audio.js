@@ -111,7 +111,9 @@ function loadAudio(wxStub) {
 out.push('===== A. 音频状态机（假 wx）=====');
 
 {
-  const wx = makeFakeWx();
+  // 显式播种 enabled=true：状态机测试测的是"开关打开时"的代码契约，
+  // 不该绑死 config.MUSIC.defaultEnabled 的当前值（2026-09-18 起默认改为 false）
+  const wx = makeFakeWx({ seedEnabled: true });
   const { audio, config } = loadAudio(wx);
   const inst = wx._inst;
 
@@ -174,6 +176,17 @@ out.push('===== A. 音频状态机（假 wx）=====');
   ok('onEnded 兜底续播（防某些环境不循环）', wx._log.play === q2 + 1, `play ${q2}→${wx._log.play}`);
 }
 
+// --- 无存档：默认开关必须遵循 config.MUSIC.defaultEnabled ---
+{
+  const wx = makeFakeWx();
+  const { audio, config } = loadAudio(wx);
+  const wantOn = (config.MUSIC.defaultEnabled === undefined) ? true : !!config.MUSIC.defaultEnabled;
+  audio.init();
+  ok('无存档：默认开关遵循 config.MUSIC.defaultEnabled（不自动越权打开）',
+    audio.isEnabled() === wantOn && wx._log.play === (wantOn ? 1 : 0),
+    `defaultEnabled=${config.MUSIC.defaultEnabled} enabled=${audio.isEnabled()} play=${wx._log.play}`);
+}
+
 // --- 存档偏好：关着进游戏，不该自动响 ---
 {
   const wx = makeFakeWx({ seedEnabled: false });
@@ -185,7 +198,8 @@ out.push('===== A. 音频状态机（假 wx）=====');
 
 // --- 静默拦截兜底：play() 不报错也不出声 → 首次触摸补一次 ---
 {
-  const wx = makeFakeWx({ silentPlay: true });
+  // seedEnabled: true —— 兜底逻辑只在"希望播但被拦"时才有意义，与默认值解耦
+  const wx = makeFakeWx({ silentPlay: true, seedEnabled: true });
   const { audio } = loadAudio(wx);
   audio.init();
   ok('自动播放被静默拦截：调了 play 却没真的响（不报错）',

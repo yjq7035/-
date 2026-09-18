@@ -389,10 +389,36 @@ function addGem(kind) {
   if (!GEM_BY_ID[kind]) return { ok: false, reason: 'unknown' };
   if (m.gems.length >= m.bagSlots) return { ok: false, reason: 'full' };
   m.gemSeq = (m.gemSeq || 0) + 1;
-  const gem = { uid: 'g' + m.gemSeq, kind: kind };
+  const gem = { uid: 'g' + m.gemSeq, kind: kind, lv: 1 };  // 宝石无等级系统：固定 LV1 基础宝石
   m.gems.push(gem);
   save();
   return { ok: true, gem: gem };
+}
+
+/**
+ * 一次性把 count 颗同类宝石放进背包（通关/失败结算奖励用）。
+ * 背包满则能放几颗放几颗，绝不"掉了但看不见"；返回实际放入数量。
+ * @param {string} kind 宝石种类 id
+ * @param {number} count 想放几颗
+ * @returns {{ok:boolean, added:number, reason?:string}} added<count 时 ok=false（背包满）
+ */
+function addGemsByKind(kind, count) {
+  const m = get();
+  if (!GEM_BY_ID[kind]) return { ok: false, added: 0, reason: 'unknown' };
+  let added = 0;
+  for (let i = 0; i < (count || 0); i++) {
+    if (m.gems.length >= m.bagSlots) break;   // 背包满，停止放入
+    m.gemSeq = (m.gemSeq || 0) + 1;
+    m.gems.push({ uid: 'g' + m.gemSeq, kind: kind, lv: 1 });  // 宝石无等级系统：固定 LV1 基础宝石
+    added++;
+  }
+  if (added > 0) save();
+  return { ok: added === count, added: added, reason: added < count ? 'full' : undefined };
+}
+
+/** 背包里宝石总数（容量占用判定用） */
+function bagGemCount() {
+  return get().gems.length;
 }
 
 /** 按 uid 取出（不删除）背包里的宝石 */
@@ -610,6 +636,8 @@ module.exports = {
   canExpandBag,
   expandBag,
   addGem,
+  addGemsByKind,
+  bagGemCount,
   findGem,
   socketCount,
   gemSockets,

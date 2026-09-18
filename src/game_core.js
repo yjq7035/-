@@ -146,6 +146,7 @@ class Game {
     this.gameOver = false;
     this.gameWon = false; // 胜利标记（与 gameOver 配合，决定结算界面显示胜利/失败）
     this.gameOverButtons = {}; // 游戏结束界面按钮区域
+    this.gemReward = null;     // 本局结算宝石奖励（9 格），供结算界面渲染；null=尚未结算
     this.watchingVideo = false;
     this.videoTimer = 30;
     this._reviveDone = false;
@@ -510,6 +511,9 @@ class Game {
     this.enhancePicker = null;
     this.showMenu = false;
 
+    // 上一局的结算宝石奖励清掉，避免残留到新一局
+    this.gemReward = null;
+
     // 主循环常驻运行，这里只需恢复 isRunning 标志
   }
 
@@ -607,11 +611,7 @@ class Game {
     else if (tier >= 3) pts = POINTS.tier3;
     if (pts > 0) meta.grantPoints(pts);
     if (tier >= 4) meta.grantTalentPoints(TALENT_POINTS.bossKill);
-    // 宝石掉落：精英 / BOSS / 最终BOSS 按 tier 概率掉落（越硬越容易掉）
-    const chance = (GEM.dropTierChance || {})[tier];
-    if (chance && Math.random() < chance) {
-      this.dropGem(enemy.tier >= 4 ? 'BOSS 掉落' : '精英掉落');
-    }
+    // BOSS 及以上不再掉落宝石；改为通关/失败结算奖励
   }
 
   /** 图签加成后的最终攻击力（战斗与属性面板同口径）
@@ -730,16 +730,17 @@ class Game {
     if (every > 0 && this.currentWave % every === 0) {
       meta.grantTalentPoints(TALENT_POINTS.perWaveGroup.amount);
     }
-    // 宝石掉落：每 dropEveryWaves 波必掉 1 颗（宝石的稳定来源）
-    const gemEvery = GEM.dropEveryWaves || 0;
-    if (gemEvery > 0 && this.currentWave % gemEvery === 0) {
-      this.dropGem(`第 ${this.currentWave} 波`);
-    }
+    // 宝石改为通关/失败结算奖励（见 grantRewardGems），战斗过程不再掉落
+    // const gemEvery = GEM.dropEveryWaves || 0;
+    // if (gemEvery > 0 && this.currentWave % gemEvery === 0) {
+    //   this.dropGem(`第 ${this.currentWave} 波`);
+    // }
   }
 
   /** 通关关卡：首通额外奖励 + 天赋点；自动把预选关卡推进到下一关（若已实现） */
   onLevelCleared() {
-    const { first, clearCount } = meta.markLevelCleared(this.currentLevel, this.currentWave);
+    const clearedLevel = this.currentLevel;  // 先存住"刚通关"的关卡号
+    const { first, clearCount } = meta.markLevelCleared(clearedLevel, this.currentWave);
     // 奖励递减：首通 = 100%；通关第 N 次 = (1/N)%（避免反复刷奖励），保底至少 1 点
     const rewardMult = first ? 1 : (1 / clearCount) / 100;
     const basePoints = POINTS.clearLevel + (first ? POINTS.firstClearBonus : 0);
@@ -754,7 +755,84 @@ class Game {
         this.currentLevel = nextId;
       }
     }
+    // 通关宝石奖励：9格，每格 1~关卡数 颗（用刚通关的关卡号算上限，别用已推进的下一关）
+    this.grantRewardGems(true, clearedLevel);
     meta.save(true);
+  }
+
+  /**
+   * 通关/失败结算宝石奖励（9 格，每格 1~关卡关联数量 颗）。
+   * 结果写入 this.gemReward（slots: 9 项，每项 {kind,count} 或 null），供结算界面渲染。
+   *
+   * 规则（需求原话）：
+   *   · 宝石只在通关/失败结算时获得，游戏过程不再掉落（grantKillReward / onWaveCleared 的掉落已移除，dropGem 现为死代码）；
+   *   · 结算界面有 9 个奖励格子；
+   *   · 触发奖励后，本次获得 1 ~ min(关卡号, 9) 颗宝石（"关卡关联数量" = 关卡号）；
+   *   · 这些宝石随机分布到 9 格里（每格最多 1 颗、必为 LV1 基础宝石），其余格子空置；不出现"单格 ×N"；
+   *   · 通关概率（GEM.victoryChance）> 失败概率（GEM.defeatChance）。
+   *
+   * @param {boolean} victory 是否通关
+   * @param {number}  [level]  用于上限的关卡号（默认当前关卡；通关时传"刚通关"的关卡，避免被自动推进污染）
+   */
+  grantRewardGems(victory, level) {
+    const lv = level || this.currentLevel;
+    const chance = victory ? GEM.victoryChance : GEM.defeatChance;
+    if (Math.random() >= chance) {
+      // 没触发奖励：照样记一笔，结算界面好画"本次未获得"
+      this.gemReward = { victory, triggered: false, slots: [], total: 0 };
+      return;
+    }
+
+    const cellCount = GEM.rewardCellCount || 9;                       // 9 格
+    // "关卡关联数量" = 关卡号；宝石总数在下方按 1 ~ min(关卡号, 9) 计算（原 maxEach 已弃用）
+    const capacity  = Math.max(0, meta.bagSlots() - meta.bagGemCount());        // 背包还能放几颗
+
+    const maxGems = Math.min(cellCount, Math.max(1, Math.floor(lv)));   // 1~min(关卡号,9)
+    const gemCount = 1 + Math.floor(Math.random() * maxGems);          // 本次宝石总数
+    const actual = Math.min(gemCount, capacity);                       // 背包容量夹一下
+
+    // 从 9 格中随机挑 actual 格点亮，每格恰好 1 颗 LV1 宝石（Fisher–Yates 洗牌选位）
+    const order = [];
+    for (let i = 0; i < cellCount; i++) order.push(i);
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = order[i]; order[i] = order[j]; order[j] = t;
+    }
+    const lit = new Set(order.slice(0, actual));
+
+    const slots = [];
+    let total = 0;
+    let bagFull = capacity <= 0 && gemCount > 0;   // 背包已满却还想发奖
+    for (let i = 0; i < cellCount; i++) {
+      if (lit.has(i)) {
+        const kind = gems.randomKind();
+        if (kind) {
+          const res = meta.addGemsByKind(kind, 1);  // 每格 1 颗 LV1 基础宝石
+          if (res.added > 0) { slots.push({ kind, count: 1 }); total += 1; }
+          else { slots.push(null); bagFull = true; }
+        } else {
+          slots.push(null);
+        }
+      } else {
+        slots.push(null);
+      }
+    }
+
+    this.gemReward = { victory, triggered: true, slots, total };
+
+    if (total > 0) {
+      this.toast = {
+        text: (victory ? '通关' : '失败') + '宝石奖励 · 点亮 ' + total + ' / 9 格 · 共 ' + total + ' 颗 LV1 宝石',
+        color: THEME.accent.gold,
+        t0: Date.now(),
+      };
+    } else if (bagFull) {
+      this.toast = {
+        text: `宝石背包已满（${meta.bagSlots()} 格），奖励未能放入`,
+        color: THEME.accent.danger,
+        t0: Date.now(),
+      };
+    }
   }
 
   /** 场景切换（底部导航入口）。战斗状态常驻，切走只是冻结。 */
@@ -1023,6 +1101,8 @@ class Game {
       this.gameOver = true;
       this.isRunning = false;
       meta.recordWave(this.currentLevel, this.currentWave);
+      // 失败低概率给少量宝石（比通关概率低，但让玩家不觉得白打）
+      this.grantRewardGems(false);
       meta.save(true);
     }
   }
