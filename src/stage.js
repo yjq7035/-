@@ -45,6 +45,9 @@ const STAGE_TABLES = {
   damage:           { 1: 100, 2: 200, 3: 400 },
   auraPower:        { 1: 100, 2: 200, 3: 300 },
   auraPenetration:  { 1: 100, 2: 200, 3: 300 },
+  // 十字塔「共享资源」：共享比例本身也吃进阶（+100%/星，与梯塔口径一致）。
+  //   发出的光环数值 = 宝石值 × 共享比例 × 本倍率，见 tower.getAuraOutput。
+  shareRatio:       { 1: 100, 2: 200, 3: 300 },
 };
 
 /**
@@ -58,6 +61,8 @@ const STAGE_FOCUS = {
   trapezoid: ['auraPower'],
   // 菱形塔：穿透光环（发出的 auraPenetration）—— 2026-09-19 补上，此前完全空转
   diamond: ['auraPenetration'],
+  // 十字塔：共享比例（宝石属性转给上下左右邻塔的那个 %）
+  cross: ['shareRatio'],
 };
 
 /** 默认焦点：非辅助塔统一放大攻击力 */
@@ -68,6 +73,7 @@ const STAGE_ATTR_META = {
   damage:          { name: '攻击力',  short: '攻击', unit: '%' },
   auraPower:       { name: '光环强度', short: '攻速', unit: '%' },
   auraPenetration: { name: '穿透光环', short: '穿透', unit: '' },
+  shareRatio:      { name: '共享比例', short: '共享', unit: '%' },
 };
 
 /** 把星级夹进 [0, MAX_STAGE]（越界/非法输入一律当 0★ 处理） */

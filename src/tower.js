@@ -43,7 +43,11 @@ function createTower(type, x, y) {
   tower._cumulativeGold = 0;
   // 破甲宝石 debuff 等级（由 topaz_break 嵌槽后写入，按等级覆盖同塔已有 debuff）
   tower.breakTier = 0;
-  
+  // 当前接收到的共享光环快照（十字塔「共享资源」给出的属性，含技能等级/技能效果）。
+  // ⚠️ 唯一写入方 = game_core.syncTowerAuras（每帧刷一次）；战斗取值（getAttackProfile /
+  //    skills.bonusFor）与属性面板都读这一份，别在别处写它。
+  tower.auraBuffs = null;
+
   return tower;
 }
 
@@ -402,12 +406,26 @@ function getAttackProfile(tower) {
   const baseNative = (st.critMult || BALANCE.critDamageDefaultMult) + (st.critDamage || 0) / 100;
   const critDamagePts = getEnhanceAttr(tower, 'critDamage') || 0;
   const critDamagePct = getEnhanceAttr(tower, 'critDamagePercent') || 0;
+  // 共享光环（十字塔「共享资源」）：暴击率 / 暴击伤害 / 破解直接加在自身属性上。
+  // ⚠️ 穿透**不在这里**加 —— 它由 game_core.getEffectivePenetration 统一负责，
+  //    两边都加会重复计算（历史口径打架的来源之一）。
+  const auraCrit = auraNum(tower, 'critChance');
+  const auraCritDmg = auraNum(tower, 'critDamage') + auraNum(tower, 'critDamagePercent');
+  const auraBreak = auraNum(tower, 'break');
   return {
-    critChance: Math.max(0, (st.critChance || 0) + gem.critChance + getEnhanceAttr(tower, 'critChance')),
-    critMult: Math.max(1, baseNative * (1 + critMultPct / 100) + critDamagePts / 100 + critDamagePct / 100),
+    critChance: Math.max(0, (st.critChance || 0) + gem.critChance + getEnhanceAttr(tower, 'critChance') + auraCrit),
+    critMult: Math.max(1, baseNative * (1 + critMultPct / 100) + critDamagePts / 100 + critDamagePct / 100 + auraCritDmg / 100),
     penetration: Math.max(0, (st.penetration || 0) + gem.penetration + getEnhanceAttr(tower, 'penetration')),
-    break:       Math.max(0, (st.break || 0) + gem.break + getEnhanceAttr(tower, 'break')),
+    break:       Math.max(0, (st.break || 0) + gem.break + getEnhanceAttr(tower, 'break') + auraBreak),
   };
+}
+
+/** 塔当前接收到的某条共享光环数值（tower.auraBuffs 由 game_core.syncTowerAuras 写入） */
+function auraNum(tower, key) {
+  const b = tower && tower.auraBuffs;
+  if (!b) return 0;
+  const v = Number(b[key]);
+  return isFinite(v) ? v : 0;
 }
 
 /**
@@ -449,6 +467,10 @@ function getTowerRuntimeStats(tower) {
     // 辅助塔：技能"光环强度"直接加成在光环数值上
     const base = (st.supportBuff && st.supportBuff.attackSpeedMultiplier) || 0;
     out.supportBuff = { attackSpeedMultiplier: base + add('auraPower') };
+    // 十字塔：技能「共享资源」抬高共享比例（原生 25%，强化每级 +5%）
+    if (st.shareRatio !== undefined) {
+      out.shareRatio = (st.shareRatio || 0) + add('shareRatio');
+    }
     // 菱形塔的技能是"穿透光环"（原生值在 st.auraPenetration 上）——
     // 这里必须跟着算，否则技能槽显示 Lv.5、光环却还是 5 点（"面板涨了、光环没涨"）。
     if (st.auraPenetration !== undefined) {
@@ -500,7 +522,42 @@ function getAuraOutput(tower, codexMult) {
   if (penBase) {
     out.penetration = penBase * stage.multiplier('auraPenetration', stars);
   }
+  // 十字塔「共享资源」：把**自身吃到的宝石属性**按共享比例转给上下左右的邻塔。
+  //   发出值 = 宝石值 × 共享比例（原生 25% + 强化增量）× 进阶倍率 ÷ 100
+  //   ⚠️ 十字塔自身没有任何原生战斗属性，所以没有宝石 = 没有共享（发出空对象，不发光环）——
+  //     这正是"本身没有任何属性"的落点，别给它兜底一个默认值。
+  //   ⚠️ 暴击伤害宝石（critDamagePercent）统一改写成 'critDamage' 键：它们都是
+  //     "直接加到暴击倍率上的百分比点值"，面板那一行与战斗侧也只认 critDamage。
+  const shareBase = stats.shareRatio;
+  if (shareBase) {
+    const gem = gems.bonusForType(tower.type);
+    const ratio = shareBase * stage.multiplier('shareRatio', stars);
+    const scaled = (v) => (v || 0) * ratio / 100;
+    const map = [
+      ['damagePercent', 'damagePercent'],
+      ['attackSpeedMultiplier', 'attackSpeedMultiplier'],
+      ['critChance', 'critChance'],
+      ['penetration', 'penetration'],
+      ['break', 'break'],
+      ['critDamagePercent', 'critDamage'],
+      ['skillLevels', 'skillLevels'],
+      ['skillEffectPercent', 'skillEffectPercent'],
+    ];
+    for (const [src, dst] of map) {
+      const v = scaled(gem[src]);
+      if (v) out[dst] = v;
+    }
+  }
   return out;
+}
+
+/**
+ * 十字塔的**实际共享比例**（%）= (原生 25 + 强化增量) × 进阶倍率 —— 战斗与展示同源。
+ * 发出的光环数值 = 宝石值 × 本比例 ÷ 100（见 getAuraOutput）。
+ */
+function getShareRatio(tower) {
+  const stats = getTowerRuntimeStats(tower);
+  return (stats.shareRatio || 0) * stage.multiplier('shareRatio', stageOf(tower));
 }
 
 /**
@@ -567,4 +624,5 @@ module.exports = {
   getTowerRuntimeStats,
   getExplosionParams,
   getAuraOutput,
+  getShareRatio,
 };

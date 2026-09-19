@@ -109,7 +109,15 @@ const TOWER_STATS = {
   //   星形塔是"换成暴击倍率"的塔：原生倍率 2.0，先白送 5% 暴击起步，再靠技能等级堆上去。
   star:          { damage: 96, range: 240, attackSpeedMultiplier: 100, attackInterval: 2.0, critChance: 5, critMult: 2.0, penetration: 0, isSupport: false, description: '六芒重炮，全塔最高单发伤害，换弹极慢。原生暴击几率 5%、暴击倍率 200%，堆起来收益惊人。' },
   octagon:       { damage: 44, range: 205, attackSpeedMultiplier: 100, attackInterval: 1.1, critChance: 0,  critMult: 2, penetration: 0, isSupport: false, description: '八面均衡的中坚塔，攻防兼顾没有短板。适合填满中段槽位。' },
-  cross:         { damage: 34, range: 190, attackSpeedMultiplier: 100, attackInterval: 0.9, critChance: 0, critMult: 2, penetration: 0, isSupport: false, description: '十字速射塔，射速快、射程偏短。适合贴身补伤。' },
+  // 十字塔 2026-09 改为辅助塔：本身**没有任何属性**（伤害/攻速/射程全为 0），
+  //   只把自身吃到的属性（= 嵌入的宝石）按 shareRatio% 共享给**上下左右四格**的相邻塔。
+  //   · shareRatio 是"共享比例"原生值 = 固有技能「共享资源」的 base（见 src/skills.js）
+  //   · 作用范围是**格子邻接**（上下左右 4 格），不是半径 —— 见 game_core.auraTargets
+  //   · 战斗字段照梯塔/菱形塔的形状补齐（damage 0 / 攻速 0 / 无攻击间隔），
+  //     range 留 0：它没有"光环范围"，面板里那一行换成了「共享目标 上下左右」。
+  //   auraMode: 'adjacent' = 光环接收者是**上下左右四格的邻塔**（格子邻接），
+  //     不是"半径范围" —— 判定见 game_core.auraTargets。
+  cross:         { damage: 0, range: 0, attackSpeedMultiplier: 0, critChance: 0, critMult: 1, penetration: 0, isSupport: true, shareRatio: 25, auraMode: 'adjacent', description: '辅助塔，本身不提供任何攻击与属性。把自身（嵌入宝石）的属性按 25% 共享给上下左右四格的相邻塔；自身每进阶一星比例 +100%，强化「共享资源」还能继续抬高比例。' },
   // break = 原生「破解 3 点」，就是 description 里那句"破坏目标 3 点抗性"，
   //   也是固有技能「碎甲箭」的 base（见 src/skills.js）。
   //   ⚠️ 别只写 description 不写字段 —— 字段缺失时 brk 恒为 0，等于"描述承诺的能力

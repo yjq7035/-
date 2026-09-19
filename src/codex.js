@@ -941,7 +941,13 @@ function drawSheetAttrs(ctx, L, block, y, left, contentW) {
   ctx.font = '11px Arial';
 
   const isSupport = !!stats.isSupport;
-  if (isSupport) {
+  if (isSupport && stats.auraMode === 'adjacent') {
+    // 十字塔：没有攻击/攻速，也没有"光环范围" —— 它把宝石属性按比例共享给上下左右四格
+    ctx.fillStyle = THEME.accent.violet;
+    ctx.fillText(`共享 +${stats.shareRatio || 0}%`, left, row1);
+    ctx.fillStyle = THEME.text.dim;
+    ctx.fillText('目标 上下左右', left + colW, row1);
+  } else if (isSupport) {
     ctx.fillStyle = THEME.text.dim;
     ctx.fillText(`光环 +${(stats.supportBuff && stats.supportBuff.attackSpeedMultiplier) || 0}%`, left, row1);
     ctx.fillText(`范围 ${stats.range}`, left + colW, row1);

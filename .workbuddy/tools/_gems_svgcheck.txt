@@ -1,27 +1,27 @@
   ok   _gems.html 至少内嵌 1 个 SVG  → 实际 4 个
 
------ SVG#1（80.5 KB）-----
+----- SVG#1（80.6 KB）-----
   ok   SVG#1 无非法 fillStyle/strokeStyle 属性  → 出现 0 次
   ok   SVG#1 有真实图元  → text=128 path=307 rect=24
   ok   SVG#1 裁剪层定义/引用一一对应  → 定义=10 引用=10
-  ok   SVG#1 颜色数 >= 8（非纯色块）  → 128 种
+  ok   SVG#1 颜色数 >= 8（非纯色块）  → 129 种
   ok   SVG#1 渐变/裁剪引用全部有定义  → 73 个引用全部命中
 
------ SVG#2（93.8 KB）-----
+----- SVG#2（93.9 KB）-----
   ok   SVG#2 无非法 fillStyle/strokeStyle 属性  → 出现 0 次
-  ok   SVG#2 有真实图元  → text=116 path=348 rect=33
+  ok   SVG#2 有真实图元  → text=117 path=348 rect=33
   ok   SVG#2 裁剪层定义/引用一一对应  → 定义=20 引用=20
   ok   SVG#2 颜色数 >= 8（非纯色块）  → 166 种
   ok   SVG#2 渐变/裁剪引用全部有定义  → 104 个引用全部命中
 
------ SVG#3（98.4 KB）-----
+----- SVG#3（98.7 KB）-----
   ok   SVG#3 无非法 fillStyle/strokeStyle 属性  → 出现 0 次
-  ok   SVG#3 有真实图元  → text=125 path=364 rect=34
+  ok   SVG#3 有真实图元  → text=127 path=364 rect=34
   ok   SVG#3 裁剪层定义/引用一一对应  → 定义=21 引用=21
   ok   SVG#3 颜色数 >= 8（非纯色块）  → 180 种
   ok   SVG#3 渐变/裁剪引用全部有定义  → 110 个引用全部命中
 
------ SVG#4（114.5 KB）-----
+----- SVG#4（114.3 KB）-----
   ok   SVG#4 无非法 fillStyle/strokeStyle 属性  → 出现 0 次
   ok   SVG#4 有真实图元  → text=68 path=550 rect=19
   ok   SVG#4 裁剪层定义/引用一一对应  → 定义=5 引用=5
@@ -30,4 +30,4 @@
   ok   _gems.html 关键文案齐全  → 固有技能 · 攻击间隔 · Lv. · 宝石 · 看广告 · 取消 · 未解锁
 
 === SVG 体检（_gems.html）：4 张，失败 0 条 ===
-=== 判据戳：2026-09-19T01:34:42.776Z ===
+=== 判据戳：2026-09-19T12:49:15.448Z ===

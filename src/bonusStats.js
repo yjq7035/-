@@ -37,6 +37,8 @@ const ATTR = {
   ATTACK_INTERVAL: 'attackInterval',
   AURA_POWER: 'auraPower',   // 辅助塔光环强度（虚拟属性，非 TOWER_STATS 原生字段）
   AURA_PENETRATION: 'auraPenetration', // 菱形塔：穿透光环（虚拟属性，原生值在 st.auraPenetration）
+  SHARE_RATIO: 'shareRatio',           // 十字塔：共享比例（%）
+  SHARE_TARGET: 'shareTarget',         // 十字塔：共享目标（纯文案行，没有数值——"上下左右"）
   RANGE: 'range',
   HP: null, // 已移除：图形塔无敌，不再显示生命
   CRIT: 'critChance',        // 暴击率(%) —— 基础值 + 技能/宝石增量
@@ -79,6 +81,10 @@ const SOURCE_LABEL = {
 const BUFF_LABELS = {
   attackSpeedMultiplier: { name: '攻速', unit: '%' },
   damage:                { name: '攻击力', unit: '' },
+  // 共享光环（十字塔「共享资源」）专有键：
+  damagePercent:         { name: '攻击力', unit: '%' },      // 红宝石「攻击力 +N%」的共享版
+  skillLevels:           { name: '技能等级', unit: '级' },    // 猫眼石「技能等级 +N」的共享版
+  skillEffectPercent:    { name: '技能效果', unit: '%' },     // 紫晶石「技能效果 +N%」的共享版
   attackInterval:        { name: '攻击间隔', unit: '秒' },
   range:                 { name: '射程', unit: '' },
   // hp:                  { name: '生命', unit: '' },  // 已移除
@@ -114,6 +120,7 @@ const ENHANCE_ATTR_MAP = {
   explosionRadius: ATTR.EXPLOSION_RADIUS,
   auraPower: ATTR.AURA_POWER,
   auraPenetration: ATTR.AURA_PENETRATION,
+  shareRatio: ATTR.SHARE_RATIO,
   eliteMult: ATTR.ELITE_MULT,
   projectileScale: ATTR.PROJECTILE_SCALE,
   sectorAngle: ATTR.SECTOR_ANGLE,
@@ -364,16 +371,66 @@ function collectTowerStats(game, tower, stats, towerType) {
   }
 
   // 1.4 光环（增益 / 减益）：来自 auraManager，数值为负即负面效果
+  //   十字塔「共享资源」会把宝石的 8 个家族一并共享过来，其中 3 类**不是某个属性行上的
+  //   点值**，必须在这里做展开，否则会出现"打起来真的变强了、面板纹丝不动"：
+  //     · damagePercent        → 攻击力行的**百分比**来源（与 game_core.towerDamage 同口径）
+  //     · skillLevels          → 等效于多强化 N 次 → 展开成该塔**每一条**技能效果的点值
+  //     · skillEffectPercent   → 与紫晶宝石同一档（系数相加）→ 放大每条效果的当前值
+  //   展开公式与 skills.bonusFor 严格同源（那边是 (base + per×次数) × (技能效果系数 + 共享% )），
+  //   逐项拆开后：技能等级 → per×N×系数；技能效果 → (base + per×(次数 + 共享等级)) × N%。
   const auras = collectAuras(game, tower);
+  let auraSkillLv = 0;
+  for (const aura of auras) {
+    const b = aura.buffs || {};
+    if (b.skillLevels) auraSkillLv += b.skillLevels;
+  }
   for (const aura of auras) {
     for (const key of Object.keys(aura.buffs || {})) {
       const v = aura.buffs[key];
       if (!v) continue;
       const remain = aura.remaining > 0 ? ` 剩${aura.remaining.toFixed(1)}s` : '';
+      const from = `${aura.sourceName}${stageText(aura.sourceStage) ? ' ' + stageText(aura.sourceStage) : ''}${remain}`;
+      const origin = v > 0 ? SOURCE.AURA : SOURCE.DEBUFF;
+
+      if (key === 'damagePercent') {
+        pushSource(sources, {
+          attr: ATTR.DAMAGE, source: origin,
+          label: `${from} 共享`, kind: 'percent', percent: v,
+        });
+        continue;
+      }
+      if (key === 'skillLevels') {
+        if (tType) {
+          const mult = skills.effectMultiplier(tType);
+          for (const eff of skills.getEffects(tType)) {
+            pushSource(sources, {
+              attr: ENHANCE_ATTR_MAP[eff.key] || eff.key, source: origin,
+              label: `${from} 技能等级 +${numText(v)}`, kind: 'points', value: eff.per * v * mult,
+            });
+          }
+        }
+        continue;
+      }
+      if (key === 'skillEffectPercent') {
+        if (tType) {
+          for (const eff of skills.getEffects(tType)) {
+            const keyMeta = skills.EFFECT_KEYS[eff.key];
+            if (!keyMeta || !keyMeta.active) continue;   // 不生效的键（如生命）不登记
+            pushSource(sources, {
+              attr: ENHANCE_ATTR_MAP[eff.key] || eff.key, source: origin,
+              label: `${from} 技能效果 +${numText(v)}%`, kind: 'points',
+              value: (eff.base + eff.per * (totalTimes + auraSkillLv)) * (v / 100),
+            });
+          }
+        }
+        continue;
+      }
+
+      // 其余键与属性行同名（攻速 / 暴击率 / 暴击伤害 / 穿透 / 破解）：点值相加即可
       pushSource(sources, {
         attr: key,
-        source: v > 0 ? SOURCE.AURA : SOURCE.DEBUFF,
-        label: `${aura.sourceName}${stageText(aura.sourceStage) ? ' ' + stageText(aura.sourceStage) : ''}${remain}`,
+        source: origin,
+        label: from,
         kind: 'points',
         value: v,
       });
@@ -400,6 +457,7 @@ function collectTowerStats(game, tower, stats, towerType) {
     hp: st.hp || 0,
     auraPower: (st.supportBuff && st.supportBuff.attackSpeedMultiplier) || 0,
     auraPenetration: st.auraPenetration || 0,
+    shareRatio: st.shareRatio || 0,
     critChance: st.critChance || 0,
     // 暴击倍率的原生值 = 倍率 + 原生「+N% 暴击伤害」（三角塔 2.1 + 10% = 2.2）
     // 与 tower.getAttackProfile 的 baseNative 同一口径，改一处必须改另一处。
@@ -469,6 +527,11 @@ function collectTowerStats(game, tower, stats, towerType) {
     // ⚠️ 别顺手把图签也乘进来：穿透光环按既定设计**不吃图签**（倍率里只有阶段那一项）。
     auraPenetration: Math.max(0, (base.auraPenetration + pointsSum(sources, ATTR.AURA_PENETRATION))
       * percentMultiplier(sources, ATTR.AURA_PENETRATION)),
+    // 共享比例（十字塔）：口径 = (原生 25 + 强化点值) × 进阶倍率 —— 与战斗侧
+    // towerMod.getShareRatio / getAuraOutput 严格同源（那里也是先加点值、再乘 stage.multiplier）。
+    // ⚠️ 与穿透光环一样**不吃图签**（倍率里只有阶段那一项）。
+    shareRatio: Math.max(0, (base.shareRatio + pointsSum(sources, ATTR.SHARE_RATIO))
+      * percentMultiplier(sources, ATTR.SHARE_RATIO)),
     critChance: finalCrit,
     critMult: finalCritMult,
     break: finalBreak,
@@ -489,6 +552,7 @@ function collectTowerStats(game, tower, stats, towerType) {
     attackInterval: final.attackInterval - base.attackInterval,
     auraPower: final.auraPower - base.auraPower,
     auraPenetration: final.auraPenetration - base.auraPenetration,
+    shareRatio: final.shareRatio - base.shareRatio,
     range: final.range - base.range,
     // hp: final.hp - base.hp,  // 已移除
     critChance: final.critChance - base.critChance,
@@ -505,7 +569,7 @@ function collectTowerStats(game, tower, stats, towerType) {
   };
 
   // ================= 5. 面板行（渲染就绪，渲染层不再算数）=================
-  const rows = buildRows({ isSupport, base, bonus, final, sources });
+  const rows = buildRows({ isSupport, auraMode: st.auraMode, base, bonus, final, sources });
 
   // ================= 6. 生效效果（光环增益 / 负面效果逐条列出）=================
   const effects = [];
@@ -535,7 +599,7 @@ function collectTowerStats(game, tower, stats, towerType) {
  * 组装面板属性行
  */
 function buildRows(ctx) {
-  const { isSupport, base, bonus, final, sources } = ctx;
+  const { isSupport, auraMode, base, bonus, final, sources } = ctx;
   const rows = [];
 
   const signed = (v, unit) => (v > 0 ? `+${numText(v)}${unit}` : (v < 0 ? `${numText(v)}${unit}` : ''));
@@ -658,14 +722,41 @@ function buildRows(ctx) {
     });
   }
 
-  // 射程 / 光环范围
-  if (isSupport) {
+  // 共享比例（十字塔「共享资源」）：原生 25%，进阶每星 +100%，强化「共享资源」再加点值。
+  //   parts 必须百分比与点值都列 —— 进阶是百分比来源，只列点值会让这一行有绿字却
+  //   没有「阶段增幅」明细（数字涨了、玩家看不到为什么涨）。
+  if (base.shareRatio > 0) {
     rows.push({
-      key: ATTR.RANGE, label: '光环范围',
-      baseText: `${numText(base.range)}`,
-      bonusText: signed(bonus.range, ''), sign: Math.sign(bonus.range),
-      parts: pointParts(sources, ATTR.RANGE),
+      key: ATTR.SHARE_RATIO,
+      label: '共享比例',
+      baseText: `${numText(base.shareRatio)}%`,
+      bonusText: signed(bonus.shareRatio, '%'),
+      sign: Math.sign(bonus.shareRatio),
+      parts: percentParts(sources, ATTR.SHARE_RATIO).concat(pointParts(sources, ATTR.SHARE_RATIO)),
     });
+  }
+
+  // 射程 / 光环范围 / 共享目标
+  if (isSupport) {
+    // 十字塔走**格子邻接**（上下左右四格），根本没有"半径"这回事 ——
+    // 画一行「光环范围 0」只会让人以为它坏了，所以换成纯文案行「共享目标 上下左右」。
+    if (auraMode === 'adjacent') {
+      rows.push({
+        key: ATTR.SHARE_TARGET,
+        label: '共享目标',
+        baseText: '上下左右',
+        bonusText: '',
+        sign: 0,
+        parts: [],
+      });
+    } else {
+      rows.push({
+        key: ATTR.RANGE, label: '光环范围',
+        baseText: `${numText(base.range)}`,
+        bonusText: signed(bonus.range, ''), sign: Math.sign(bonus.range),
+        parts: pointParts(sources, ATTR.RANGE),
+      });
+    }
   } else {
     rows.push({
       key: ATTR.RANGE, label: '射程',

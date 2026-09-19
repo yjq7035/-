@@ -622,11 +622,12 @@ class Game {
   }
 
   /** 图签加成后的最终攻击力（战斗与属性面板同口径）
-   *  攻击力四条线：
+   *  攻击力五条线：
    *    ① 3★ 阶段的塔 → 基础攻击力 +5%/【强化次数】（白字，受等级/阶段/图签/宝石加成影响）
    *    ② 合成进阶（等级/阶段）—— 绿字
    *    ③ 图签 —— 绿字
    *    ④ 宝石（红宝石等）—— 绿字，乘算
+   *    ⑤ 共享光环（十字塔共享的红宝石「攻击力 +N%」）—— 绿字，乘算
    *  ⚠️ 紫晶宝石「技能效果 +N%」**不属于这里** —— 它只放大固有技能的当前值
    *     （见 skills.effectMultiplier / tower.getEnhanceAttr），别再把基础攻击力乘一遍。
    */
@@ -649,7 +650,12 @@ class Game {
     const dmg = towerMod.calculateFinalDamage(
       whiteBonus, tower.level, towerMod.getAttackPowerBoost(stage)
     );
-    return dmg * meta.codexDamageMultiplier(tower.type) * towerMod.getGemDamageMultiplier(tower.type);
+    // ⑤ 共享光环「攻击力 +N%」（十字塔把红宝石的攻击力百分比共享给邻塔）：
+    //    与其他倍率同层相乘，且**面板侧同源**（bonusStats 把它登记成 攻击力 的 percent 来源）。
+    //    ⚠️ 快照由 syncTowerAuras 每帧写入，别在这里读 auraManager（拿不到 game）。
+    const auraDmgPct = (tower && tower.auraBuffs && Number(tower.auraBuffs.damagePercent)) || 0;
+    return dmg * meta.codexDamageMultiplier(tower.type) * towerMod.getGemDamageMultiplier(tower.type)
+      * (1 + auraDmgPct / 100);
   }
 
   /**
@@ -1118,7 +1124,11 @@ class Game {
       this.auraManager.update(deltaTime);
       // 在攻击更新之前先应用光环
       this.applyTrapezoidAuras();
-      
+      // 光环记账（auraManager）→ 塔身快照（tower.auraBuffs）：
+      //   getAttackProfile / skills.bonusFor 拿不到 game，只能读塔身上的快照，
+      //   所以必须在"发完光环"之后、"塔开始攻击"之前刷一次。
+      this.syncTowerAuras();
+
       this.updateTowers(deltaTime);
 
       // 更新长方塔堆叠倒计时
@@ -1276,22 +1286,15 @@ class Game {
         }
 
         if (availableTargets.length > 0) {
-          // 能选不同目标就选
-          target = null;
-          let closestDist = Infinity;
-          for (const t of availableTargets) {
-            const d = Math.sqrt((t.x - tower.x)**2 + (t.y - tower.y)**2);
-            if (d < closestDist) { closestDist = d; target = t; }
-          }
+          // 能选不同目标就选：随机挑选以避免总是最近目标导致重复
+          const idx = Math.floor(Math.random() * availableTargets.length);
+          target = availableTargets[idx];
           tower._innateStack = 0; // 换目标 → 重置叠层
         } else {
           // 被迫打同一目标 → 叠攻速
-          target = null;
-          let closestDist = Infinity;
-          for (const t of allTargets) {
-            const d = Math.sqrt((t.x - tower.x)**2 + (t.y - tower.y)**2);
-            if (d < closestDist) { closestDist = d; target = t; }
-          }
+          // 范围内随机挑一个，避免总是最近的
+          const idx = Math.floor(Math.random() * allTargets.length);
+          target = allTargets[idx];
           if (target && target.alive) {
             tower._innateStack = Math.min(stackCap, (tower._innateStack || 0) + stackStep);
           }
@@ -1377,35 +1380,83 @@ class Game {
       if (!tower.isSupport) continue;
 
       const stats = towerMod.getTowerRuntimeStats(tower);
-      const range = stats.range || 150;
       // 星级只用来做"多源竞争"的优先级；强度放大已经由 getAuraOutput 按属性各自算好
       const stage = Math.max(0, Math.min(tower.stage || 0, MAX_STAGE));
-      // 图签等级放大光环强度（穿透光环不吃图签，见 getAuraOutput）
+      // 图签等级放大光环强度（穿透/共享不吃图签，见 getAuraOutput）
       const codexMult = meta.codexDamageMultiplier(tower.type);
 
       const buff = towerMod.getAuraOutput(tower, codexMult);
-      if (!Object.keys(buff).length) continue;   // 既不发攻速也不发穿透 → 无光环可给
+      if (!Object.keys(buff).length) continue;   // 没有光环可给（如十字塔没嵌宝石）
 
-      // 遍历所有我方塔，检查是否在光环范围内
-      for (const other of this.towers) {
-        // 跳过梯塔自身，只对我方非辅助塔生效
-        if (other === tower) continue;
-        if (other.owner !== PLAYER.OWN) continue;
-        if (other.isSupport) continue;
-
-        const dx = other.x - tower.x;
-        const dy = other.y - tower.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist <= range) {
-          // 同一属性键上由 auraManager 取最强来源；在范围内每帧刷新持续时间
-          // meta.name：来源塔显示名（属性面板"生效效果"里展示光环出处）
-          const srcDef = TOWER_DEFS[tower.type];
-          this.auraManager.applyAura(tower.uniqueId, buff, stage, other.uniqueId, AURA_DURATION, {
-            name: srcDef ? srcDef.name : '光环',
-          });
-        }
+      for (const other of this.auraTargets(tower, stats)) {
+        // 同一属性键上由 auraManager 取最强来源；在范围内每帧刷新持续时间
+        // meta.name：来源塔显示名（属性面板"生效效果"里展示光环出处）
+        const srcDef = TOWER_DEFS[tower.type];
+        this.auraManager.applyAura(tower.uniqueId, buff, stage, other.uniqueId, AURA_DURATION, {
+          name: srcDef ? srcDef.name : '光环',
+        });
       }
+    }
+  }
+
+  /**
+   * 该辅助塔这一帧的光环接收者（已过滤：非自身 / 我方 / 非辅助塔）。
+   *
+   * 两种判定模式，由塔型原生表的 auraMode 决定：
+   *   · 半径模式（梯塔 / 菱形塔，默认）：塔心距离 ≤ range（range 缺省 150）；
+   *   · 邻接模式（十字塔，auraMode === 'adjacent'）：**上下左右四格**的槽位邻塔，
+   *     与距离无关 —— 十字塔的卖点就是"格子邻接"，隔着两格不给。
+   *
+   * ⚠️ 邻接模式必须走 this.slots（槽位网格）。塔不在网格里（探针/临时场景只塞
+   *    this.towers）时返回空 —— 这是**有意为之**：宁可"没邻居"也不许退化成"全图共享"，
+   *    否则十字塔会变成无脑全屏辅助，与"上下左右"的承诺不符。
+   */
+  auraTargets(tower, stats) {
+    const out = [];
+    const usable = (t) => t !== tower && t.owner === PLAYER.OWN && !t.isSupport;
+
+    if (stats && stats.auraMode === 'adjacent') {
+      const idx = this.slots.findIndex((s) => s && s.tower === tower);
+      if (idx < 0) return out;
+      const cols = LAYOUT.slotCols;
+      const row = Math.floor(idx / cols);
+      const col = idx % cols;
+      const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+      for (const [dr, dc] of dirs) {
+        const r = row + dr;
+        const c = col + dc;
+        if (r < 0 || c < 0 || r >= LAYOUT.slotRows || c >= cols) continue;
+        const slot = this.slots[r * cols + c];
+        if (slot && slot.tower && usable(slot.tower)) out.push(slot.tower);
+      }
+      return out;
+    }
+
+    const range = (stats && stats.range) || 150;
+    for (const other of this.towers) {
+      if (!usable(other)) continue;
+      const dx = other.x - tower.x;
+      const dy = other.y - tower.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= range) out.push(other);
+    }
+    return out;
+  }
+
+  /**
+   * 把"每座塔当前吃到的光环"快照到 tower.auraBuffs（每帧一次，在光环结算之后、
+   * 塔攻击更新之前调用）。
+   *
+   * 为什么需要快照：光环记账在 auraManager 上（按 uniqueId），而真正消费光环的
+   * getAttackProfile / skills.bonusFor 是**拿不到 game 上下文的纯函数**。快照让
+   * 战斗取值与属性面板读同一份数据，不会出现"面板涨了、战斗没涨"。
+   *
+   * ⚠️ 唯一写入方就是这里；消耗方不要自己往 tower.auraBuffs 上写。
+   * ⚠️ 没有光环时写 null（而不是留旧值）—— 否则光环过期后塔会永远带着一份幽灵加成。
+   */
+  syncTowerAuras() {
+    for (const tower of this.towers) {
+      const eff = this.auraManager.getAura(tower.uniqueId);
+      tower.auraBuffs = eff && eff.buffs ? eff.buffs : null;
     }
   }
 

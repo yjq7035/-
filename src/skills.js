@@ -85,6 +85,9 @@ const EFFECT_KEYS = {
   innateStackCap:        { active: true,  name: '叠加上限',   unit: '%' },
   auraPower:             { active: true,  name: '光环强度',   unit: '%' },
   auraPenetration:       { active: true,  name: '穿透光环',   unit: '' },
+  // 十字塔「共享资源」：把自身宝石属性按该比例共享给上下左右四格的邻塔。
+  //   战斗侧唯一消费方 = tower.getAuraOutput（乘进发出的光环数值），见 src/tower.js。
+  shareRatio:            { active: true,  name: '共享比例',   unit: '%' },
   // ⚠️ 生命（hp）：当前版本图形塔无敌，生命已从战斗结算里移除（TOWER_STATS 也没有 hp 字段）。
   //    五边塔 / 八边塔的技能仍挂着它，属于"登记在案但当前不生效"——UI 上的说明已写明，
   //    等哪天把图形塔做成可被击毁，这里改成 active:true 并在 bonusStats 里接回 ATTR.HP 即可。
@@ -207,11 +210,14 @@ const SKILLS = {
       { key: 'hp', name: '生命', base: 210, per: 40, unit: '', desc: '本体更耐打（当前版本图形塔无敌）' },
     ],
   },
+  // 十字塔 2026-09 改为辅助塔：不再是"射速更凶"，而是决定"共享比例"。
+  //   效果值 = 宝石属性有多少比例转给上下左右四格的相邻塔（见 tower.getAuraOutput）。
+  //   base = 25 必须与 TOWER_STATS.cross.shareRatio 一致（NATIVE_GETTERS 已登记）。
   cross: {
-    id: 'cross_rapid', name: '极速射击', innate: true, icon: 'attackSpeedMultiplier',
-    desc: '把十字塔的射速再往上推一档，贴身补伤更凶。',
+    id: 'cross_share', name: '共享资源', innate: true, icon: 'shareRatio',
+    desc: '把自身（嵌入宝石）的属性按比例共享给上下左右四格的相邻塔；升级提高共享比例。',
     effects: [
-      { key: 'attackSpeedMultiplier', name: '攻击速度', base: 100, per: 8, unit: '%', desc: '贴身速射更凶' },
+      { key: 'shareRatio', name: '共享比例', base: 25, per: 5, unit: '%', desc: '嵌入宝石的属性有多少比例共享给上下左右四格的相邻塔' },
     ],
   },
   arrow: {
@@ -532,9 +538,31 @@ function skillStepText(type, level) {
 function bonusFor(tower, key) {
   if (!tower || !key) return 0;
   const eff = findEffect(tower.type, key);
-  if (eff) return effectiveValueOf(tower.type, eff, levelOf(tower)) - eff.base;
+  if (eff) {
+    // 该塔当前接收到的共享光环（十字塔「共享资源」把宝石里的
+    // 猫眼石/紫晶石也一并转给邻塔）—— 数值由 game_core.syncTowerAuras 每帧快照到
+    // tower.auraBuffs，战斗与面板读的是同一份，所以两边不会各说各话。
+    //   技能等级 +N  → 等效于多强化 N 次（叠加在等级额度之上）
+    //   技能效果 +N% → 与紫晶宝石同一档：系数相加（不是再乘一次）
+    const auraLv = auraBuff(tower, 'skillLevels');
+    const auraPct = auraBuff(tower, 'skillEffectPercent');
+    const times = levelToTimes(levelOf(tower)) + auraLv;
+    const mult = effectMultiplier(tower.type) + auraPct / 100;
+    return (eff.base + eff.per * times) * mult - eff.base;
+  }
   if (!tower.enhanceAttrs) return 0;
   return tower.enhanceAttrs[key] || 0;
+}
+
+/**
+ * 塔当前接收到的某条共享光环数值（无则 0）。
+ * ⚠️ 唯一写入方是 game_core.syncTowerAuras —— 别在别处往 tower.auraBuffs 上写。
+ */
+function auraBuff(tower, key) {
+  const b = tower && tower.auraBuffs;
+  if (!b) return 0;
+  const v = Number(b[key]);
+  return isFinite(v) ? v : 0;
 }
 
 /**
@@ -682,6 +710,8 @@ const NATIVE_GETTERS = {
   explosionDamage: (st) => st.explosionRatio,
   sectorAngle: (st) => st.sectorHalfAngle,
   break: (st) => st.break || 0,
+  // 十字塔「共享资源」的原生共享比例（TOWER_STATS.cross.shareRatio）
+  shareRatio: (st) => st.shareRatio || 0,
 };
 
 /** 该属性在某塔型上的原生值（没有对应原生字段时返回 undefined → audit 报错） */
@@ -739,6 +769,7 @@ module.exports = {
   skillGainLabel,
   skillStepText,
   bonusFor,
+  auraBuff,
   applyTo,
   // 强化选项
   getOptions,

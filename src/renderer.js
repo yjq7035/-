@@ -717,6 +717,10 @@ function towerStageTag(tower) {
   if (stars <= 0) return '';
 
   if (tower.isSupport) {
+    // 十字塔：进阶收益 = 共享比例翻倍（它没有"攻速/穿透光环"可报）
+    if (towerMod.getTowerRuntimeStats(tower).auraMode === 'adjacent') {
+      return `共享${Math.round(towerMod.getShareRatio(tower))}%`;
+    }
     const out = towerMod.getAuraOutput(tower, meta.codexDamageMultiplier(tower.type));
     if (out.attackSpeedMultiplier) return `攻速${Math.round(out.attackSpeedMultiplier)}`;
     if (out.penetration) return `穿透${Math.round(out.penetration)}`;
@@ -757,6 +761,8 @@ const ROW_LABEL_COLOR = {
   attackSpeedMultiplier: THEME.accent.danger,
   attackInterval: THEME.text.secondary,
   auraPower: '#B388FF',
+  shareRatio: '#B388FF',
+  shareTarget: '#B388FF',
   range: THEME.text.secondary,
   hp: THEME.text.secondary,
   critChance: THEME.accent.cyan,

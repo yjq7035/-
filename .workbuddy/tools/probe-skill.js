@@ -349,10 +349,10 @@ log('\n===== ⑥ 不生效的技能必须显式登记（不许悄悄失效）===
     hpUsers.every((t) => (skills.skillDesc(t) || '').indexOf('未生效') >= 0),
     hpUsers.join(',') || '没有塔使用');
 
-  // 反向：生效的键必须真的能动战斗数值（抽样校验射程/攻速/穿透三类）
+  // 反向：生效的键必须真的能动战斗数值（抽样校验射程/攻速/破解/穿透光环/共享比例）
   const cases = [
     ['oval', 'range', (t) => towerMod.getTowerRuntimeStats(t).range],
-    ['cross', 'attackSpeedMultiplier', (t) => towerMod.getTowerRuntimeStats(t).attackSpeedMultiplier],
+    ['cross', 'shareRatio', (t) => towerMod.getTowerRuntimeStats(t).shareRatio],
     ['arrow', 'break', (t) => towerMod.getAttackProfile(t).break],
     ['diamond', 'auraPenetration', (t) => towerMod.getTowerRuntimeStats(t).auraPenetration],
   ];
@@ -363,7 +363,7 @@ log('\n===== ⑥ 不生效的技能必须显式登记（不许悄悄失效）===
     const b = read({ type: type, enhanceLevel: 2, enhanceAttrs: {} });
     if (!eff || Math.abs((b - a) - eff.per * 2) > 1e-9) badCases.push(`${type}.${key}: ${a}→${b}（期望 +${eff ? eff.per * 2 : '?'}）`);
   }
-  ok('技能满级前逐级叠加：射程 / 攻速 / 破解 / 穿透光环都能被技能抬高',
+  ok('技能满级前逐级叠加：射程 / 共享比例 / 破解 / 穿透光环都能被技能抬高',
     badCases.length === 0, badCases.join(' ; ') || '4/4 类通过');
 }
 
