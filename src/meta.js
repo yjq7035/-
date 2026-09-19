@@ -519,6 +519,12 @@ function embedGem(type, index, uid) {
   const slots = m.socketed[type] || [];
   for (let i = 0; i < GEM.maxSlots; i++) if (!slots[i]) slots[i] = null;
   if (slots[index]) return { ok: false, reason: 'occupied' };
+  // 需求 2026-09-19：同类宝石全塔唯一 —— 该塔系【任意】槽位已嵌同家族宝石即拒绝
+  //（不只目标槽；槽位条目读档时已折算成家族 id，直接比对 kind 即可）
+  for (let i = 0; i < slots.length; i++) {
+    const s = slots[i];
+    if (s && s.kind === gem.kind) return { ok: false, reason: 'same_kind' };
+  }
 
   slots[index] = { kind: gem.kind, lv: clampGemLv(gem.lv) };
   m.socketed[type] = slots;

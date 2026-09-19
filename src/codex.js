@@ -463,6 +463,8 @@ function actEmbedGem(game, kind) {
     const def = gems.gemDef(kind) || { name: kind, desc: '', color: THEME.accent.violet };
     game.gemPicker = null;
     say(game, `已嵌入 ${def.name}（${def.desc}）· 与固有技能绑定`, def.color);
+  } else if (res.reason === 'same_kind') {
+    say(game, '该塔已嵌有同类宝石，不能重复嵌入', THEME.accent.danger);
   } else if (res.reason === 'occupied') {
     say(game, '该槽已有宝石，先点它取出来', THEME.accent.danger);
   } else if (res.reason === 'locked') {

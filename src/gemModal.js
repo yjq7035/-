@@ -92,6 +92,12 @@ function getEmbedPickerLayout(game) {
   const W = game.W;
   const H = game.H;
   const list = sortedBagGems();
+  const type = game.gemPicker ? game.gemPicker.type : null;
+  // 需求 2026-09-19：同类宝石全塔唯一 —— 该塔系已嵌的种类在列表里直接置灰
+  const embeddedKinds = {};
+  if (type) {
+    for (const e of meta.embeddedEntries(type)) embeddedKinds[e.kind] = true;
+  }
 
   const w = Math.min(PICKER_UI.maxW, W - 36);
   // 视口高：夹在顶栏与导航栏之间，至少 1 行（列表为空时也要画空提示）
@@ -115,6 +121,7 @@ function getEmbedPickerLayout(game) {
       name: gems.gemName(g.kind, g.lv),
       desc: gems.effectTextAt(g.kind, g.lv),
       color: def.color,
+      blocked: !!embeddedKinds[g.kind],
       rect: {
         x: x + PICKER_UI.padX,
         y: viewTop + i * PICKER_UI.rowH - scroll,
@@ -142,7 +149,7 @@ function getEmbedPickerLayout(game) {
       w: w - PICKER_UI.padX * 2,
       h: 32,
     },
-    type: game.gemPicker ? game.gemPicker.type : null,
+    type: type,
     index: game.gemPicker ? game.gemPicker.index : -1,
   };
 }
@@ -161,15 +168,17 @@ function isEmbedPickerScrollable(game) {
 
 /**
  * 嵌入列表命中。
- * @returns {{kind:'pick'|'close', layer:'picker', uid?:string, gem?:string}}
- *   · pick  —— 点到了某颗宝石行 → 打开详情浮层（不再直接嵌入）
- *   · close —— 取消 / ✕ / 浮层外
+ * @returns {{kind:'pick'|'blocked'|'close', layer:'picker', uid?:string, gem?:string}}
+ *   · pick    —— 点到了可选的宝石行 → 打开详情浮层（不再直接嵌入）
+ *   · blocked —— 点到了已嵌同类的宝石行 → 只弹提示
+ *   · close   —— 取消 / ✕ / 浮层外
  */
 function hitEmbedPicker(game, pos) {
   const L = getEmbedPickerLayout(game);
   for (const row of L.rows) {
     if (!row.visible) continue;
     if (theme.pointInRect(pos, row.rect)) {
+      if (row.blocked) return { kind: 'blocked', layer: 'picker', uid: row.uid, gem: row.kind };
       return { kind: 'pick', layer: 'picker', uid: row.uid, gem: row.kind };
     }
   }
@@ -226,13 +235,20 @@ function drawEmbedPicker(game) {
   ctx.clip();
   for (const row of L.rows) {
     const r = row.rect;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
-    roundRectPath(ctx, r.x, r.y, r.w, r.h, THEME.radius.medium);
-    ctx.fill();
-    ctx.strokeStyle = theme.shade(row.color, -0.1, 0.42);
+    if (row.blocked) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
+      ctx.strokeStyle = THEME.border.subtle;
+    } else {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+      ctx.strokeStyle = theme.shade(row.color, -0.1, 0.42);
+    }
     ctx.lineWidth = 1;
     roundRectPath(ctx, r.x, r.y, r.w, r.h, THEME.radius.medium);
+    ctx.fill();
     ctx.stroke();
+
+    ctx.save();
+    if (row.blocked) ctx.globalAlpha = 0.45;
 
     // 左：宝石图标
     gems.drawGemIcon(ctx, r.x + 22, r.y + r.h / 2, 12, row.kind, { lv: row.lv });
@@ -247,6 +263,16 @@ function drawEmbedPicker(game) {
     ctx.font = '10px Arial';
     ctx.fillStyle = THEME.text.secondary;
     ctx.fillText(row.desc, r.x + 42, r.y + r.h / 2 + 9);
+    ctx.restore();
+
+    // 右：拦截原因（与合成列表"等级不符"同款标注）
+    if (row.blocked) {
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.font = '9px Arial';
+      ctx.fillStyle = THEME.text.off;
+      ctx.fillText('已嵌同类', r.x + r.w - 10, r.y + r.h / 2);
+    }
   }
 
   // 空背包提示
@@ -379,6 +405,8 @@ function actEmbedFromInfo(game) {
     game.gemPicker = null;      // 嵌入完成，嵌入列表一并收掉
     game.gemPickerScroll = 0;
     theme.pushToast(game, `已嵌入 ${gems.gemName(res.kind, res.lv || info.lv || 1)} · 与固有技能绑定`, def.color);
+  } else if (res.reason === 'same_kind') {
+    theme.pushToast(game, '该塔已嵌有同类宝石，不能重复嵌入', THEME.accent.danger);
   } else if (res.reason === 'occupied') {
     theme.pushToast(game, '该槽已有宝石，先点它取出来', THEME.accent.danger);
   } else if (res.reason === 'locked') {
@@ -847,6 +875,9 @@ function settleTap(game, pos, touch) {
         type: game.gemPicker ? game.gemPicker.type : null,
         index: game.gemPicker ? game.gemPicker.index : -1,
       });
+      break;
+    case 'blocked':    // 嵌入列表点了已嵌同类的宝石行
+      theme.pushToast(game, '该塔已嵌有同类宝石，不能重复嵌入', THEME.text.dim);
       break;
     case 'embed':      // 详情浮层 → 嵌入
       actEmbedFromInfo(game);
