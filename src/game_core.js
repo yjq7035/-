@@ -693,7 +693,25 @@ class Game {
     const pen = sourceTower ? this.getEffectivePenetration(sourceTower) : 0;
     // 破解与穿透共用同一条公式（都是直接抵扣敌人抗性）。别写成 `type === 'arrow' ? … : 0` ——
     // 破解现在是 TOWER_STATS 上的真实字段，写死塔型会让后加的"破解"技能静默失效。
+    // 另外：topaz_break 宝石（黄玉宝石·破甲族）嵌进槽后，攻击命中时给目标挂 armorBreak 层数，
+    //      同塔只能有一个 debuff，高优先级覆盖低优先级（见 enemy.armorBreak）。
+    //      注意：effectiveArmor 里 pen + brk 已经包含原生 + 宝石的总 break，所以这里
+    //      不再额外减 breakGem.break（否则重复抵扣）。
     const brk = sourceTower ? towerMod.getAttackProfile(sourceTower).break : 0;
+    let armorBreak = 0;
+    if (sourceTower) {
+      const breakGem = towerMod.getGemBonus(sourceTower.type);
+      const breakFromGem = breakGem.break || 0;
+      if (breakFromGem > 0) {
+        const tier = gems.breakTier(sourceTower.type);
+        const enemyBreak = enemy.armorBreak || 0;
+        if (tier > enemyBreak || enemyBreak === 0) {
+          enemy.armorBreak = tier;
+          // effectiveArmor 已含 brk（= 原生 break + 宝石 break），不需要再减
+          armorBreak = 0;
+        }
+      }
+    }
     const armor = enemy.armor || 0;
     const effectiveArmor = Math.max(0, armor - pen - brk);
     if (effectiveArmor > 0 && dmg > 0) {
@@ -786,25 +804,20 @@ class Game {
    * 通关/失败结算宝石奖励（9 格，每格 1~关卡关联数量 颗）。
    * 结果写入 this.gemReward（slots: 9 项，每项 {kind,count} 或 null），供结算界面渲染。
    *
-   * 规则（需求原话）：
+   * 规则：
    *   · 宝石只在通关/失败结算时获得，游戏过程不再掉落（grantKillReward / onWaveCleared 的掉落已移除，dropGem 现为死代码）；
    *   · 结算界面有 9 个奖励格子；
-   *   · 触发奖励后，本次获得 1 ~ min(关卡号, 9) 颗宝石（"关卡关联数量" = 关卡号）；
+   *   · 结算**必定**发放：本次获得 1 ~ min(关卡号, 9) 颗宝石（"关卡关联数量" = 关卡号）；
+   *     旧版用 victoryChance / defeatChance 概率门控，但 65%+ 的结算会显示"本次未获得"，
+   *     玩家几乎感知不到奖励、以为结算坏掉了，故改为必给（字段保留为可调参数，见 config.GEM）；
    *   · 这些宝石随机分布到 9 格里（每格最多 1 颗、必为 LV1 基础宝石），其余格子空置；不出现"单格 ×N"；
-   *   · 通关概率（GEM.victoryChance）> 失败概率（GEM.defeatChance）。
+   *   · 背包已满时仍记 triggered=true 但 total=0，结算界面显示"本次未获得（背包已满）"，绝不"掉了但看不见"。
    *
    * @param {boolean} victory 是否通关
    * @param {number}  [level]  用于上限的关卡号（默认当前关卡；通关时传"刚通关"的关卡，避免被自动推进污染）
    */
   grantRewardGems(victory, level) {
     const lv = level || this.currentLevel;
-    const chance = victory ? GEM.victoryChance : GEM.defeatChance;
-    if (Math.random() >= chance) {
-      // 没触发奖励：照样记一笔，结算界面好画"本次未获得"
-      this.gemReward = { victory, triggered: false, slots: [], total: 0 };
-      return;
-    }
-
     const cellCount = GEM.rewardCellCount || 9;                       // 9 格
     // "关卡关联数量" = 关卡号；宝石总数在下方按 1 ~ min(关卡号, 9) 计算（原 maxEach 已弃用）
     const capacity  = Math.max(0, meta.bagSlots() - meta.bagGemCount());        // 背包还能放几颗

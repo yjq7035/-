@@ -158,7 +158,7 @@ function gemColor(kind, lv) {
  *   count:number, kinds:string[], entries:Array<{kind:string,lv:number}>,
  *   damagePercent:number, attackSpeedMultiplier:number, critChance:number,
  *   penetration:number, range:number, skillLevels:number,
- *   skillEffectPercent:number
+ *   skillEffectPercent:number, critDamagePercent:number, break:number
  * }}
  */
 function bonusForType(type) {
@@ -173,6 +173,8 @@ function bonusForType(type) {
     range: 0,
     skillLevels: 0,
     skillEffectPercent: 0,
+    critDamagePercent: 0,
+    break: 0,
   };
   if (!type || !TOWER_DEFS[type]) return out;
 
@@ -191,6 +193,8 @@ function bonusForType(type) {
     out.range += e.range || 0;
     out.skillLevels += e.skillLevels || 0;
     out.skillEffectPercent += e.skillEffectPercent || 0;
+    out.critDamagePercent += e.critDamagePercent || 0;
+    out.break += e.break || 0;
   }
   return out;
 }
@@ -233,6 +237,18 @@ function bagCounts() {
   const counts = {};
   for (const g of meta.gemList()) counts[g.kind] = (counts[g.kind] || 0) + 1;
   return counts;
+}
+
+/** 某塔型已嵌入的 topaz_break 最高等级（用于 debuff tier，0 = 无） */
+function breakTier(type) {
+  let tier = 0;
+  for (const entry of meta.embeddedEntries(type)) {
+    if (entry.kind === 'topaz_break') {
+      const lv = levelOf(entry.kind, entry.lv);
+      if (lv > tier) tier = lv;
+    }
+  }
+  return tier;
 }
 
 /** 随机一种宝石（掉落/奖励用，永远是各家族 Lv.1 基础宝石；表为空时返回 null） */
@@ -445,6 +461,7 @@ module.exports = {
   embeddedGems,
   embeddedEntries,
   bagCounts,
+  breakTier,
   randomKind,
   dropText,
   synthMinCount,

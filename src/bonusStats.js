@@ -42,6 +42,7 @@ const ATTR = {
   CRIT: 'critChance',        // 暴击率(%) —— 基础值 + 技能/宝石增量
   CRIT_MULT: 'critMult',     // 暴击倍率（2.1 = 210%）；百分比来源乘算
   CRIT_DAMAGE: 'critDamage', // 暴击伤害(%) —— 技能「致命一击」的第二条效果；点值加算到倍率上
+  CRIT_DAMAGE_PERCENT: 'critDamagePercent', // 暴击伤害(%) —— 宝石「暴击伤害」族专用，百分比加算到 critMult
   PENETRATION: 'penetration', // 穿透（固定值）：抵扣敌人护甲
   BREAK: 'break',             // 破解（固定值）：额外抵消敌人抗性（箭形塔专属）
   EXPLOSION_DAMAGE: 'explosionDamage', // 圆塔二段爆炸的溅射伤害比例(%)
@@ -84,6 +85,7 @@ const BUFF_LABELS = {
   critChance:            { name: '暴击率', unit: '%' },
   critMult:              { name: '暴击倍率', unit: '' },
   critDamage:            { name: '暴击伤害', unit: '%' },
+  critDamagePercent:     { name: '暴击伤害', unit: '%' },
   penetration:           { name: '穿透', unit: '' },
   break:                { name: '破解', unit: '' },
   explosionDamage:       { name: '二段爆炸伤害', unit: '%' },
@@ -102,6 +104,7 @@ const ENHANCE_ATTR_MAP = {
   critChance: ATTR.CRIT,
   critMult: ATTR.CRIT_MULT,
   critDamage: ATTR.CRIT_DAMAGE,
+  critDamagePercent: ATTR.CRIT_DAMAGE_PERCENT,
   penetration: ATTR.PENETRATION,
   break: ATTR.BREAK,
   attackSpeedMultiplier: ATTR.ATTACK_SPEED,
@@ -287,8 +290,14 @@ function collectTowerStats(game, tower, stats, towerType) {
     if (gemBonus.critChance) {
       pushSource(sources, { attr: ATTR.CRIT, source: SOURCE.GEM, label: label((e) => e.critChance), kind: 'points', value: gemBonus.critChance });
     }
+    if (gemBonus.critDamagePercent) {
+      pushSource(sources, { attr: ATTR.CRIT_DAMAGE_PERCENT, source: SOURCE.GEM, label: label((e) => e.critDamagePercent), kind: 'points', value: gemBonus.critDamagePercent });
+    }
     if (gemBonus.penetration) {
       pushSource(sources, { attr: ATTR.PENETRATION, source: SOURCE.GEM, label: label((e) => e.penetration), kind: 'points', value: gemBonus.penetration });
+    }
+    if (gemBonus.break) {
+      pushSource(sources, { attr: ATTR.BREAK, source: SOURCE.GEM, label: label((e) => e.break), kind: 'points', value: gemBonus.break });
     }
     if (gemBonus.range) {
       pushSource(sources, { attr: ATTR.RANGE, source: SOURCE.GEM, label: label((e) => e.range), kind: 'points', value: gemBonus.range });

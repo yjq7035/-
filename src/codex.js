@@ -928,6 +928,7 @@ function drawSheetGems(ctx, L, block, y, left, contentW) {
 function drawSheetAttrs(ctx, L, block, y, left, contentW) {
   const type = L.sheetType;
   const stats = towerMod.getTowerStats(type);
+  const statsWithGem = towerMod.getTowerRuntimeStats({ type, enhanceLevel: 0, enhanceAttrs: {}, level: 1 });
   const dmgMult = meta.codexDamageMultiplier(type);
   const colW = contentW / 3;
   const row1 = y + CODEX_UI.attrGapTop + CODEX_UI.attrRowH / 2;
@@ -968,7 +969,11 @@ function drawSheetAttrs(ctx, L, block, y, left, contentW) {
     ctx.fillStyle = THEME.text.dim;
     ctx.fillText(`暴伤 ${Math.round(critMult * 100)}%`, left + colW, row2);
     ctx.fillStyle = THEME.accent.gold;
-    ctx.fillText(`穿透 ${stats.penetration || 0}`, left + colW * 2, row2);
+    ctx.fillText(`穿透 ${statsWithGem.penetration || 0}`, left + colW * 2, row2);
+    if (statsWithGem.break) {
+      ctx.fillStyle = THEME.accent.gold;
+      ctx.fillText(`破甲 ${statsWithGem.break}`, left + colW * 2, row1);
+    }
   }
 }
 

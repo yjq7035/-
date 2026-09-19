@@ -437,9 +437,11 @@ const GEM = {
   // 掉落：每清空 N 波必掉 1 颗（第 N、2N、… 波）；精英/BOSS 另按概率掉
   dropEveryWaves: 99, // 改为 99 使战斗过程不再掉落（> 最大波次 20）
   dropTierChance: null, // 精英/BOSS 不再掉落，改为通关/失败结算
-  // 通关/失败结算宝石奖励概率
-  victoryChance: 0.35,  // 通关概率 35%
-  defeatChance: 0.15,   // 失败概率 15%
+  // 结算宝石奖励概率（保留字段，供日后调参）。
+  // 当前 game_core.grantRewardGems 已改为【通关/失败结算必给】，故此处恒为 1。
+  // 若想恢复"本次未获得"的概率性，把对应值设为 <1 即可重新开启门控。
+  victoryChance: 1,  // =1 表示通关必给
+  defeatChance: 1,   // =1 表示失败必给
   rewardCellCount: 9,  // 结算界面奖励格子数（固定 9）
   gemRewardMax: 0,     // 0 = 每格随机 1~关卡关联数量（currentLevel）；>0 时覆盖为固定值
 
@@ -481,18 +483,23 @@ const GEM = {
 // hue/sat —— 家族色相与饱和度；各级颜色 = 同色相、明度按 GEM_LEVEL_LIGHT 逐级加深。
 //            颜色只用来分"家族"，"等级"由名字 + Lv 角标 + 描边亮度表达（都看得见）。
 const GEM_FAMILIES = [
-  { id: 'ruby',     attr: 'damagePercent',         label: '攻击力',   unit: '%',  base: 8,  step: 8,  hue: 2,   sat: 88,
+  { id: 'ruby',     family: '红宝石',    attr: 'damagePercent',         label: '攻击力',   unit: '%',  base: 8,  step: 8,  hue: 2,   sat: 88,
     names: ['烈焰红宝石', '炽焰红宝石', '熔岩红宝石', '永恒红宝石', '焚天红宝石'] },
-  { id: 'sapphire', attr: 'attackSpeedMultiplier', label: '攻速',     unit: '',   base: 10, step: 10, hue: 219, sat: 92,
+  { id: 'sapphire', family: '蓝宝石',    attr: 'attackSpeedMultiplier', label: '攻速',     unit: '',   base: 10, step: 10, hue: 219, sat: 92,
     names: ['疾风蓝宝石', '迅风蓝宝石', '风暴蓝宝石', '飓风蓝宝石', '天岚蓝宝石'] },
-  { id: 'emerald',  attr: 'critChance',            label: '暴击率',   unit: '%',  base: 6,  step: 6,  hue: 152, sat: 88,
+  { id: 'emerald',  family: '翡翠宝石',  attr: 'critChance',            label: '暴击率',   unit: '%',  base: 6,  step: 6,  hue: 152, sat: 88,
     names: ['雷光翡翠宝石', '雷鸣翡翠宝石', '极光翡翠宝石', '星环翡翠宝石', '起源翡翠宝石'] },
-  { id: 'topaz',    attr: 'penetration',           label: '穿透',     unit: '',   base: 6,  step: 6,  hue: 45,  sat: 90,
+  { id: 'topaz',    family: '黄玉宝石',  attr: 'penetration',           label: '穿透',     unit: '',   base: 6,  step: 6,  hue: 45,  sat: 90,
     names: ['破甲黄玉宝石', '裂甲黄玉宝石', '断钢黄玉宝石', '苍穹黄玉宝石', '天陨黄玉宝石'] },
-  { id: 'amethyst', attr: 'skillEffectPercent',    label: '技能效果', unit: '%',  base: 16, step: 16, hue: 265, sat: 80,
+  { id: 'amethyst', family: '紫晶宝石',  attr: 'skillEffectPercent',    label: '技能效果', unit: '%',  base: 16, step: 16, hue: 265, sat: 80,
     names: ['星辉紫晶宝石', '流光紫晶宝石', '深渊紫晶宝石', '虚灵紫晶宝石', '混沌紫晶宝石'] },
-  { id: 'opal',     attr: 'skillLevels',           label: '固有技能', unit: ' 级', base: 1,  step: 1,  hue: 186, sat: 78,
+  { id: 'opal',     family: '猫眼宝石',  attr: 'skillLevels',           label: '固有技能', unit: ' 级', base: 1,  step: 1,  hue: 186, sat: 78,
     names: ['秘术猫眼宝石', '幻梦猫眼宝石', '窥真猫眼宝石', '虚空猫眼宝石', '永恒猫眼宝石'] },
+  // ---- 新加两个家族 ----
+  { id: 'ruby_crit',    family: '翡翠宝石', attr: 'critDamagePercent', label: '暴击伤害', unit: '%', base: 10, step: 10, hue: 152, sat: 88,
+    names: ['裂心翡翠宝石', '碎心翡翠宝石', '灭心翡翠宝石', '渊心翡翠宝石', '绝心翡翠宝石'] },
+  { id: 'topaz_break',  family: '黄玉宝石', attr: 'break',             label: '破甲',     unit: '',   base: 3,  step: 3,  hue: 45,  sat: 90,
+    names: ['破甲黄玉宝石', '裂甲黄玉宝石', '断钢黄玉宝石', '苍穹黄玉宝石', '天陨黄玉宝石'] },
 ];
 
 /** 等级 → 明度（%）。同族同色相，等级越高越深；最低 52% 保证在深色底上仍然看得清 */
@@ -584,7 +591,7 @@ function resolveGem(kind, lv) {
  */
 const GEM_KINDS = GEM_FAMILIES.map((f) => ({
   id: f.id,
-  family: f.id,
+  family: f.family,
   attr: f.attr,
   name: f.names[0],
   color: gemLevelColor(f.id, 1),

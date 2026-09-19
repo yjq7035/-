@@ -41,6 +41,8 @@ function createTower(type, x, y) {
   tower.enhancePicks = [];
   // 该塔已投入的累计金币（基础造价 + 每次强化/升级花费之和），用于出售返还
   tower._cumulativeGold = 0;
+  // 破甲宝石 debuff 等级（由 topaz_break 嵌槽后写入，按等级覆盖同塔已有 debuff）
+  tower.breakTier = 0;
   
   return tower;
 }
@@ -399,11 +401,12 @@ function getAttackProfile(tower) {
   const critMultPct = getEnhanceAttr(tower, 'critMult');       // 百分比放大（乘算）
   const baseNative = (st.critMult || BALANCE.critDamageDefaultMult) + (st.critDamage || 0) / 100;
   const critDamagePts = getEnhanceAttr(tower, 'critDamage') || 0;
+  const critDamagePct = getEnhanceAttr(tower, 'critDamagePercent') || 0;
   return {
     critChance: Math.max(0, (st.critChance || 0) + gem.critChance + getEnhanceAttr(tower, 'critChance')),
-    critMult: Math.max(1, baseNative * (1 + critMultPct / 100) + critDamagePts / 100),
+    critMult: Math.max(1, baseNative * (1 + critMultPct / 100) + critDamagePts / 100 + critDamagePct / 100),
     penetration: Math.max(0, (st.penetration || 0) + gem.penetration + getEnhanceAttr(tower, 'penetration')),
-    break:       Math.max(0, (st.break || 0) + getEnhanceAttr(tower, 'break')),
+    break:       Math.max(0, (st.break || 0) + gem.break + getEnhanceAttr(tower, 'break')),
   };
 }
 
@@ -433,7 +436,7 @@ function getTowerRuntimeStats(tower) {
   // out.hp = (st.hp || 0) + add('hp');  // 已移除：图形塔无敌
   out.attackSpeedMultiplier = (st.attackSpeedMultiplier || 0) + gem.attackSpeedMultiplier + add('attackSpeedMultiplier');
   out.penetration = (st.penetration || 0) + gem.penetration + add('penetration');
-  out.break = (st.break || 0) + add('break');
+  out.break = (st.break || 0) + gem.break + add('break');
   out.critChance = (st.critChance || 0) + gem.critChance + add('critChance');
   // 暴击倍率：原生倍率 + 原生「+N% 暴击伤害」（三角塔 +10%）+ 技能增量（点值，单位 %）
   // ⚠️ critDamage 已经并进 critMult，这里不再单独输出 critDamage 字段 ——
@@ -441,7 +444,7 @@ function getTowerRuntimeStats(tower) {
   //    ⚠️ 技能增量的放大系数（紫晶宝石「技能效果 +N%」）已含在 add('critDamage') 里，
   //       这里不能再乘一次 skillEffectMult。
   const critBase = (st.critMult || BALANCE.critDamageDefaultMult) + (st.critDamage || 0) / 100;
-  out.critMult = critBase * (1 + add('critMult') / 100) + add('critDamage') / 100;
+  out.critMult = critBase * (1 + add('critMult') / 100) + add('critDamage') / 100 + add('critDamagePercent') / 100;
   if (st.isSupport) {
     // 辅助塔：技能"光环强度"直接加成在光环数值上
     const base = (st.supportBuff && st.supportBuff.attackSpeedMultiplier) || 0;
