@@ -1,7 +1,7 @@
 // 针对性探针：平行塔攻击弹道（迷你双横）
 // 背景：弹道绘制 switch 曾漏掉 'parallel' case → 静默不画，子弹隐身。
 // 判据：渲染一帧后，弹道位置附近必须出现 2 条 roundRect 横杠（等宽等高 / 左对齐 /
-//       有缝 / 横向），且为保持"双横正立"调用了反向 rotate(-(angle))。
+//       有缝 / 横向），且弹道**不随攻击朝向旋转**（政策 FIXED，见 src/aim.js）。
 const path = require('path');
 const fs = require('fs');
 const { makeCtx, makeRec } = require(path.join(__dirname, 'harness'));
@@ -68,9 +68,33 @@ if (projBars.length === 2) {
   ok('横长（宽 > 高×2，确实是"横"）', a.w > a.h * 2, `${a.w} > ${a.h * 2}`);
 }
 
-// 弹道随攻击朝向发射（angle=45°），但双横必须反向转回正立
-ok('调用了反向 rotate(-angle) 保持双横正立', rotations.some((v) => Math.abs(v - (-ANGLE)) < 1e-9),
-  `rotations=[${rotations.map((v) => v.toFixed(3)).join(', ')}]`);
+// 弹道随攻击朝向发射（angle=45°），但双横必须保持正立。
+// 2026-09-19：转向政策迁到 src/aim.js（塔本体与弹道都是 FIXED），
+// 由 applyProjectileTransform 直接**不施加**旋转 —— 旧版那句手写的
+// 反向 rotate(-angle) 补丁已删除，所以判据从"必须反向转"改成"一次都不转"。
+//
+// ⚠️ 别用整帧 render 的 rotate 序列判这个：导航栏箭头本身就会 rotate(±π/4)，
+//    与 45° 的弹道角撞值（本探针第一版就是这么假红的）。改为直接调弹道层。
+{
+  const rotationsOfLayer = (proj) => {
+    game.projectiles = [proj];
+    rotations.length = 0;
+    renderer.drawProjectiles(game);
+    return rotations.slice();
+  };
+  const base = { x: 300, y: 300, targetX: 360, targetY: 360, targetType: null, sourceTower: null,
+    speed: 300, alive: true, angle: ANGLE, damage: 10 };
+  const pRots = rotationsOfLayer(Object.assign({}, base, { type: 'parallel', color: '#00FF7F' }));
+  ok('平行塔弹道：政策 FIXED → 弹道层一次都不旋转', pRots.length === 0,
+    `rotations=[${pRots.map((v) => v.toFixed(3)).join(', ')}]`);
+  // 正向对照：跟随朝向的塔型必须**恰好**转一次，且角度 = 弹道朝向
+  const tRots = rotationsOfLayer(Object.assign({}, base, { type: 'triangle', color: '#FF4444' }));
+  ok('对照：三角塔弹道恰好按朝向转一次', tRots.length === 1 && Math.abs(tRots[0] - ANGLE) < 1e-9,
+    `rotations=[${tRots.map((v) => v.toFixed(3)).join(', ')}]`);
+  // 恢复平行塔弹道，供下面"有绘制动作"的断言用（顺手重绘一次，让 rec.ops 反映它）
+  game.projectiles = [Object.assign({}, base, { type: 'parallel', color: '#00FF7F' })];
+  renderer.drawProjectiles(game);
+}
 
 // 弹道本体 fill 过（修复前 case 缺失连 fill 都不会发生——这里顺带断言 ops 非空）
 ok('本帧有 fill/stroke 绘制动作', rec.ops.some((o) => o[0] === 'fill' || o[0] === 'stroke'));

@@ -407,18 +407,26 @@ SHOP.panelHeight = SHOP.padTop + SHOP.headerH + SHOP.cardH + SHOP.padBottom;
 // 宝石系统（Gems）
 // ----------------------------------------------------------------------------
 // 玩法：
-//   · 局内掉落 / 奖励的宝石先进【背包】（导航第 5 格，默认 20 格 = 10 格/行 × 2 行）
+//   · 局内掉落 / 奖励的宝石先进【背包】（导航第 5 格，默认 24 格 = 8 格/行 × 3 行）
 //   · 图签里每升 1 级解锁 1 个【嵌入宝石槽】（解锁即 Lv.1 → 1 个槽，Lv.5 = 5 个槽）
 //   · 把背包里的宝石嵌进某个图形塔的槽里 → 宝石与【该塔的固有技能】绑定，
 //     从背包消失，加成永久（跨局）作用在该塔型上
+//   · 3 颗同级宝石可合成 1 颗 +1 级宝石（规则见 GEM.synth，产物法则见 gems.synthResult）
 //
-// 数值口径：GEM_KINDS[].effect 的键与 bonusStats.ATTR / ENHANCE_SPECIAL 同名字段，
+// 数值口径：宝石 = 【家族(加什么)】×【等级(加多少)】，两张表都在本文件：
+//   GEM_FAMILIES（家族：属性键 / 基础值 / 每级增量 / 各级名字与色相）
+//   GEM_LEVEL_LIGHT（等级 → 明度）
+//   效果的键与 bonusStats.ATTR / ENHANCE_SPECIAL 同名字段，
 //   战斗侧由 tower.js 的 getGemBonus 统一叠加（见 src/gems.js）。
 //
 // ⚠️ 袋口（bagSlots）之外还有 bagMaxSlots：广告解锁是"每次 +1 行（8 格）"，
 //    上限 120 格。广告未开放（AD.enabled=false）时解锁按钮与「再次挑战」同款禁用。
 // ============================================================================
+/** 宝石最高等级（合成 +1 级，到顶为止）。GEM.maxLevel 与它同源，别在别处再写一个 5。 */
+const GEM_LEVELS = 5;
+
 const GEM = {
+  maxLevel: GEM_LEVELS, // 单颗宝石最高等级（= 等级阶梯长度；合成的天花板）
   maxSlots: 5,          // 单个图形塔最多 5 个嵌入槽（与 CODEX.maxLevel 对齐：每升 1 级 +1 槽）
   slotFromLevel: 1,     // 图签 Lv.1（即解锁）就送 1 个槽
   bagCols: 8,          // 背包每行 8 格
@@ -435,58 +443,209 @@ const GEM = {
   rewardCellCount: 9,  // 结算界面奖励格子数（固定 9）
   gemRewardMax: 0,     // 0 = 每格随机 1~关卡关联数量（currentLevel）；>0 时覆盖为固定值
 
-  // 合成宝石规则（需求 2026-09-18）：
-  //   · 从 minCount 颗【同级】宝石起合成；基础成功率 baseRate%
-  //   · 每额外多选 1 颗同级宝石 +perExtra%（封顶 maxRate%）
+  // 合成宝石规则（需求 2026-09-18，2026-09-19 调整）：
+  //   · 从 minCount 颗【同级】宝石起合成；基础成功率 = minCount × perExtra%
+  //     （即「每颗 +perExtra%」，2 颗 = 20% 起步，不再有 50% 保底）
+  //   · 每额外多选 1 颗同级宝石再 +perExtra%（封顶 maxRate%）
   //   · 成功 → 获得所选材料范围内【随机一种】+1 级宝石（材料全同名时即该种类）
   //   · 失败 → 材料照常消耗（合成浮层上写清楚，让玩家自己权衡）
-  synth: { minCount: 3, baseRate: 50, perExtra: 10, maxRate: 100 },
+  synth: { minCount: 2, baseRate: 20, perExtra: 10, maxRate: 100 },
 };
 
-// 宝石种类（唯一真源：图标颜色 / 效果 / 文案都由本表驱动）
-//   effect.damagePercent        —— 攻击力 +N%（乘算，与图签同一档绿字）
-//   effect.attackSpeedMultiplier—— 攻速 +N
-//   effect.critChance           —— 暴击率 +N%
-//   effect.penetration          —— 穿透 +N
-//   effect.range                —— 射程 +N
-//   effect.skillLevels          —— 固有技能等级 +N
-//                                  （⚠️ 这条就是"宝石与技能绑定"：它直接给该塔的
-//                                   ENHANCE_SPECIAL 那项属性加等级，走 tower.getEnhanceAttr
-//                                   这一个口生效，因此战斗/面板/浮层不会各说各话）
+// ============================================================================
+// 宝石家族 × 等级阶梯（升级体系的唯一真源）
+// ----------------------------------------------------------------------------
+// 一颗宝石 = 【家族】+【等级 Lv.1~5】。
+//   · 家族 = 加哪条属性（6 种，见 GEM_FAMILIES）—— 决定"加什么"
+//   · 等级 = 数值逐级放大 —— 决定"加多少"
+//   · 效果 = base + step × (等级 − 1)，且**每一级有独立的名字与颜色**
+//     （所以"等级"在背包/图签里是看得见的，不只是角落里一个数字）
 //
-// Lv 等级含义（合成产物的意义）：
-//   Lv.1  = 基础掉落宝石（6 种），基础效果最低档
-//   Lv.2  = 强化宝石（5 种），基础效果 ≈ 2×，独立命名/配色
-//   Lv.3  = 高阶宝石（4 种），基础效果 ≈ 3×
-//   Lv.4  = 稀有宝石（3 种），多属性复合
-//   Lv.5  = 传说宝石（2 种），多属性强力
-const GEM_KINDS = [
-  // --- Lv.1（6 种，基础掉落） ---
-  { id: 'ruby',     tier: 1, name: '烈焰红宝石', color: '#FF5252', effect: { damagePercent: 8 },  desc: '攻击力 +8%' },
-  { id: 'sapphire', tier: 1, name: '疾风蓝宝石', color: '#448AFF', effect: { attackSpeedMultiplier: 10 }, desc: '攻速 +10' },
-  { id: 'emerald',  tier: 1, name: '雷光翡翠宝石', color: '#00E676', effect: { critChance: 6 }, desc: '暴击率 +6%' },
-  { id: 'topaz',    tier: 1, name: '破甲黄玉宝石', color: '#FFD54F', effect: { penetration: 6 }, desc: '穿透 +6' },
-  { id: 'amethyst', tier: 1, name: '星辉紫晶宝石', color: '#B388FF', effect: { skillEffectPercent: 16 }, desc: '技能效果 +16%' },
-  { id: 'opal',     tier: 1, name: '秘术猫眼宝石', color: '#4DD0E1', effect: { skillLevels: 1 }, desc: '固有技能 +1 级' },
-  // --- Lv.2（5 种，Lv.1 同种合成 3→2，独立名称配色） ---
-  { id: 'fire_ruby',      tier: 2, name: '炽焰红宝石', color: '#FF3D3D', effect: { damagePercent: 16 },  desc: '攻击力 +16%' },
-  { id: 'gale_sapphire',  tier: 2, name: '疾风蓝宝石·改', color: '#2979FF', effect: { attackSpeedMultiplier: 20 }, desc: '攻速 +20' },
-  { id: 'thunder_emerald',tier: 2, name: '雷光翡翠宝石·改', color: '#00C853', effect: { critChance: 12 }, desc: '暴击率 +12%' },
-  { id: 'armor_topaz',    tier: 2, name: '破甲黄玉宝石·改', color: '#FFCA28', effect: { penetration: 12 }, desc: '穿透 +12' },
-  { id: 'star_amethyst',  tier: 2, name: '星辉紫晶宝石·改', color: '#9575CD', effect: { range: 30 }, desc: '射程 +30' },
-  // --- Lv.3（4 种，Lv.2 同种合成 3→3，效果 ≈ 3×） ---
-  { id: 'magma_ruby',     tier: 3, name: '熔岩红宝石', color: '#D50000', effect: { damagePercent: 24 },  desc: '攻击力 +24%' },
-  { id: 'storm_sapphire', tier: 3, name: '风暴蓝宝石', color: '#1565C0', effect: { attackSpeedMultiplier: 30 }, desc: '攻速 +30' },
-  { id: 'aurora_emerald', tier: 3, name: '极光翡翠宝石', color: '#009688', effect: { critChance: 18 }, desc: '暴击率 +18%' },
-  { id: 'abyss_amethyst', tier: 3, name: '深渊紫晶宝石', color: '#6A1B9A', effect: { penetration: 18 }, desc: '穿透 +18' },
-  // --- Lv.4（3 种，多属性复合，Lv.3 合成 3→4） ---
-  { id: 'sky_topaz',    tier: 4, name: '苍穹黄玉宝石', color: '#F57C00', effect: { range: 48, critChance: 20 }, desc: '射程 +48 · 暴击率 +20%' },
-  { id: 'void_opal',    tier: 4, name: '虚空猫眼宝石', color: '#00897B', effect: { skillLevels: 3 }, desc: '固有技能 +3 级' },
-  { id: 'eternal_ruby', tier: 4, name: '永恒红宝石', color: '#E53935', effect: { damagePercent: 32, attackSpeedMultiplier: 15 }, desc: '攻击力 +32% · 攻速 +15' },
-  // --- Lv.5（2 种，传说级，多属性强力，Lv.4 合成 3→5） ---
-  { id: 'chaos_amethyst',  tier: 5, name: '混沌紫晶宝石', color: '#AA00FF', effect: { damagePercent: 15, attackSpeedMultiplier: 10, critChance: 10, penetration: 10, range: 20 }, desc: '全属性 +15/10/10/10/20' },
-  { id: 'origin_emerald',  tier: 5, name: '起源翡翠宝石', color: '#00E676', effect: { critChance: 25, penetration: 25 }, desc: '暴击率 +25% · 穿透 +25' },
+// ⛔ 2026-09-19 修复的历史坑 —— 旧实现里"等级"是两套互相打架的东西：
+//     ① 20 个并列的 kind 按 tier 分组（ruby / fire_ruby / magma_ruby …）
+//     ② 实例上另存一个 lv 字段
+//     gems.effectAt(kind, lv) 收下 lv 却整份返回 def.effect
+//       ⇒ Lv.1 与 Lv.5 的红宝石打出一模一样的伤害（"等级"纯装饰）
+//     meta.synthesizeGems 又无视材料随机滚一个 tier
+//       ⇒ 3 颗 Lv.1 红宝石能合出 tier-5 的"混沌紫晶宝石"（还顺手把 lv 写成 5）
+//   现在：**等级只有一个真源 = 存档里的 lv**；
+//        旧 kind 走 GEM_ALIAS 折算成 {家族, 等级}，老存档不掉东西。
+// ============================================================================
+// attr —— 属性键（与 gems.bonusForType / bonusStats.ATTR 同名字段）
+//   damagePercent        攻击力 +N%（乘算，与图签同一档绿字）
+//   attackSpeedMultiplier 攻速 +N
+//   critChance           暴击率 +N%
+//   penetration          穿透 +N
+//   skillEffectPercent   技能效果 +N%（放大固有技能每条效果的当前值）
+//   skillLevels          固有技能等级 +N（"宝石与技能绑定"的落地点，走 tower.getEnhanceAttr）
+// hue/sat —— 家族色相与饱和度；各级颜色 = 同色相、明度按 GEM_LEVEL_LIGHT 逐级加深。
+//            颜色只用来分"家族"，"等级"由名字 + Lv 角标 + 描边亮度表达（都看得见）。
+const GEM_FAMILIES = [
+  { id: 'ruby',     attr: 'damagePercent',         label: '攻击力',   unit: '%',  base: 8,  step: 8,  hue: 2,   sat: 88,
+    names: ['烈焰红宝石', '炽焰红宝石', '熔岩红宝石', '永恒红宝石', '焚天红宝石'] },
+  { id: 'sapphire', attr: 'attackSpeedMultiplier', label: '攻速',     unit: '',   base: 10, step: 10, hue: 219, sat: 92,
+    names: ['疾风蓝宝石', '迅风蓝宝石', '风暴蓝宝石', '飓风蓝宝石', '天岚蓝宝石'] },
+  { id: 'emerald',  attr: 'critChance',            label: '暴击率',   unit: '%',  base: 6,  step: 6,  hue: 152, sat: 88,
+    names: ['雷光翡翠宝石', '雷鸣翡翠宝石', '极光翡翠宝石', '星环翡翠宝石', '起源翡翠宝石'] },
+  { id: 'topaz',    attr: 'penetration',           label: '穿透',     unit: '',   base: 6,  step: 6,  hue: 45,  sat: 90,
+    names: ['破甲黄玉宝石', '裂甲黄玉宝石', '断钢黄玉宝石', '苍穹黄玉宝石', '天陨黄玉宝石'] },
+  { id: 'amethyst', attr: 'skillEffectPercent',    label: '技能效果', unit: '%',  base: 16, step: 16, hue: 265, sat: 80,
+    names: ['星辉紫晶宝石', '流光紫晶宝石', '深渊紫晶宝石', '虚灵紫晶宝石', '混沌紫晶宝石'] },
+  { id: 'opal',     attr: 'skillLevels',           label: '固有技能', unit: ' 级', base: 1,  step: 1,  hue: 186, sat: 78,
+    names: ['秘术猫眼宝石', '幻梦猫眼宝石', '窥真猫眼宝石', '虚空猫眼宝石', '永恒猫眼宝石'] },
 ];
+
+/** 等级 → 明度（%）。同族同色相，等级越高越深；最低 52% 保证在深色底上仍然看得清 */
+const GEM_LEVEL_LIGHT = { 1: 80, 2: 73, 3: 66, 4: 59, 5: 52 };
+
+const GEM_FAMILY_BY_ID = {};
+for (const f of GEM_FAMILIES) GEM_FAMILY_BY_ID[f.id] = f;
+
+/** HSL(0~360, 0~1, 0~1) → '#RRGGBB'（只给宝石等级色用；不引 theme，避免 config 反向依赖） */
+function gemHex(h, s, l) {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = (((h % 360) + 360) % 360) / 60;
+  const x = c * (1 - Math.abs((hp % 2) - 1));
+  let r = 0, g = 0, b = 0;
+  if (hp < 1) { r = c; g = x; }
+  else if (hp < 2) { r = x; g = c; }
+  else if (hp < 3) { g = c; b = x; }
+  else if (hp < 4) { g = x; b = c; }
+  else if (hp < 5) { r = x; b = c; }
+  else { r = c; b = x; }
+  const m = l - c / 2;
+  const to = (v) => Math.max(0, Math.min(255, Math.round((v + m) * 255)));
+  return '#' + [to(r), to(g), to(b)].map((v) => v.toString(16).padStart(2, '0').toUpperCase()).join('');
+}
+
+/**
+ * 等级夹取：[1, GEM_LEVELS]。非法 / 坏档一律回落 Lv.1（不许造出 0 级 / 负级 / 小数级宝石）。
+ * ⚠️ 这是**唯一**的宝石等级夹取入口 —— 存档侧（meta）与展示/结算侧（gems）都调它，
+ *    别在各自文件里再写一份 Math.min/max（两份夹取必然会在某次改上限时打架）。
+ */
+function clampGemLevel(v) {
+  const n = Math.floor(Number(v));
+  if (!isFinite(n) || n < 1) return 1;
+  return Math.min(GEM_LEVELS, n);
+}
+
+/** 某家族某等级的效果数值对象，如 ruby Lv.3 → { damagePercent: 24 } */
+function gemEffectAt(familyId, lv) {
+  const fam = GEM_FAMILY_BY_ID[familyId];
+  if (!fam) return {};
+  const out = {};
+  out[fam.attr] = fam.base + fam.step * (clampGemLevel(lv) - 1);
+  return out;
+}
+
+/** 某家族某等级的效果文案，如 ruby Lv.3 → '攻击力 +24%' */
+function gemDescAt(familyId, lv) {
+  const fam = GEM_FAMILY_BY_ID[familyId];
+  if (!fam) return '';
+  const v = fam.base + fam.step * (clampGemLevel(lv) - 1);
+  return `${fam.label} +${v}${fam.unit}`;
+}
+
+/** 某家族某等级的颜色（等级越高越深；未知家族给中性灰，绝不返回 undefined） */
+function gemLevelColor(familyId, lv) {
+  const fam = GEM_FAMILY_BY_ID[familyId];
+  if (!fam) return '#90A4AE';
+  return gemHex(fam.hue, fam.sat / 100, (GEM_LEVEL_LIGHT[clampGemLevel(lv)] || 66) / 100);
+}
+
+/** 某家族某等级的名字（等级越界的夹到两端，不返回 undefined） */
+function gemLevelName(familyId, lv) {
+  const fam = GEM_FAMILY_BY_ID[familyId];
+  if (!fam) return String(familyId || '宝石');
+  return fam.names[clampGemLevel(lv) - 1] || fam.names[0];
+}
+
+/**
+ * 宝石 id 折算（**唯一入口**）：任意 kind + lv → 规范的 { id: 家族, lv: 等级 }。
+ *   · 'ruby' + 3            → { id: 'ruby', lv: 3 }
+ *   · 'magma_ruby' + 1      → { id: 'ruby', lv: 3 }   ← 旧档的 tier-3 宝石折算成"红宝石 Lv.3"
+ *   · 'magma_ruby' + 4      → { id: 'ruby', lv: 4 }   ← 两者取高（旧档的 kind 已经表达了等级）
+ * 未知 id 返回 null（调用方据此剔除坏档）。
+ */
+function resolveGem(kind, lv) {
+  if (!kind) return null;
+  const fam = GEM_FAMILY_BY_ID[kind];
+  if (fam) return { id: fam.id, lv: clampGemLevel(lv) };
+  const alias = GEM_ALIAS[kind];
+  if (!alias) return null;
+  return { id: alias.id, lv: clampGemLevel(Math.max(Number(lv) || 1, alias.lv)) };
+}
+
+/**
+ * 宝石 Lv.1 视图（**由 GEM_FAMILIES 生成，不是第二份真源**）。
+ * 保留 id/name/color/effect/desc 这几个老字段，让"按 kind 查表"的老代码继续能用：
+ * 拿到的就是该家族 Lv.1 的名字 / 颜色 / 基础效果。
+ * 要某个等级的数据，请用 gems.effectAt / gemColor / gemName（它们才吃 lv）。
+ */
+const GEM_KINDS = GEM_FAMILIES.map((f) => ({
+  id: f.id,
+  family: f.id,
+  attr: f.attr,
+  name: f.names[0],
+  color: gemLevelColor(f.id, 1),
+  effect: gemEffectAt(f.id, 1),
+  desc: gemDescAt(f.id, 1),
+}));
+
+// 旧 kind → {家族, 等级}（2026-09-19 前的 20 行 tier 表；等级 = 原 tier）
+// 老存档里可能存着这些 id，读档时由 resolveGem 折算，玩家不会掉宝石。
+// ⚠️ 当年有 4 行是"跨家族错配"（star_amethyst 是射程、sky_topaz 是射程+暴击、
+//    chaos_amethyst 是全属性、origin_emerald 是暴击+穿透），它们**只可能**来自旧版那个
+//    随机滚 tier 的坏合成。折算后按各自家族的主属性生效（射程属性因此退出宝石池）。
+const GEM_ALIAS = {
+  // Lv.1（6 种基础掉落）
+  ruby: { id: 'ruby', lv: 1 }, sapphire: { id: 'sapphire', lv: 1 }, emerald: { id: 'emerald', lv: 1 },
+  topaz: { id: 'topaz', lv: 1 }, amethyst: { id: 'amethyst', lv: 1 }, opal: { id: 'opal', lv: 1 },
+  // Lv.2
+  fire_ruby: { id: 'ruby', lv: 2 }, gale_sapphire: { id: 'sapphire', lv: 2 }, thunder_emerald: { id: 'emerald', lv: 2 },
+  armor_topaz: { id: 'topaz', lv: 2 }, star_amethyst: { id: 'amethyst', lv: 2 },
+  // Lv.3
+  magma_ruby: { id: 'ruby', lv: 3 }, storm_sapphire: { id: 'sapphire', lv: 3 }, aurora_emerald: { id: 'emerald', lv: 3 },
+  abyss_amethyst: { id: 'amethyst', lv: 3 },
+  // Lv.4
+  eternal_ruby: { id: 'ruby', lv: 4 }, sky_topaz: { id: 'topaz', lv: 4 }, void_opal: { id: 'opal', lv: 4 },
+  // Lv.5
+  chaos_amethyst: { id: 'amethyst', lv: 5 }, origin_emerald: { id: 'emerald', lv: 5 },
+};
+
+// ---------------------------------------------------------------------------
+// 合成法则（数值 + 产物，唯一真源）
+// ---------------------------------------------------------------------------
+// ⚠️ 为什么放在 config 而不是 meta 或 gems：
+//    meta 需要它（执行合成、写存档），但 **meta 不能 require gems** —— gems 已经
+//    require meta，反过来就成了环。法则放这里，meta 与 gems 都只是调它。
+// ---------------------------------------------------------------------------
+
+/** 选 n 颗同级宝石的合成成功率（0~1）：minCount 颗 baseRate% 起，每多 1 颗 +perExtra%，封顶 maxRate% */
+function gemSynthRate(count) {
+  const s = GEM.synth;
+  const n = Math.max(0, Math.floor(count || 0));
+  const extra = Math.max(0, n - s.minCount);
+  return Math.min(s.maxRate, s.baseRate + extra * s.perExtra) / 100;
+}
+
+/**
+ * 合成产物法则：**家族取自材料范围（随机一种）、等级 = 材料等级 + 1**（封顶 GEM_LEVELS）。
+ * 材料全同名时产物就是该家族。到顶返回 null（不能合，UI 也不该报价）。
+ *
+ * ⛔ 别改回"随机滚一个 kind"：旧实现就是这么写的，于是 3 颗 Lv.1 红宝石能合出
+ *    tier-5 的混沌紫晶宝石、等级还被写成 5（合成线彻底失控的历史事故）。
+ */
+function gemSynthResult(materialKinds, lv) {
+  const list = (Array.isArray(materialKinds) ? materialKinds : [materialKinds])
+    .map((k) => { const r = resolveGem(k, 1); return r ? r.id : null; })
+    .filter(Boolean);
+  if (!list.length) return null;
+  const cur = clampGemLevel(lv);
+  if (cur >= GEM_LEVELS) return null;
+  const kind = list[Math.floor(Math.random() * list.length)];
+  return { kind: kind, lv: cur + 1 };
+}
 
 // ============================================================================
 // 广告配置
@@ -566,4 +725,17 @@ module.exports = {
   MUSIC,
   GEM,
   GEM_KINDS,
+  GEM_FAMILIES,
+  GEM_FAMILY_BY_ID,
+  GEM_LEVELS,
+  GEM_LEVEL_LIGHT,
+  GEM_ALIAS,
+  clampGemLevel,
+  gemEffectAt,
+  gemDescAt,
+  gemLevelColor,
+  gemLevelName,
+  resolveGem,
+  gemSynthRate,
+  gemSynthResult,
 };

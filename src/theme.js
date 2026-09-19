@@ -308,8 +308,9 @@ function applyTowerStyle(ctx, x, y, color, approxR) {
 }
 
 // ========== 图形塔图标（17 种轮廓，全项目统一绘制入口）==========
-// 方向语义保持原样：三角 / 扇 / 半圆 / 箭形 仍按攻击朝向绘制（正右方为 0 度）；
-// 例外是"双横"平行塔 —— 对称图形旋转只会破坏辨识度，见 NO_ROTATE_SHAPES。
+// 方向语义（全项目统一）：**轮廓一律画成"朝右"（正右方 = 0 度）**，
+// 攻击朝向的旋转由 src/aim.js 施加（applyIconTransform / applyProjectileTransform），
+// 本文件不再判断"哪种塔该不该转" —— 那份政策只有一处定义，在 aim.SHAPE_AIM。
 const TOWER_SHAPES = [
   'triangle', 'circle', 'hexagon', 'square', 'trapezoid', 'semicircle',
   'sector', 'long_rectangle', 'diamond', 'pentagon', 'oval', 'star',
@@ -317,22 +318,10 @@ const TOWER_SHAPES = [
 ];
 
 /**
- * 哪些图形塔**不跟随攻击朝向旋转**。
- *
- * 默认行为是 `drawTower` 按 attackAngle 旋转图标（三角/箭形/扇形的朝向本身就是信息）。
- * 但"双横"这类**对称朝向无意义**的图形一转就变"双竖"，辨识度当场崩掉
- * —— 平行塔的轮廓是上下两条横杠，转 90° 会被当成另一种塔，
- * 所以它必须永远正立。
- */
-const NO_ROTATE_SHAPES = new Set(['parallel']);
-
-/** 该塔图标是否应随攻击朝向旋转（渲染层统一入口，别在别处再写一份判断） */
-function shouldRotateTowerIcon(type) {
-  return !NO_ROTATE_SHAPES.has(type);
-}
-
-/**
  * 绘制塔图标（纯函数）：按类型构建轮廓，再套用统一立体样式。
+ *
+ * ⚠️ 本函数只画"朝右"的那一份轮廓，**不负责朝向** —— 要按攻击朝向摆，
+ *    请先调 aim.applyIconTransform(ctx, tower)（见 src/aim.js）。
  * @param {object} ctx 画布
  * @param {number} x 中心x
  * @param {number} y 中心y
@@ -585,6 +574,10 @@ function drawTowerIcon(ctx, x, y, color, type, scale) {
 
   applyTowerStyle(ctx, x, y, color, approxR);
   ctx.restore();
+  // 返回轮廓的近似半径（各图形自带不同尺寸：三角 13.8 / 正方 10 / 圆 11 …）。
+  // 给"需要按轮廓尺寸等比缩放"的调用方一个现成的量：弹道兜底绘制会用它挑缩放比例，
+  // probe-aim 也用它守"每种图形都有真实尺寸"（case 忘了设 approxR 会落到默认 12）。
+  return approxR;
 }
 
 // ========== 文字排版 ==========
@@ -1198,7 +1191,6 @@ module.exports = {
   TOAST,
   pushToast,
   TOWER_SHAPES,
-  shouldRotateTowerIcon,
   shade,
   teamBandGradient,
   easeOutCubic,

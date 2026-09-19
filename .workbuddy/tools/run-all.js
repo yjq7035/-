@@ -33,6 +33,10 @@ const JOBS = [
   // 进阶（阶段）系统专项：全塔型 × 0~3★ 实效（**不跳过辅助塔**）/ 面板==战斗 /
   // 明细不撒谎 / 菱形塔穿透光环进战斗 / 旧平衡不变。真源见 src/stage.js
   ['probe-stage',   path.join(TOOLS, 'probe-stage.js'),   [path.join(TOOLS, '_stage.txt')]],
+  // 攻击朝向系统专项：全塔型转向实效（含辅助塔）/ 弹道朝向 == 塔朝向 /
+  // 扇塔弹道不再转两遍 / 自旋只在声明塔型 / 新塔型自适应 / 朝向写入唯一入口。
+  // 真源见 src/aim.js
+  ['probe-aim',     path.join(TOOLS, 'probe-aim.js'),     [path.join(TMP, '_aim.txt')]],
   ['smoke',         path.join(TOOLS, 'smoke.js'),         [path.join(TOOLS, '_smoke.txt')]],
   // 天赋花费专项：公式（Lv.N = N × 基础花费）+ 真扣点 + 按钮报价与结算同口径
   ['probe-talent',  path.join(TOOLS, 'probe-talent.js'),  [path.join(TOOLS, '_talent.txt')]],

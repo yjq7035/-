@@ -21,6 +21,7 @@ const meta = require('./meta');
 const gems = require('./gems');
 const skills = require('./skills');
 const stageMod = require('./stage');
+const aim = require('./aim');
 const skillSlot = require('./skillSlot');
 const gemModal = require('./gemModal');
 const { anchorPointOf } = require('./geometry');
@@ -640,15 +641,12 @@ function drawTower(ctx, game, tower) {
 
   ctx.save();
 
-  // 如果塔有攻击朝向，根据朝向旋转绘制（对称图形例外，见 theme.shouldRotateTowerIcon）
-  const rotatable = theme.shouldRotateTowerIcon(tower.type);
-  if (rotatable && tower.attackAngle !== undefined) {
-    ctx.translate(tower.x, tower.y);
-    ctx.rotate(tower.attackAngle);
-    drawTowerIcon(ctx, 0, 0, towerDef.color, tower.type);
-  } else {
-    drawTowerIcon(ctx, tower.x, tower.y, towerDef.color, tower.type);
-  }
+  // 朝向变换由攻击朝向系统施加（唯一真源 src/aim.js）：
+  //   · 跟随朝向的塔型 → 平移到塔位 + 按 attackAngle 旋转，轮廓照"朝右"画在原点；
+  //   · 保持正立的塔型（平行塔双横）→ 不做任何变换，指令与旧版逐字一致。
+  // ⛔ 别在这里再写一份"哪种塔要不要转"的判断 —— 政策只有 aim.SHAPE_AIM 一处。
+  const placed = aim.applyIconTransform(ctx, tower);
+  drawTowerIcon(ctx, placed.x, placed.y, towerDef.color, tower.type);
 
   ctx.restore();
   
@@ -1211,7 +1209,7 @@ function drawPanelGems(ctx, block, panelX, y, panelW) {
   for (const entry of entries) {
     const def = gems.gemDef(entry.kind);
     if (!def) continue;
-    gems.drawGemIcon(ctx, x, cy, 11, entry.kind);
+    gems.drawGemIcon(ctx, x, cy, 11, entry.kind, { lv: entry.lv });
     x += 16;
     ctx.textAlign = 'left';
     ctx.font = '11px Arial';
@@ -1995,7 +1993,8 @@ function drawGemReward(ctx, game, panelX, panelY, panelW) {
     ctx.fill();
 
     // 边框：有宝石=该宝石色描边；空=虚线灰
-    ctx.strokeStyle = cell ? gems.shadeColor(gems.gemColor(cell.kind), -0.1, 0.6) : 'rgba(255,255,255,0.12)';
+    // 结算奖励格永远是 Lv.1 基础宝石（等级靠合成提升）
+    ctx.strokeStyle = cell ? gems.shadeColor(gems.gemColor(cell.kind, 1), -0.1, 0.6) : 'rgba(255,255,255,0.12)';
     ctx.lineWidth = 1;
     if (typeof ctx.setLineDash === 'function' && !cell) ctx.setLineDash([3, 3]);
     if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, slot, slot, 7);
@@ -2005,7 +2004,7 @@ function drawGemReward(ctx, game, panelX, panelY, panelW) {
 
     // 宝石本体（每格恰好 1 颗 LV1 基础宝石）+ "Lv1" 标记
     if (cell && cell.count > 0) {
-      gems.drawGemIcon(ctx, x + slot / 2, y + slot / 2 - 3, 10, cell.kind);
+      gems.drawGemIcon(ctx, x + slot / 2, y + slot / 2 - 3, 10, cell.kind, { lv: 1 });
       ctx.font = 'bold 9px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
@@ -2125,21 +2124,39 @@ function drawProjectiles(game) {
     if (!proj.alive) continue;
 
     ctx.save();
+    // 朝向变换（平移到弹道位置 → 按飞行方向旋转 → 叠加自旋）唯一入口见 src/aim.js。
+    // 不跟随朝向的塔型（平行塔双横）在这里就不旋转 —— 形状代码里不用再手写反向旋转。
+    aim.applyProjectileTransform(ctx, proj);
+    drawProjectileShape(ctx, proj);
+    ctx.restore();
+  }
 
-    // 绘制小型塔图标作为弹道
-    ctx.fillStyle = proj.color;
-    ctx.globalAlpha = 0.9;
+  drawEffects(game);
+}
 
-    const size = 3; // 弹道大小（原6，减小50%）
-    ctx.strokeStyle = THEME.text.primary;
-    ctx.lineWidth = 1;
+/**
+ * 绘制一条弹道的轮廓（本地坐标系：0 rad = 飞行方向 = +x，朝向已由 aim 施加）。
+ *
+ * ⚠️ 这里画的东西**一律"朝右"**：
+ *   · 需要"指向飞行方向"的轮廓（三角 / 箭形 / 长方 / 半圆 / 扇形）直接朝 +x 画即可；
+ *   · 扇形不要再拿 `proj.angle ± 45°` 当圆心角 —— 外层已经转过一次，
+ *     再按朝向画一次等于**转了两遍**（飞 45°、扇面指 90°，2026-09 修的就是这个）；
+ *   · 平行塔的双横不需要任何"反向旋转"补丁：它的政策是 FIXED，外层根本没转。
+ *
+ * 自适应：未登记的图形落到 `default` 分支，用 theme.drawTowerIcon 按同一个轮廓
+ * 等比缩小画出来 —— **新图形一登记就自动有弹道，不会再出现"子弹隐身"**。
+ * （想让某个新图形的弹道和现有 16 种一样走定制画法，就在 switch 里补一条，属于可选项。）
+ */
+function drawProjectileShape(ctx, proj) {
+  // 绘制小型塔图标作为弹道
+  ctx.fillStyle = proj.color;
+  ctx.globalAlpha = 0.9;
 
-    // 根据角度旋转
-    ctx.translate(proj.x, proj.y);
-    ctx.rotate(proj.angle || 0);
+  const size = 3; // 弹道大小（原6，减小50%）
+  ctx.strokeStyle = THEME.text.primary;
+  ctx.lineWidth = 1;
 
-    // 根据类型绘制不同形状
-    switch (proj.type) {
+  switch (proj.type) {
       case 'triangle':
         ctx.beginPath();
         ctx.moveTo(size, 0);
@@ -2170,12 +2187,13 @@ function drawProjectiles(game) {
         break;
 
       case 'sector':
-        // 扇塔弹道：绘制小扇形
+        // 扇塔弹道：绘制小扇形（本地坐标 —— 扇面平分线就是 +x，即飞行方向）
+        // ⛔ 别写成 `proj.angle ± π/4`：外层已经按朝向转过一次，再带上朝向 = 转两遍
         ctx.fillStyle = proj.color;
         ctx.globalAlpha = 0.9;
         ctx.beginPath();
         ctx.moveTo(0, 0);
-        ctx.arc(0, 0, size * 1.5, proj.angle - Math.PI / 4, proj.angle + Math.PI / 4);
+        ctx.arc(0, 0, size * 1.5, -Math.PI / 4, Math.PI / 4);
         ctx.closePath();
         ctx.fill();
         ctx.strokeStyle = THEME.text.primary;
@@ -2205,7 +2223,8 @@ function drawProjectiles(game) {
 
       case 'square':
         // 正方塔弹道：旋转的正方形（体积随弹道体积强化一起变大，命中范围同步）
-        ctx.rotate(proj.rotationAngle || 0);
+        // 自旋已由 aim.applyProjectileTransform 叠加（政策 square.projectileSpin），
+        // 这里只画正立的正方形
         {
           const sq = Math.max(1.5, (proj.size || 10) * 0.3);
           ctx.fillRect(-sq, -sq, sq * 2, sq * 2);
@@ -2339,10 +2358,9 @@ function drawProjectiles(game) {
         break;
 
       case 'parallel': {
-        // 平行塔弹道：迷你双横（"二"字，两条小横杠）。
-        // ⚠️ 塔本体在 NO_ROTATE_SHAPES 里（双横转 90° 变双竖，辨识度崩），
-        //    弹道同理：外层已按攻击朝向 rotate，这里反向转回来保持正立。
-        ctx.rotate(-(proj.angle || 0));
+        // 平行塔弹道：迷你双横（"二"字，两条小横杠），画成正立的一份。
+        // 塔本体与弹道的政策都是 FIXED（见 src/aim.js 的 SHAPE_AIM）——
+        // 外层变换根本没转，所以这里**不需要**旧版那句"反向旋转"补丁。
         const pBarW = size * 2.2, pBarH = size * 0.8, pBarGap = size * 0.5;
         ctx.beginPath();
         ctx.roundRect(-pBarW / 2, -pBarGap / 2 - pBarH, pBarW, pBarH, 1);
@@ -2351,11 +2369,28 @@ function drawProjectiles(game) {
         ctx.stroke();
         break;
       }
-      // 注：梯形塔（trapezoid）是辅助光环塔，无攻击手段，永远不走这里，无需弹道。
-    }
 
-    ctx.restore();
+      default: {
+        // 未登记的图形（新扩展的塔型，或辅助塔那种本不该有弹道的塔）：
+        // 用 theme.drawTowerIcon 按**同一个轮廓**等比缩小画一份 —— 永远不会静默不画。
+        // 缩放取固定基准：各轮廓的 approxR 落在 10~13.8，乘 0.28 后约 3px，
+        // 与上面 size=3 的手绘弹道视觉尺寸相当（这里只要求"看得见 + 形状是对的"）。
+        drawTowerIcon(ctx, 0, 0, proj.color, proj.type, 0.28);
+        break;
+      }
+      // 注：梯形塔 / 菱形塔是辅助光环塔，无攻击手段，正常不会走到这里；
+      //     万一将来有弹道，上面的 default 兜底会按它们的轮廓画出来。
   }
+}
+
+/**
+ * 绘制特效层：爆炸圈 / 扇塔扫掠 / 激光线。
+ *
+ * 这些特效**直接吃世界坐标**（effect.x / effect.y / effect.angle），
+ * 不参与朝向系统 —— 它们自己就是按世界坐标算好的几何，别再套一层旋转。
+ */
+function drawEffects(game) {
+  const ctx = game.ctx;
 
   // 绘制爆炸效果（圆塔）
   for (const effect of game.effects) {
@@ -2589,6 +2624,11 @@ module.exports = {
   drawEnemy,
   drawEnemyHpBar,
   drawBossHealthBar,
+  // 弹道层：drawProjectiles = 弹道循环 + 特效层；
+  // drawProjectileShape / drawEffects 拆出来是为了能被探针单独调用（无 UI 噪声地断言几何）
+  drawProjectiles,
+  drawProjectileShape,
+  drawEffects,
   drawBossBars,
   getTeamBoss,
   updateHpGhost,

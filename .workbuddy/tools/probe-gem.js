@@ -412,14 +412,14 @@ log('\n===== ⑤ 背包布局与渲染 =====');
 log('\n===== ⑥ 合成宝石（同级多选 · 成功率 · 随机种类 +1 级）=====');
 {
   meta.resetAll();
-  // 成功率曲线：3 颗 50% 起，每多 1 颗 +10%，封顶 100%
-  const rateCases = [[3, 0.5], [4, 0.6], [5, 0.7], [8, 1.0], [12, 1.0]];
+  // 成功率曲线：2 颗 20% 起（每颗 +10%），封顶 100%
+  const rateCases = [[2, 0.2], [3, 0.3], [4, 0.4], [5, 0.5], [8, 0.8], [12, 1.0]];
   let bad = [];
   for (const [n, want] of rateCases) {
     const got = meta.synthRate(n);
     if (Math.abs(got - want) > 1e-9) bad.push(`${n}→${got}≠${want}`);
   }
-  ok('成功率曲线：50% 起 / 每多 1 颗 +10% / 封顶 100%', bad.length === 0, bad.join(' ') || '3→50% … 8→100%');
+  ok('成功率曲线：2 颗 20% 起 / 每多 1 颗 +10% / 封顶 100%', bad.length === 0, bad.join(' ') || '2→20% … 10→100%');
 
   // 播种：3 颗红宝石 + 1 颗 Lv.2 猫眼石 + 2 颗蓝宝石
   meta.addGemsByKind('ruby', 3);
@@ -432,8 +432,8 @@ log('\n===== ⑥ 合成宝石（同级多选 · 成功率 · 随机种类 +1 级
   const opal = meta.gemList().filter((x) => x.kind === 'opal')[0];
 
   // —— 校验：数量不足 / 混等级 必须被拒（存档一字不动）——
-  const r2 = meta.synthesizeGems(rubies.slice(0, 2));
-  ok('少于 3 颗被拒（reason=count）', r2.ok === false && r2.reason === 'count', `reason=${r2.reason}`);
+  const r2 = meta.synthesizeGems(rubies.slice(0, 1));
+  ok('少于 2 颗被拒（reason=count）', r2.ok === false && r2.reason === 'count', `reason=${r2.reason}`);
   const rMix = meta.synthesizeGems([rubies[0], rubies[1], rubies[2], opal.uid]);
   ok('混选不同等级被拒（reason=level）', rMix.ok === false && rMix.reason === 'level', `reason=${rMix.reason}`);
   ok('被拒的合成不动存档', meta.gemList().length === bagAtStart, `背包 ${meta.gemList().length}`);
@@ -452,7 +452,7 @@ log('\n===== ⑥ 合成宝石（同级多选 · 成功率 · 随机种类 +1 级
   // —— 强制成功：3 颗红宝石 → 1 颗 Lv.2 红宝石（全同名 → 必是该种）——
   const ruby2 = meta.addGemsByKind('ruby', 3);
   const rubies2 = meta.gemList().filter((x) => x.kind === 'ruby').map((x) => x.uid);
-  Math.random = () => 0;                          // 0 < 50% → 成功
+  Math.random = () => 0;                          // 0 < 30%（3 颗） → 成功
   const rWin = meta.synthesizeGems(rubies2);
   Math.random = randomBack;
   ok('成功：3 颗同级 → 1 颗产物',
@@ -548,7 +548,7 @@ log('\n===== ⑦ 宝石浮层端到端（背包点宝石 → 详情 → 合成�
         !!g.gemSynth && g.gemInfo === null && Object.keys(g.gemSynth.picked).length === 1,
         g.gemSynth ? `预选 ${Object.keys(g.gemSynth.picked).length} 颗` : '未打开');
 
-      // ---- 再勾 2 颗同级红宝石 → 已选 3 颗 · 成功率 50% ----
+      // ---- 再勾 2 颗同级红宝石 → 已选 3 颗 · 成功率 30%（每颗 +10%）----
       const SL = gemModal.getSynthLayout(g);
       const more = SL.rows.filter((r) => r.selectable && !r.selected && r.kind === 'ruby' && r.visible).slice(0, 2);
       ok('合成列表里还有可选的同级红宝石', more.length === 2, `可选 ${more.length} 颗`);
@@ -556,8 +556,8 @@ log('\n===== ⑦ 宝石浮层端到端（背包点宝石 → 详情 → 合成�
         tapAt(g, row.rect.x + row.rect.w / 2, row.rect.y + row.rect.h / 2);
       }
       const SL2 = gemModal.getSynthLayout(g);
-      ok('勾选 3 颗同级后可以合成 · 成功率 50%',
-        SL2.count === 3 && SL2.canGo && Math.abs(SL2.rate - 0.5) < 1e-9,
+      ok('勾选 3 颗同级后可以合成 · 成功率 30%',
+        SL2.count === 3 && SL2.canGo && Math.abs(SL2.rate - 0.3) < 1e-9,
         `count=${SL2.count} canGo=${SL2.canGo} rate=${SL2.rate}`);
 
       // 异级行必须被拦住：升一颗 Lv.2 蓝宝石进背包，它不在"红宝石 Lv.1"锚点内

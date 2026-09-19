@@ -6,6 +6,7 @@ const { createUnit } = require('./units');
 const gems = require('./gems');
 const skills = require('./skills');
 const stage = require('./stage');
+const aim = require('./aim');
 
 function createTower(type, x, y) {
   const stats = TOWER_STATS[type] || TOWER_STATS.triangle;
@@ -20,7 +21,7 @@ function createTower(type, x, y) {
   tower.attackTimer = 0;
   tower.target = null;
   tower.lockedTarget = null; // 锁定的目标，目标死亡前不会切换
-  tower.attackAngle = 0; // 默认朝向右侧
+  aim.initAim(tower); // 出生朝右（朝向的唯一写入口在 src/aim.js，别在这里直接赋值）
   // 长方塔堆叠伤害字段
   tower.stackCount = 0;       // 当前堆叠层数
   tower.stackTarget = null;   // 当前堆叠的目标

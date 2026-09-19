@@ -1,6 +1,7 @@
   ok   .eslintrc.js
   ok   game.js
   ok   src\ads.js
+  ok   src\aim.js
   ok   src\audio.js
   ok   src\auraManager.js
   ok   src\bag.js
@@ -30,4 +31,4 @@
   ok   src\units.js
   ok   src\wave.js
 
-=== 语法体检：31 个文件，失败 0 个 ===
+=== 语法体检：32 个文件，失败 0 个 ===

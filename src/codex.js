@@ -889,7 +889,7 @@ function drawSheetGems(ctx, L, block, y, left, contentW) {
 
     if (sock.kind) {
       // 已嵌入：深色槽底 + 彩色描边 + 宝石 + 等级角标
-      const col = gems.gemColor(sock.kind);
+      const col = gems.gemColor(sock.kind, sock.lv);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.40)';
       roundRectPath(ctx, x, sy, size, size, 8);
       ctx.fill();
@@ -897,7 +897,7 @@ function drawSheetGems(ctx, L, block, y, left, contentW) {
       ctx.lineWidth = 1.4;
       roundRectPath(ctx, x, sy, size, size, 8);
       ctx.stroke();
-      gems.drawGemIcon(ctx, x + size / 2, sy + size / 2 - 3, size * 0.32, sock.kind);
+      gems.drawGemIcon(ctx, x + size / 2, sy + size / 2 - 3, size * 0.32, sock.kind, { lv: sock.lv });
 
       // 宝石等级角标（合成产物会高于 Lv.1，不写等级玩家分不出强弱）
       ctx.textAlign = 'center';

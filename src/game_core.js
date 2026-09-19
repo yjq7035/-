@@ -15,6 +15,7 @@ const meta = require('./meta');
 const levelsMod = require('./levels');
 const ads = require('./ads');
 const gems = require('./gems');
+const aim = require('./aim');
 
 const {
   LAYOUT, BALANCE, TOWER_DEFS, PLAYER, ATTACK_SPEED_BASE, MAX_STAGE, AURA_DURATION,
@@ -828,7 +829,7 @@ class Game {
       if (lit.has(i)) {
         const kind = gems.randomKind();
         if (kind) {
-          const res = meta.addGemsByKind(kind, 1);  // 每格 1 颗 LV1 基础宝石
+          const res = meta.addGemsByKind(kind, 1, 1);  // 每格 1 颗 LV1 基础宝石（lv 显式写 1：结算只掉 1 级，等级靠合成提升）
           if (res.added > 0) { slots.push({ kind, count: 1 }); total += 1; }
           else { slots.push(null); bagFull = true; }
         } else {
@@ -1198,12 +1199,8 @@ class Game {
 
       // 扇塔：扇形弹道攻击
       if (tower.type === 'sector') {
-        // 更新扇塔朝向锁定目标
-        if (nearestTarget) {
-          const dx = nearestTarget.x - tower.x;
-          const dy = nearestTarget.y - tower.y;
-          tower.attackAngle = Math.atan2(dy, dx);
-        }
+        // 先转向锁定目标（朝向的唯一写入口是 src/aim.js，别在这里算 atan2）
+        if (nearestTarget) aim.aimAtTarget(tower, nearestTarget);
         
         if (nearestTarget && this.findSectorTarget(tower)) {
           // 基础攻击间隔 3.0秒，应用攻击速度乘数（使用光环管理器计算）
@@ -1427,10 +1424,8 @@ class Game {
       damage = this.towerDamage(tower, towerStats.damage);
     }
     
-    // 计算从塔到目标的角度
-    const dx = target.x - tower.x;
-    const dy = target.y - tower.y;
-    const angle = Math.atan2(dy, dx);
+    // 弹道朝向 = 塔→目标方向；顺手让塔转向该目标（唯一写入口见 src/aim.js）
+    const angle = aim.aimAtTarget(tower, target);
     
     this.projectiles.push({
       x: tower.x,
@@ -1446,9 +1441,6 @@ class Game {
       alive: true,
       angle: angle, // 弹道朝向角度
     });
-    
-    // 记录塔的攻击朝向
-    tower.attackAngle = angle;
   }
 
   /**
@@ -1460,10 +1452,8 @@ class Game {
     const towerStats = towerMod.getTowerRuntimeStats(tower);
     const damage = this.towerDamage(tower, towerStats.damage);
 
-    // 计算从塔到目标的方向
-    const dx = target.x - tower.x;
-    const dy = target.y - tower.y;
-    const angle = Math.atan2(dy, dx);
+    // 激光朝向 = 塔→目标方向（塔一起转向；朝向唯一入口见 src/aim.js）
+    const angle = aim.aimAtTarget(tower, target);
 
     // 激光射程 = 塔射程 × 弹道体积(projectileScale，含强化增量)
     const laserRange = (towerStats.range || 200) * towerMod.getProjectileScale(tower);
@@ -1506,8 +1496,6 @@ class Game {
       hitEnemies: new Set(),
       laserLife: laserDuration,
     });
-
-    tower.attackAngle = angle;
   }
 
   /**
@@ -1569,7 +1557,8 @@ class Game {
       maxLife: 0.1,
     });
     
-    tower.attackAngle = Math.atan2(target.y - tower.y, target.x - tower.x);
+    // 半圆塔持续照射 → 每帧跟着目标转向（朝向唯一入口见 src/aim.js）
+    aim.aimAtTarget(tower, target);
   }
 
   /**
@@ -1579,7 +1568,7 @@ class Game {
   findSectorTarget(tower) {
     const towerStats = towerMod.getTowerRuntimeStats(tower);
     const range = towerStats.range;
-    const angle = tower.attackAngle || 0;
+    const angle = aim.currentAngle(tower);
     const halfAngle = towerMod.getSectorHalfAngle(tower);
     
     let closestTarget = null;
@@ -1593,11 +1582,9 @@ class Game {
       
       if (dist > range) continue;
       
-      const enemyAngle = Math.atan2(dy, dx);
-      let angleDiff = enemyAngle - angle;
-      // 规范化角度差到 [-PI, PI]
-      while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-      while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+      const enemyAngle = aim.angleBetween(tower.x, tower.y, enemy.x, enemy.y);
+      // 归一化角度差（唯一实现在 src/aim.js）
+      const angleDiff = aim.normalizeAngle(enemyAngle - angle);
       
       if (Math.abs(angleDiff) <= halfAngle && dist < closestDist) {
         closestTarget = enemy;
@@ -1618,7 +1605,7 @@ class Game {
     const damage = this.towerDamage(tower, towerStats.damage);
     
     const range = towerStats.range;
-    const angle = tower.attackAngle || 0;
+    const angle = aim.currentAngle(tower);
     const halfAngle = towerMod.getSectorHalfAngle(tower);
     
     // 对扇形内所有存活敌人一次性结算伤害
@@ -1630,10 +1617,8 @@ class Game {
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist > range) continue;
       
-      const enemyAngle = Math.atan2(dy, dx);
-      let angleDiff = enemyAngle - angle;
-      while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-      while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+      const enemyAngle = aim.angleBetween(tower.x, tower.y, enemy.x, enemy.y);
+      const angleDiff = aim.normalizeAngle(enemyAngle - angle);
       
       if (Math.abs(angleDiff) <= halfAngle) {
         // 统一结算：暴击 + 护甲/穿透 + 事件 + 击杀（AOE 每只怪独立 roll 暴击）
@@ -1665,9 +1650,8 @@ class Game {
     const towerStats = towerMod.getTowerRuntimeStats(tower);
     const damage = this.towerDamage(tower, towerStats.damage);
     
-    const dx = target.x - tower.x;
-    const dy = target.y - tower.y;
-    const angle = Math.atan2(dy, dx);
+    // 弹道朝向 = 塔→目标方向（塔一起转向；朝向唯一入口见 src/aim.js）
+    const angle = aim.aimAtTarget(tower, target);
     
     this.projectiles.push({
       x: tower.x,
@@ -1689,8 +1673,6 @@ class Game {
       expandProgress: 0, // 爆炸扩散进度
       dyingProgress: 0, // 消散进度
     });
-    
-    tower.attackAngle = angle;
   }
 
   /**
@@ -1803,8 +1785,8 @@ class Game {
 
       // 处理正方塔弹道：激光持续照射
       if (proj.type === 'square') {
-        // 旋转弹道自身（仅视觉）
-        proj.rotationAngle += dt * 8;
+        // 弹道自旋（仅视觉）由朝向系统统一推进 —— 别在这里写 `+= dt * 8`
+        aim.advanceProjectile(proj, dt);
 
         // 激光持续时间递减，到 0 则停止照射
         if (proj.laserLife !== undefined) {

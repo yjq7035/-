@@ -300,14 +300,14 @@ function drawBagCell(ctx, cell) {
   ctx.fill();
 
   if (item) {
-    const col = gems.gemColor(item.kind);
+    const col = gems.gemColor(item.kind, item.lv);
     ctx.strokeStyle = gems.shadeColor(col, -0.1, 0.55);
     ctx.lineWidth = 1;
     roundRectPath(ctx, x, y, w, h, BAG_UI.cellRadius);
     ctx.stroke();
 
     // 宝石本体（半径按格宽自适应，窄屏也不会糊出格子）
-    gems.drawGemIcon(ctx, x + w / 2, y + h / 2 - 3, Math.max(5, Math.min(w, h) * 0.30), item.kind);
+    gems.drawGemIcon(ctx, x + w / 2, y + h / 2 - 3, Math.max(5, Math.min(w, h) * 0.30), item.kind, { lv: item.lv });
 
     // 宝石等级角标（需求：宝石名字/展示处写上 lv 等级；格子太小放不下全名，用角标表达）
     if (h >= 30) {

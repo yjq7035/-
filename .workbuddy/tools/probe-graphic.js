@@ -37,6 +37,7 @@ const config = require(path.join(ROOT, 'src', 'config'));
 const codex = require(path.join(ROOT, 'src', 'codex'));
 const towerMod = require(path.join(ROOT, 'src', 'tower'));
 const skills = require(path.join(ROOT, 'src', 'skills'));
+const aim = require(path.join(ROOT, 'src', 'aim'));
 
 const out = [];
 let fails = 0;
@@ -130,8 +131,11 @@ log('===== ① 平行塔轮廓 = 双横 =====');
 
 {
   ok('TOWER_SHAPES 已登记 parallel', theme.TOWER_SHAPES.indexOf('parallel') >= 0, `共 ${theme.TOWER_SHAPES.length} 种`);
-  ok('平行塔不随攻击朝向旋转', theme.shouldRotateTowerIcon('parallel') === false);
-  ok('三角塔仍跟随朝向旋转（没被误伤）', theme.shouldRotateTowerIcon('triangle') === true);
+  // 转向政策已迁到独立系统 src/aim.js（2026-09-19）：theme 不再持有这份判断，
+  // 判据跟着政策走 —— 塔本体与弹道都要保持正立。
+  ok('平行塔不随攻击朝向旋转（塔本体）', aim.canRotateIcon('parallel') === false);
+  ok('平行塔弹道也保持正立', aim.canRotateProjectile('parallel') === false);
+  ok('三角塔仍跟随朝向旋转（没被误伤）', aim.canRotateIcon('triangle') === true);
 }
 
 // ============================================================================

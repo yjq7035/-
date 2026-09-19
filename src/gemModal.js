@@ -54,7 +54,7 @@ function synthRuleLines() {
   const s = GEM.synth;
   return [
     `${s.minCount} 颗同级起 · 基础成功率 ${s.baseRate}%`,
-    `每多 1 颗 +${s.perExtra}% · 成功全种类随机一颗 +1 级`,
+    `每多 1 颗 +${s.perExtra}% · 成功：材料家族随机一颗 +1 级`,
   ];
 }
 
@@ -235,7 +235,7 @@ function drawEmbedPicker(game) {
     ctx.stroke();
 
     // 左：宝石图标
-    gems.drawGemIcon(ctx, r.x + 22, r.y + r.h / 2, 12, row.kind);
+    gems.drawGemIcon(ctx, r.x + 22, r.y + r.h / 2, 12, row.kind, { lv: row.lv });
 
     // 中：名称（带 Lv）+ 效果（按该颗的等级缩放）
     ctx.textAlign = 'left';
@@ -378,7 +378,7 @@ function actEmbedFromInfo(game) {
     game.gemInfo = null;
     game.gemPicker = null;      // 嵌入完成，嵌入列表一并收掉
     game.gemPickerScroll = 0;
-    theme.pushToast(game, `已嵌入 ${gems.gemName(res.kind, info.lv || 1)} · 与固有技能绑定`, def.color);
+    theme.pushToast(game, `已嵌入 ${gems.gemName(res.kind, res.lv || info.lv || 1)} · 与固有技能绑定`, def.color);
   } else if (res.reason === 'occupied') {
     theme.pushToast(game, '该槽已有宝石，先点它取出来', THEME.accent.danger);
   } else if (res.reason === 'locked') {
@@ -405,7 +405,7 @@ function drawGemInfo(game) {
 
   // ---- 头部：图标 + 名字（带 Lv）+ 效果 ----
   const headCY = L.y + INFO_UI.padTop + INFO_UI.headH / 2;
-  gems.drawGemIcon(ctx, L.x + INFO_UI.padX + 20, headCY, 20, L.kind);
+  gems.drawGemIcon(ctx, L.x + INFO_UI.padX + 20, headCY, 20, L.kind, { lv: L.lv });
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
@@ -437,7 +437,8 @@ function drawGemInfo(game) {
 
   ctx.font = '10px Arial';
   ctx.fillStyle = THEME.text.off;
-  ctx.fillText(`宝石等级 Lv.${L.lv} · 效果随等级提升，合成 +1 级`, L.x + INFO_UI.padX, cy + INFO_UI.lineH / 2);
+  ctx.fillText(ellipsize(ctx, gems.levelLine(L.kind, L.lv), L.w - INFO_UI.padX * 2),
+    L.x + INFO_UI.padX, cy + INFO_UI.lineH / 2);
   cy += INFO_UI.lineH;
 
   // ---- 合成规则 ----
@@ -730,7 +731,7 @@ function drawSynth(game) {
     ctx.save();
     if (!row.selectable) ctx.globalAlpha = 0.45;
 
-    gems.drawGemIcon(ctx, r.x + 20, r.y + r.h / 2, 11, row.kind);
+    gems.drawGemIcon(ctx, r.x + 20, r.y + r.h / 2, 11, row.kind, { lv: row.lv });
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
