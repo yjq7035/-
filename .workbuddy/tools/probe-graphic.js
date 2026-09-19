@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 // 覆盖 2026-09-17 这一轮的改动，每一条都是"改错了就再也看不出来"的那种：
 //   ① 平行塔轮廓 = 双横（两条横杠），而不是掉进 default 的圆
-//   ② 双横不跟随攻击朝向旋转（转了变双竖，辨识度直接崩）
+//   ② 双横跟随攻击朝向旋转（2026-09 取消 FIXED：塔本体指向目标、弹道随飞行方向转）
 //   ③ 攻击间隔从 description 里拿掉（数值归属性表，介绍只讲机制）
 //   ④ 固有技能不再是空标题：ENHANCE_SPECIAL 给平行塔登记了"叠加上限"
 //   ⑤ 战斗口径用 getInnateStackCap（原生 100 + 强化 20/级），不再硬编码 100
@@ -132,9 +132,9 @@ log('===== ① 平行塔轮廓 = 双横 =====');
 {
   ok('TOWER_SHAPES 已登记 parallel', theme.TOWER_SHAPES.indexOf('parallel') >= 0, `共 ${theme.TOWER_SHAPES.length} 种`);
   // 转向政策已迁到独立系统 src/aim.js（2026-09-19）：theme 不再持有这份判断，
-  // 判据跟着政策走 —— 塔本体与弹道都要保持正立。
-  ok('平行塔不随攻击朝向旋转（塔本体）', aim.canRotateIcon('parallel') === false);
-  ok('平行塔弹道也保持正立', aim.canRotateProjectile('parallel') === false);
+  // 判据跟着政策走 —— 平行塔已取消 FIXED，塔本体与弹道都跟随朝向。
+  ok('平行塔随攻击朝向旋转（塔本体）', aim.canRotateIcon('parallel') === true);
+  ok('平行塔弹道跟随飞行方向', aim.canRotateProjectile('parallel') === true);
   ok('三角塔仍跟随朝向旋转（没被误伤）', aim.canRotateIcon('triangle') === true);
 }
 
@@ -684,7 +684,7 @@ const html = `<!DOCTYPE html>
     <p>另外 <code>TOWER_SHAPES</code> 里也没登记，任何"按图形表遍历"的校验都会漏掉它。</p>
     <p><b>现在</b>：上下两条 22×7 的横杠、缝 4px，走统一的立体样式（径向渐变 + 顶部光泽 + 深色描边）。两条杠互相平行，"平行塔"这名字名副其实。</p>
     <p><b>顺手修掉的隐患</b>：<code>roundRectPath()</code> 内部会 <code>beginPath()</code>，画第二条杠时会把第一条擦掉 —— 所以双横必须用 <code>ctx.roundRect</code> 逐条追加子路径（并在注释里写死，免得下次又被改回去）。</p>
-    <p><b>不跟随瞄准方向旋转</b>：其他塔按 <code>attackAngle</code> 旋转是有意义的（三角/箭形/扇形），但"双横"转 90° 就成了"双竖"，会被当成另一种塔。</p>
+    <p><b>跟随瞄准方向旋转（2026-09 起）</b>：平行塔已取消 FIXED 政策 —— 塔本体按 <code>attackAngle</code> 指向攻击目标，弹道按飞行方向旋转，与其它 16 型口径一致（"双横"随朝向整体旋转，0 rad 时仍呈水平"二"字）。</p>
     <p><b>改名</b>：显示名「图形塔」→「平行塔」，内部键 <code>graphic</code> → <code>parallel</code>（旧名和"图形塔"这个塔族统称撞车）。旧存档里以塔型为键的三张表（图签等级 / 登场池 / 已嵌宝石）在 <code>meta.normalize</code> 里自动搬迁，老号不会掉进度。</p>
   </div>
 </div>

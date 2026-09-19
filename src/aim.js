@@ -55,14 +55,11 @@ const DEFAULT_AIM = { tower: TURN.FOLLOW, projectile: TURN.FOLLOW, projectileSpi
  * · `tower` / `projectile`：见 TURN，缺省 = FOLLOW；
  * · `projectileSpin`：弹道自旋角速度（弧度/秒），缺省 0 = 不自旋。
  *
- * 为什么平行塔必须 FIXED：它的轮廓是上下两条横杠，转 90° 就成了"双竖"，
- * 会被当成另一种塔；弹道是同一个轮廓的缩小版，同理必须正立。
- * ⚠️ 这里**不是**"塔本体转、弹道不转"的开关表 —— 两个字段各自独立，
- *    "图标固定但弹道指向"这类组合是合法的，别加"两字段必须一致"的臆造校验。
+ * 平行塔 2026-09 起取消 FIXED 登记：塔本体与弹道都回归默认"跟随朝向"
+ * （塔指向攻击目标、弹道指向飞行方向），与其它 16 型口径一致；
+ * 双横轮廓 0 rad 时仍呈水平"二"字，随飞行方向整体旋转（转向下即成"||"）。
  */
 const SHAPE_AIM = {
-  // 双横轮廓：塔本体与弹道都保持正立（政策接管，弹道绘制里不再手写反向旋转）
-  parallel: { tower: TURN.FIXED, projectile: TURN.FIXED },
   // 正方塔弹道（激光）自带自旋：原先由 game_core 的 updateProjectiles 每帧
   // 硬加 `dt * 8`，现在归这里管（8 rad/s ≈ 1.27 圈/秒）
   square: { projectileSpin: 8 },

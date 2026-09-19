@@ -642,8 +642,8 @@ function drawTower(ctx, game, tower) {
   ctx.save();
 
   // 朝向变换由攻击朝向系统施加（唯一真源 src/aim.js）：
-  //   · 跟随朝向的塔型 → 平移到塔位 + 按 attackAngle 旋转，轮廓照"朝右"画在原点；
-  //   · 保持正立的塔型（平行塔双横）→ 不做任何变换，指令与旧版逐字一致。
+  //   · 跟随朝向的塔型（全部 17 型，含平行塔）→ 平移到塔位 + 按 attackAngle 旋转，
+  //     轮廓照"朝右"画在原点。
   // ⛔ 别在这里再写一份"哪种塔要不要转"的判断 —— 政策只有 aim.SHAPE_AIM 一处。
   const placed = aim.applyIconTransform(ctx, tower);
   drawTowerIcon(ctx, placed.x, placed.y, towerDef.color, tower.type);
@@ -2125,7 +2125,7 @@ function drawProjectiles(game) {
 
     ctx.save();
     // 朝向变换（平移到弹道位置 → 按飞行方向旋转 → 叠加自旋）唯一入口见 src/aim.js。
-    // 不跟随朝向的塔型（平行塔双横）在这里就不旋转 —— 形状代码里不用再手写反向旋转。
+    // 全部塔型（含平行塔）的弹道都跟随飞行方向旋转 —— 形状代码里不用再手写旋转。
     aim.applyProjectileTransform(ctx, proj);
     drawProjectileShape(ctx, proj);
     ctx.restore();
@@ -2141,7 +2141,7 @@ function drawProjectiles(game) {
  *   · 需要"指向飞行方向"的轮廓（三角 / 箭形 / 长方 / 半圆 / 扇形）直接朝 +x 画即可；
  *   · 扇形不要再拿 `proj.angle ± 45°` 当圆心角 —— 外层已经转过一次，
  *     再按朝向画一次等于**转了两遍**（飞 45°、扇面指 90°，2026-09 修的就是这个）；
- *   · 平行塔的双横不需要任何"反向旋转"补丁：它的政策是 FIXED，外层根本没转。
+ *   · 平行塔的双横不需要任何"反向旋转"补丁：它已回归默认 FOLLOW，外层按朝向转一次。
  *
  * 自适应：未登记的图形落到 `default` 分支，用 theme.drawTowerIcon 按同一个轮廓
  * 等比缩小画出来 —— **新图形一登记就自动有弹道，不会再出现"子弹隐身"**。
@@ -2358,9 +2358,9 @@ function drawProjectileShape(ctx, proj) {
         break;
 
       case 'parallel': {
-        // 平行塔弹道：迷你双横（"二"字，两条小横杠），画成正立的一份。
-        // 塔本体与弹道的政策都是 FIXED（见 src/aim.js 的 SHAPE_AIM）——
-        // 外层变换根本没转，所以这里**不需要**旧版那句"反向旋转"补丁。
+        // 平行塔弹道：迷你双横（"二"字，两条小横杠）。
+        // "朝右"版本就是水平双横（0 rad = 朝右）；随飞行方向整体旋转由
+        // 外层 aim.applyProjectileTransform 统一施加（政策默认 FOLLOW）。
         const pBarW = size * 2.2, pBarH = size * 0.8, pBarGap = size * 0.5;
         ctx.beginPath();
         ctx.roundRect(-pBarW / 2, -pBarGap / 2 - pBarH, pBarW, pBarH, 1);
