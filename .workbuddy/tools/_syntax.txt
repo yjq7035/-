@@ -23,10 +23,11 @@
   ok   src\shop.js
   ok   src\skills.js
   ok   src\skillSlot.js
+  ok   src\stage.js
   ok   src\talents.js
   ok   src\theme.js
   ok   src\tower.js
   ok   src\units.js
   ok   src\wave.js
 
-=== 语法体检：30 个文件，失败 0 个 ===
+=== 语法体检：31 个文件，失败 0 个 ===

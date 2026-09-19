@@ -20,8 +20,12 @@ const SPEC = [
     never: ['const ENHANCE_SPECIAL = {', 'ENHANCE_SPECIAL,'],
   }],
   ['src/tower.js', {
+    // ⚠️ 原来这里写的是 'skills.clampLevel'，但 tower.js 从头到尾都没用过它（HEAD 版也没有）——
+    //    塔这边走的是【强化次数】口径 clampEnhanceTimes + getEffectiveSkillLevel，
+    //    clampLevel 只在 skills.js 内部用。死 token 只会制造假红灯，已改成真实现。
     must: ["require('./skills')", 'skills.getInnateSkill', 'skills.getEffects', 'skills.bonusFor',
-      'skills.getOptions', 'skills.applyTo', 'skills.clampLevel', 'skills.gemLevels',
+      'skills.getOptions', 'skills.applyTo', 'skills.clampEnhanceTimes', 'skills.gemLevels',
+      'getEffectiveSkillLevel',
       'critDamagePts', "add('auraPenetration')", 'getSkillDef', 'skills.SKILLS',
       'skills.skillGainText', 'skills.skillValueText', '取值口径见 src/skills.js'],
     never: ['ENHANCE_SPECIAL', 'getSpecialDef'],
@@ -47,16 +51,22 @@ const SPEC = [
       'auraPenetration: st.auraPenetration', 'auraPenetration: Math.max(0',
       'auraPenetration: final.auraPenetration', 'break: st.break', 'break: finalBreak',
       'break: final.break', 'key: ATTR.BREAK',
-      'percentParts(sources, ATTR.CRIT_MULT).concat(pointParts(sources, ATTR.CRIT_DAMAGE))'],
-    never: ['ENHANCE_SPECIAL'],
+      'percentParts(sources, ATTR.CRIT_MULT).concat(pointParts(sources, ATTR.CRIT_DAMAGE))',
+      // 展示层唯一收口：所有实数文案走 numText（最多 2 位小数）
+      'function numText(v)', '${numText(n)}${meta.unit}', '${numText(s.percent)}%',
+      '${numText(s.value)}${meta.unit}', '  numText,'],
+    // 裸数字插值不复辟（光环值是浮点乘算，直接印会带出 84.00000000000001 这类尾巴）
+    never: ['ENHANCE_SPECIAL', '${round2('],
   }],
   ['src/gems.js', {
     must: ['bonusForType', 'skillLevels', 'gems **不许** require skills'],
     never: ['skillNameOf', 'ENHANCE_SPECIAL'],
   }],
   ['src/skillSlot.js', {
+    // 技能槽显示的是**实际生效值**（含紫晶宝石的技能效果放大），对应 effectiveValueTextOf；
+    // 旧的 valueTextOf 只有 HEAD 版还在用，留着就是假红灯。
     must: ["require('./skills')", 'skills.iconOf', 'skills.levelOf', 'skills.previewLevel',
-      'skills.valueTextOf', 'skills.gainTextOf'],
+      'skills.effectiveValueTextOf', 'skills.gainTextOf'],
     never: ['ENHANCE_SPECIAL'],
   }],
   ['src/game_core.js', {

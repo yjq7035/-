@@ -1,10 +1,11 @@
 // 塔：工厂 + 造价（从原 Game.createTower / getTowerCost 抽离）
 const {
-  TOWER_DEFS, TOWER_STATS, PLAYER, ATTACK_SPEED_BASE, MAX_STAGE, STAGE_BOOSTS, BALANCE,
+  TOWER_DEFS, TOWER_STATS, PLAYER, ATTACK_SPEED_BASE, MAX_STAGE, BALANCE,
 } = require('./config');
 const { createUnit } = require('./units');
 const gems = require('./gems');
 const skills = require('./skills');
+const stage = require('./stage');
 
 function createTower(type, x, y) {
   const stats = TOWER_STATS[type] || TOWER_STATS.triangle;
@@ -28,8 +29,8 @@ function createTower(type, x, y) {
   tower.attackSpeedMultiplier = stats.attackSpeedMultiplier || ATTACK_SPEED_BASE;
   // 是否辅助塔
   tower.isSupport = stats.isSupport || false;
-  // 攻击增幅属性（通过合成升级获得）
-  tower.attackPowerBoost = 0;   // 攻击力增幅百分比（0 = 无增幅）
+  // 星级标识字段（由 setStage 同步；真正的进阶数值一律现算，不读这个存档值）
+  tower.attackPowerBoost = 0;   // 攻击力增幅百分比（0 = 无增幅）—— 仅展示用
   // 强化等级（局内花金币逐级提升，见 game_core.enhanceTower；需先进阶到 3★）
   tower.enhanceLevel = 0;
   // 强化带来的技能属性增量：{ critChance: 10, ... } —— 值 = per × 强化等级，
@@ -100,13 +101,47 @@ function getStageStars(stage) {
 }
 
 /**
- * 获取攻击增幅百分比（阶段奖励表）
- * 1星 = +100%，2星 = +200%，3星 = +400%（3星封顶）
+ * 获取攻击增幅百分比（进阶奖励）
+ * ⚠️ 只是 `stage.bonusPercent('damage', stage)` 的兼容壳 —— 攻击力那条线的
+ *    进阶幅度现在归 src/stage.js 管。**别再往这里加第二份数字**。
+ * 攻击塔：1星 = +100%，2星 = +200%，3星 = +400%（3星封顶）
  */
-function getAttackPowerBoost(stage) {
-  if (!stage || stage <= 0) return 0;
-  if (stage > MAX_STAGE) stage = MAX_STAGE;
-  return STAGE_BOOSTS[stage] || 0;
+function getAttackPowerBoost(stageStars) {
+  return stage.bonusPercent('damage', stageStars);
+}
+
+/** 该塔型的进阶焦点属性（非辅助塔 = ['damage']；辅助塔见 stage.STAGE_FOCUS） */
+function getStageFocus(type) {
+  return stage.focusOf(type);
+}
+
+/**
+ * 该塔在某属性上的进阶放大倍率（0★ = 1）。战斗与面板都必须调这一个口。
+ * @param {object|number} towerOrStage 塔实例或直接给星级
+ * @param {string} attr 属性键（如 'damage' / 'auraPenetration'）
+ */
+function getStageMultiplier(towerOrStage, attr) {
+  const stars = (towerOrStage && typeof towerOrStage === 'object')
+    ? (towerOrStage.stage || 0) : towerOrStage;
+  return stage.multiplier(attr, stars);
+}
+
+/**
+ * 设置塔的星级（唯一的"进阶"写入口）。
+ * 顺手同步 tower.attackPowerBoost（历史展示字段），免得它和 stage 各说各话。
+ * @returns {number} 夹取后的星级
+ */
+function setStage(tower, stars) {
+  if (!tower) return 0;
+  const s = stage.clampStage(stars);
+  tower.stage = s;
+  tower.attackPowerBoost = getAttackPowerBoost(s);
+  return s;
+}
+
+/** 塔当前星级（夹取后；非法输入当 0★） */
+function stageOf(tower) {
+  return stage.clampStage(tower && tower.stage);
 }
 
 /**
@@ -351,6 +386,9 @@ function canEnhance(tower) {
  *   ② critDamage 原生「+N% 暴击伤害」（三角塔 +10%）→ 直接加到倍率上（+0.1）
  *   ③ 技能「暴击伤害」的增量 per × 有效技能等级（同样按 % 加算）
  *   另有 critMult 百分比放大（乘算，当前没有塔用它，保留给将来）
+ *
+ * ⚠️ 技能增量的放大系数（紫晶宝石「技能效果 +N%」）已经包含在 getEnhanceAttr 里，
+ *    这里不能再乘一次 —— 否则会重复放大（历史口径打架的来源之一）。
  * @returns {{ critChance:number, critMult:number, penetration:number, break:number }}
  */
 function getAttackProfile(tower) {
@@ -359,7 +397,7 @@ function getAttackProfile(tower) {
   const gem = getGemBonus(type);
   const critMultPct = getEnhanceAttr(tower, 'critMult');       // 百分比放大（乘算）
   const baseNative = (st.critMult || BALANCE.critDamageDefaultMult) + (st.critDamage || 0) / 100;
-  const critDamagePts = getEnhanceAttr(tower, 'critDamage');   // 技能增量（点值 %）
+  const critDamagePts = getEnhanceAttr(tower, 'critDamage') || 0;
   return {
     critChance: Math.max(0, (st.critChance || 0) + gem.critChance + getEnhanceAttr(tower, 'critChance')),
     critMult: Math.max(1, baseNative * (1 + critMultPct / 100) + critDamagePts / 100),
@@ -399,6 +437,8 @@ function getTowerRuntimeStats(tower) {
   // 暴击倍率：原生倍率 + 原生「+N% 暴击伤害」（三角塔 +10%）+ 技能增量（点值，单位 %）
   // ⚠️ critDamage 已经并进 critMult，这里不再单独输出 critDamage 字段 ——
   //    两边都留会让"读 critMult 又读 critDamage"的调用点重复计算（+10% 变成 +20%）。
+  //    ⚠️ 技能增量的放大系数（紫晶宝石「技能效果 +N%」）已含在 add('critDamage') 里，
+  //       这里不能再乘一次 skillEffectMult。
   const critBase = (st.critMult || BALANCE.critDamageDefaultMult) + (st.critDamage || 0) / 100;
   out.critMult = critBase * (1 + add('critMult') / 100) + add('critDamage') / 100;
   if (st.isSupport) {
@@ -427,6 +467,39 @@ function getExplosionParams(tower) {
 }
 
 /**
+ * 该辅助塔**实际发出**的光环内容（战斗与显示的唯一同源实现）。
+ *
+ * 计算链（与面板 bonusStats 的明细严格同口径）：
+ *   发出值 = (原生光环值 + 技能/宝石增量)      ← getTowerRuntimeStats 已算好
+ *          × 进阶倍率（src/stage.js，按各塔的焦点属性取）
+ *          × 图签倍率（仅攻速光环；穿透光环按既定设计是固定值，不吃图签）
+ *
+ * ⚠️ 菱形塔的穿透光环**必须**乘进阶倍率 —— 这正是 2026-09-19 修的那个洞：
+ *    旧版这里写死 `buff.penetration = auraPen`，于是 0★ 和 3★ 的菱形塔发出的
+ *    穿透完全相同，进阶对它完全空转（而面板还照报"阶段增幅 +300%"）。
+ * ⚠️ 别把 codexMult 也乘到穿透上 —— 那会改变既有的"穿透光环不吃图签"设计。
+ *
+ * @param {object} tower 辅助塔实例
+ * @param {number} [codexMult] 该塔型的图签攻击倍率（= meta.codexDamageMultiplier(type)）
+ * @returns {Object} buff 键值对，如 { attackSpeedMultiplier: 100 } / { penetration: 20 }；空对象 = 无光环
+ */
+function getAuraOutput(tower, codexMult) {
+  const stats = getTowerRuntimeStats(tower);
+  const stars = stageOf(tower);
+  const codex = (isFinite(codexMult) && codexMult > 0) ? codexMult : 1;
+  const out = {};
+  const speedBase = stats.supportBuff && stats.supportBuff.attackSpeedMultiplier;
+  if (speedBase) {
+    out.attackSpeedMultiplier = speedBase * stage.multiplier('auraPower', stars) * codex;
+  }
+  const penBase = stats.auraPenetration;
+  if (penBase) {
+    out.penetration = penBase * stage.multiplier('auraPenetration', stars);
+  }
+  return out;
+}
+
+/**
  * 检查是否可以合成升级
  * tower1: 已存在的塔(目标槽), tower2: 新放置的塔(触发拖放)
  * 规则：同类型 + 同阶段 + 不是自身 + 同一玩家
@@ -452,6 +525,12 @@ module.exports = {
   canMergeUpgrade,
   getStageStars,
   getAttackPowerBoost,
+  // ---- 进阶（阶段）系统：唯一真源 src/stage.js ----
+  stage,                  // 直接暴露进阶系统（面板/探针需要更细的接口时用它）
+  getStageFocus,
+  getStageMultiplier,
+  setStage,
+  stageOf,
   calculateFinalDamage,
   // ---- 固有技能（数值表在 src/skills.js，这里是与塔实例结合的转接头）----
   skills,                 // 直接把技能系统暴露出去（面板/浮层/图签需要更细的接口时用它）
@@ -483,4 +562,5 @@ module.exports = {
   getAttackProfile,
   getTowerRuntimeStats,
   getExplosionParams,
+  getAuraOutput,
 };

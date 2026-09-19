@@ -97,7 +97,12 @@ const TOWER_STATS = {
   long_rectangle:{ damage: 2,  range: 200, attackSpeedMultiplier: 100, attackInterval: 0.25, critChance: 0, critMult: 2, penetration: 0, isSupport: false, stackMax: 10, description: '堆叠火炮系统，对重复单位攻击时叠加伤害，累积层数后造成巨额爆发。适合对付 BOSS 级别敌人。' },
   // 辅助塔：这里的 range 是**光环半径**（与梯塔同口径）。别省 —— 引擎侧
   // `stats.range || 150` 会兜底，但属性面板不会，省掉就会显示「范围 undefined」。
-  diamond:       { isSupport: true, auraPenetration: 5, range: 150, description: '辅助塔，不提供攻击。给周围我方图形塔增加 5 点穿透光环。' },
+  // 战斗字段也照梯塔的形状补齐（damage 0 / 攻速 0 / 无攻击间隔）：
+  //   本表是"结构完整"的原生表，getTowerRuntimeStats 在没有强化/宝石时会**直接返回它**，
+  //   缺字段就会让 `rs.attackSpeedMultiplier + x` 算出 NaN（菱形塔曾缺这几个键）。
+  //   它的进阶焦点是 auraPenetration（见 src/stage.js 的 STAGE_FOCUS）——
+  //   别给它写 damage，辅助塔放大攻击力等于什么都没做。
+  diamond:       { damage: 0, range: 150, attackSpeedMultiplier: 0, critChance: 0, critMult: 1, penetration: 0, isSupport: true, auraPenetration: 5, description: '辅助塔，不提供攻击。给周围我方图形塔增加 5 点穿透光环；自身每进阶一星穿透光环强度 +100%，高阶光环覆盖低阶光环。' },
   pentagon:      { damage: 62, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.4, critChance: 0, critMult: 2, penetration: 0, isSupport: false, description: '稳重的重击塔，血厚攻高，节奏偏慢。适合站在前排槽位承担主力输出。' },
   oval:          { damage: 12, range: 260, attackSpeedMultiplier: 100, attackInterval: 0.4, critChance: 0,  critMult: 2, penetration: 0,  isSupport: false, description: '超远射程的快射塔，单发伤害低但覆盖全图大部分路径。适合补刀漏网之鱼。' },
   // critChance = 原生「暴击几率 5%」= 固有技能「星芒暴击」的 base（见 src/skills.js）。
@@ -211,9 +216,14 @@ const BALANCE = {
 };
 
 // ========== 阶段（进阶）系统 ==========
-// 进阶最高 3 星封顶；各阶段攻击增幅奖励：1星 +100%，2星 +200%，3星 +400%
+// 进阶最高 3 星封顶（同类型同阶段的塔互相合成，星级 +1）。
+// ⚠️ "进阶放大什么、放大多少"**不在本文件** —— 唯一真源是 src/stage.js：
+//    每类属性的放大表（STAGE_TABLES）+ 每座塔的进阶焦点（STAGE_FOCUS）。
+//    本文件只保留"最多几星"这一个全局上限。
+//    历史坑：这里曾写死一张全局增幅表 `{1:100,2:200,3:400}`，
+//    语义被当成"攻击力 +N%"，于是伤害为 0 的辅助塔进阶后 0×4 = 0 ——
+//    面板显示 +400%、实战一点没变（菱形塔的穿透光环更是整条进阶线空转）。
 const MAX_STAGE = 3;
-const STAGE_BOOSTS = { 1: 100, 2: 200, 3: 400 };
 
 // 光环持续时间（秒）：梯塔离开范围后，光环保留该时长后失效
 const AURA_DURATION = 3.0;
@@ -443,13 +453,39 @@ const GEM = {
 //                                  （⚠️ 这条就是"宝石与技能绑定"：它直接给该塔的
 //                                   ENHANCE_SPECIAL 那项属性加等级，走 tower.getEnhanceAttr
 //                                   这一个口生效，因此战斗/面板/浮层不会各说各话）
+//
+// Lv 等级含义（合成产物的意义）：
+//   Lv.1  = 基础掉落宝石（6 种），基础效果最低档
+//   Lv.2  = 强化宝石（5 种），基础效果 ≈ 2×，独立命名/配色
+//   Lv.3  = 高阶宝石（4 种），基础效果 ≈ 3×
+//   Lv.4  = 稀有宝石（3 种），多属性复合
+//   Lv.5  = 传说宝石（2 种），多属性强力
 const GEM_KINDS = [
-  { id: 'ruby',     name: '烈焰红宝石', color: '#FF5252', effect: { damagePercent: 8 },           desc: '攻击力 +8%' },
-  { id: 'sapphire', name: '疾风蓝宝石', color: '#448AFF', effect: { attackSpeedMultiplier: 10 },  desc: '攻速 +10' },
-  { id: 'emerald',  name: '雷光翡翠宝石', color: '#00E676', effect: { critChance: 6 },              desc: '暴击率 +6%' },
-  { id: 'topaz',    name: '破甲黄玉宝石', color: '#FFD54F', effect: { penetration: 6 },             desc: '穿透 +6' },
-  { id: 'amethyst', name: '星辉紫晶宝石', color: '#B388FF', effect: { range: 16 },                  desc: '射程 +16' },
-  { id: 'opal',     name: '秘术猫眼宝石', color: '#4DD0E1', effect: { skillLevels: 1 },             desc: '固有技能 +1 级' },
+  // --- Lv.1（6 种，基础掉落） ---
+  { id: 'ruby',     tier: 1, name: '烈焰红宝石', color: '#FF5252', effect: { damagePercent: 8 },  desc: '攻击力 +8%' },
+  { id: 'sapphire', tier: 1, name: '疾风蓝宝石', color: '#448AFF', effect: { attackSpeedMultiplier: 10 }, desc: '攻速 +10' },
+  { id: 'emerald',  tier: 1, name: '雷光翡翠宝石', color: '#00E676', effect: { critChance: 6 }, desc: '暴击率 +6%' },
+  { id: 'topaz',    tier: 1, name: '破甲黄玉宝石', color: '#FFD54F', effect: { penetration: 6 }, desc: '穿透 +6' },
+  { id: 'amethyst', tier: 1, name: '星辉紫晶宝石', color: '#B388FF', effect: { skillEffectPercent: 16 }, desc: '技能效果 +16%' },
+  { id: 'opal',     tier: 1, name: '秘术猫眼宝石', color: '#4DD0E1', effect: { skillLevels: 1 }, desc: '固有技能 +1 级' },
+  // --- Lv.2（5 种，Lv.1 同种合成 3→2，独立名称配色） ---
+  { id: 'fire_ruby',      tier: 2, name: '炽焰红宝石', color: '#FF3D3D', effect: { damagePercent: 16 },  desc: '攻击力 +16%' },
+  { id: 'gale_sapphire',  tier: 2, name: '疾风蓝宝石·改', color: '#2979FF', effect: { attackSpeedMultiplier: 20 }, desc: '攻速 +20' },
+  { id: 'thunder_emerald',tier: 2, name: '雷光翡翠宝石·改', color: '#00C853', effect: { critChance: 12 }, desc: '暴击率 +12%' },
+  { id: 'armor_topaz',    tier: 2, name: '破甲黄玉宝石·改', color: '#FFCA28', effect: { penetration: 12 }, desc: '穿透 +12' },
+  { id: 'star_amethyst',  tier: 2, name: '星辉紫晶宝石·改', color: '#9575CD', effect: { range: 30 }, desc: '射程 +30' },
+  // --- Lv.3（4 种，Lv.2 同种合成 3→3，效果 ≈ 3×） ---
+  { id: 'magma_ruby',     tier: 3, name: '熔岩红宝石', color: '#D50000', effect: { damagePercent: 24 },  desc: '攻击力 +24%' },
+  { id: 'storm_sapphire', tier: 3, name: '风暴蓝宝石', color: '#1565C0', effect: { attackSpeedMultiplier: 30 }, desc: '攻速 +30' },
+  { id: 'aurora_emerald', tier: 3, name: '极光翡翠宝石', color: '#009688', effect: { critChance: 18 }, desc: '暴击率 +18%' },
+  { id: 'abyss_amethyst', tier: 3, name: '深渊紫晶宝石', color: '#6A1B9A', effect: { penetration: 18 }, desc: '穿透 +18' },
+  // --- Lv.4（3 种，多属性复合，Lv.3 合成 3→4） ---
+  { id: 'sky_topaz',    tier: 4, name: '苍穹黄玉宝石', color: '#F57C00', effect: { range: 48, critChance: 20 }, desc: '射程 +48 · 暴击率 +20%' },
+  { id: 'void_opal',    tier: 4, name: '虚空猫眼宝石', color: '#00897B', effect: { skillLevels: 3 }, desc: '固有技能 +3 级' },
+  { id: 'eternal_ruby', tier: 4, name: '永恒红宝石', color: '#E53935', effect: { damagePercent: 32, attackSpeedMultiplier: 15 }, desc: '攻击力 +32% · 攻速 +15' },
+  // --- Lv.5（2 种，传说级，多属性强力，Lv.4 合成 3→5） ---
+  { id: 'chaos_amethyst',  tier: 5, name: '混沌紫晶宝石', color: '#AA00FF', effect: { damagePercent: 15, attackSpeedMultiplier: 10, critChance: 10, penetration: 10, range: 20 }, desc: '全属性 +15/10/10/10/20' },
+  { id: 'origin_emerald',  tier: 5, name: '起源翡翠宝石', color: '#00E676', effect: { critChance: 25, penetration: 25 }, desc: '暴击率 +25% · 穿透 +25' },
 ];
 
 // ============================================================================
@@ -518,7 +554,6 @@ module.exports = {
   HOSTILE_RELATIONS,
   ATTACK_SPEED_BASE,
   MAX_STAGE,
-  STAGE_BOOSTS,
   AURA_DURATION,
   POINTS,
   CODEX,

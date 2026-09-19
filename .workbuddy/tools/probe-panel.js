@@ -54,6 +54,8 @@ const GEM_TYPES = ['circle', 'star', 'parallel', 'arrow'];
 
 let fails = 0;
 let totalTexts = 0;
+// 收集"小数位 > 2"的文本（浮点乘算的尾巴，如 84.00000000000001）—— 最后统一断言
+const longDecimals = [];
 const ok = (name, cond, detail) => {
   if (!cond) fails++;
   log(`${cond ? '  ok  ' : ' FAIL '} ${name}${detail ? '  → ' + detail : ''}`);
@@ -105,6 +107,12 @@ function checkPanel(g, type, tag) {
   const panel = rec.rects.filter((r) => r.w > 100 && r.h > 100)
     .sort((a, b) => b.w * b.h - a.w * a.h)[0];
   if (!panel) { ok(`${tag}${type} 找到面板矩形`, false); return; }
+
+  // 数值文案：面板上任何"实数"都不许出现超过 2 位小数
+  //（浮点乘算的尾巴，如 25×1×1.12 = 28.000000000000004，历史事故见 bonusStats.numText）
+  for (const t of rec.texts) {
+    if (/\.\d{3,}/.test(t.text)) longDecimals.push(`${tag}${type}: ${t.text}`);
+  }
 
   // 面板自己的裁剪层 = 完全落在面板内的最大裁剪矩形
   const inPanel = rec.clips.filter((c) => c
@@ -199,6 +207,9 @@ for (const [W, H] of RES) {
 }
 
 log('');
+ok('面板全文：没有任何数值超过 2 位小数', longDecimals.length === 0,
+  longDecimals.length ? `${longDecimals.length} 条：` + longDecimals.slice(0, 5).join(' ; ')
+    : '全部数值最多 2 位小数');
 log(`=== 属性面板汇总：${RES.length} 分辨率 × ${TYPES.length} 塔型 + 宝石态，文字 ${totalTexts} 条，失败 ${fails} 条 ===`);
 log(`=== 判据戳：TOWER_ORDER=${TYPES.length} 型 / ${new Date().toISOString()} ===`);
 

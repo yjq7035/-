@@ -1,4 +1,0 @@
-deleted  .workbuddy/tmp/_skill9.txt
-deleted  .workbuddy/tmp/_fails.txt
-skip     .workbuddy/tools/_skill_error.txt  (ENOENT)
-kept     .workbuddy/tmp/_verify-edit.js / _audit-base.js（已进长期约定）

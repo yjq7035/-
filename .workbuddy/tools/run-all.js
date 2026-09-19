@@ -24,8 +24,15 @@ const JOBS = [
   ['probe-panel',   path.join(TOOLS, 'probe-panel.js'),   [path.join(TOOLS, '_panel.txt')]],
   ['probe-codex',   path.join(TOOLS, 'probe-codex.js'),   [path.join(TOOLS, '_codex.txt')]],
   ['probe-gem',     path.join(TOOLS, 'probe-gem.js'),     [path.join(TOOLS, '_gem.txt')]],
+  // 宝石 × 强化/升级/进阶 叠加专项：全塔型矩阵 + 面板 vs 战斗同口径（含技能等级上限）
+  ['probe-gem-stack', path.join(TOOLS, 'probe-gem-stack.js'), [path.join(TMP, '_gemstack.txt')]],
   // 技能系统专项：技能表契约 + "一技能多效果"（三角塔暴击/爆伤）+ 强化与宝石链路
   ['probe-skill',   path.join(TOOLS, 'probe-skill.js'),   [path.join(TOOLS, '_skill.txt')]],
+  // 光环系统专项：菱形塔（穿透）与梯塔（攻速）共存 / 同属性取最强 / 面板==战斗 / 过期
+  ['probe-aura',    path.join(TOOLS, 'probe-aura.js'),    [path.join(TOOLS, '_aura.txt')]],
+  // 进阶（阶段）系统专项：全塔型 × 0~3★ 实效（**不跳过辅助塔**）/ 面板==战斗 /
+  // 明细不撒谎 / 菱形塔穿透光环进战斗 / 旧平衡不变。真源见 src/stage.js
+  ['probe-stage',   path.join(TOOLS, 'probe-stage.js'),   [path.join(TOOLS, '_stage.txt')]],
   ['smoke',         path.join(TOOLS, 'smoke.js'),         [path.join(TOOLS, '_smoke.txt')]],
   // 天赋花费专项：公式（Lv.N = N × 基础花费）+ 真扣点 + 按钮报价与结算同口径
   ['probe-talent',  path.join(TOOLS, 'probe-talent.js'),  [path.join(TOOLS, '_talent.txt')]],

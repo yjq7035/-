@@ -20,6 +20,7 @@ const enhanceMod = require('./enhance');
 const meta = require('./meta');
 const gems = require('./gems');
 const skills = require('./skills');
+const stageMod = require('./stage');
 const skillSlot = require('./skillSlot');
 const gemModal = require('./gemModal');
 const { anchorPointOf } = require('./geometry');
@@ -46,14 +47,28 @@ const BOSS_TEAM_COLORS = {
   blue: new Set(['#9900FF']),
 };
 
-// BOSS 大血条「白色缓冲条」的追赶速度：鬼影从满管缩到空管所需秒数。
+// 小怪血条的追赶速度：鬼影从满管缩到空管所需秒数（经典口径 = 白条记着"上一次的血量"）。
 // 调小的手感 = 扣得更急（0.2 会像抽搐），调大的手感 = 白条挂太久像卡住。
-// 0.9s 实测既看得清"这一下掉了多少"，又不会让两条血长期对不上。
-const BOSS_HP_GHOST_DRAIN_SEC = 0.9;
-
-// 小怪血条同理，但要更快一点：小怪数量多、本身血量也小，
-// 白条挂太久会让人误判"这只还没死"。
+// 小怪数量多、本身血量也小，白条挂太久会让人误判"这只还没死"，所以偏快。
 const ENEMY_HP_GHOST_DRAIN_SEC = 0.6;
+
+// BOSS 大血条的时间常数（漏桶口径，见 advanceBossGhost）：
+// 白条长度 ≈ 最近 BOSS_GHOST_DECAY_SEC 秒里吃到的伤害；停火后按 e 指数消退。
+// ⚠️ 为什么 BOSS 不能用小怪那套恒定速度（2026-09-19 用户报"小怪有白条、BOSS 没有"）：
+//   · BOSS 的 maxHp 是小怪的 50 倍（enemy.js：boss = 100 × 50 × 波次倍率 × Boss阶段加成），
+//     塔打它一下只掉条宽的 0.1%~0.5%，而"满管 0.9s"换算成每帧要缩掉 1.85% ——
+//     **一次伤害比一帧要缩掉的还少**，鬼影在绘制之前就被追平，白条一帧都没进过画布。
+//   · 实测（8~12 座塔打 10/20 波 BOSS，逐帧量白条像素）：峰值 0.01~0.78px、可见帧 0%
+//     —— 玩家眼里就是"根本没有"；同一套塔打小怪的白条峰值有 1.3px（小怪条才 20px 宽）。
+//   · 漏桶把零散小伤害累起来：稳态白条长度 ≈ 每秒伤害 × 时间常数，
+//     10 波 BOSS 实测峰值 19px、20 波 5px，都看得见；停火后自然消退、不会赖着不走。
+// 0.2s → 白条太短（强势一波也就 1~2px）；1.0s → 停火后要拖 2 秒才干净。0.5s 两头都合适。
+const BOSS_GHOST_DECAY_SEC = 0.5;
+
+// 漏桶的泄流是 e 指数 —— 尾巴无穷小、永远"差一点点"归不了零。
+// 低于"满管的 0.1%"直接掐到 0（273px 的条上 0.1% = 0.27px，本来就看不见），
+// 保证白条真的会消失，也保证"追平后不再画白条"这类断言成立。
+const GHOST_SNAP_FRAC = 0.001;
 
 function drawPath(game) {
   const ctx = game.ctx;
@@ -327,8 +342,10 @@ function drawEnemyHpBar(game, enemy) {
   ctx.save();
 
   const pct = Math.max(0, enemy.hp / enemy.maxHp);
-  // 延迟掉血鬼影（与 BOSS 大血条同一套口径：实条立即更新，白条慢慢缩）
-  const ghostPct = updateHpGhost(enemy, frameDt(game), ENEMY_HP_GHOST_DRAIN_SEC);
+  // 延迟掉血鬼影：**全项目唯一的推进点**（大血条只读同一份）。
+  // 口径按 tier 分流 —— BOSS 血量是小怪的 50 倍，单次伤害占条宽极小，
+  // 沿用恒定速度会在画之前就被追平（见 advanceBossGhost 的漏桶）。
+  const ghostPct = advanceHpGhost(enemy, frameDt(game));
   const barW = Math.max(20, s);
   const barH = 4;
   const barX = enemy.x - barW / 2;
@@ -389,16 +406,15 @@ function getTeamBoss(game, team) {
 }
 
 /**
- * 「延迟掉血」鬼影推进器（NDF/DNF 味儿的白色缓冲条）。
- *
- * 视觉口径：
- *   · 彩色实条 = 真实血量，**扣血当帧就到位**（绝不延迟，读数永远准）；
- *   · 白色鬼影 = 上一次的旧血量，只允许"向下"追平实条，所以扣血后会残留一段白条慢慢缩。
+ * 小怪口径的「延迟掉血」鬼影推进器（经典款）：白条记着"上一次的血量"，按恒定速度往下追。
  *
  * 规则：
  *   鬼影 > 实血  → 按 drainSecPerFull 秒缩完"整管"的恒定速度往下追（每帧夹一次，绝不越过头）
  *   鬼影 ≤ 实血  → 立刻贴合（首次出现 / 回血 / 换单位复用都靠这条兜住，
  *                  否则会出现"白条比实条长"或白条反向生长的鬼畜现象）
+ *
+ * ⚠️ BOSS 不用这套（血量级差 50 倍，恒定速度会在绘制前把鬼影追平 → 白条永远画不出来），
+ *    走漏桶口径 advanceBossGhost。分流在 advanceHpGhost 一处完成。
  *
  * @param {object} unit 需要 maxHp / hp 的单位（状态记在 unit._hpGhost，单位不池化故安全）
  * @param {number} dt 帧间隔（秒）
@@ -418,6 +434,74 @@ function updateHpGhost(unit, dt, drainSecPerFull) {
   return ghost / maxHp;
 }
 
+/**
+ * BOSS 口径的鬼影推进器（漏桶）：白条长度 ≈ 最近 BOSS_GHOST_DECAY_SEC 秒吃到的伤害。
+ *
+ * 为什么不是"上一次的血量"：BOSS 血厚 50 倍，塔一下只掉条宽 0.1%~0.5%，
+ * 恒定速度下白条一帧就被追平、永远画不出来（见常量注释里的实测数据）。
+ * 漏桶把零散小伤害累起来 → 稳态白条 ≈ 每秒伤害 × 时间常数，看得见也读得懂。
+ *
+ * 状态（都在 unit 上，单位不池化）：
+ *   _hpGhost     白条位置 = 实血 + 桶内伤害
+ *   _hpGhostPool 桶内还挂着的伤害（本帧伤害入桶、按 e 指数泄流）
+ *
+ * ⚠️ 本帧伤害由"上一帧血量 - 本帧血量"反推（上一帧血量 = 上一帧的 ghost - 桶）。
+ *    这样连"血条没画的那几帧"里吃的伤害也不会丢：下次一画就一次性入桶。
+ *
+ * @param {object} unit 需要 maxHp / hp 的单位
+ * @param {number} dt 帧间隔（秒）
+ * @returns {number} 鬼影进度 0~1
+ */
+function advanceBossGhost(unit, dt) {
+  const maxHp = unit.maxHp > 0 ? unit.maxHp : 1;
+  const hp = Math.max(0, Math.min(maxHp, unit.hp || 0));
+  const step = Math.max(0, dt);
+  const poolPrev = typeof unit._hpGhostPool === 'number' ? unit._hpGhostPool : 0;
+  const ghostPrev = typeof unit._hpGhost === 'number' ? unit._hpGhost : hp;
+  const hpPrev = Math.max(0, Math.min(maxHp, ghostPrev - poolPrev));
+  const dealt = Math.max(0, hpPrev - hp);                       // 本帧新吃的伤害
+
+  let pool = poolPrev * Math.exp(-step / BOSS_GHOST_DECAY_SEC) + dealt;
+  let ghost = hp + pool;
+  if (hp >= maxHp || !(ghost > hp)) { ghost = hp; pool = 0; }    // 满血 / 回血 / 首次：立刻贴合
+  else if (ghost > maxHp) { ghost = maxHp; pool = maxHp - hp; }  // 桶比人还大：白条不越过满管
+  else if (pool <= maxHp * GHOST_SNAP_FRAC) { ghost = hp; pool = 0; }  // 亚像素尾巴掐掉，保证归零
+
+  unit._hpGhost = ghost;
+  unit._hpGhostPool = pool;
+  return ghost / maxHp;
+}
+
+/**
+ * 推进某单位的白条鬼影 —— **全项目唯一入口，每帧每个单位只能走一次**。
+ * 口径按 tier 分流：tier>=4（boss/finalBoss，与 getTeamBoss 同口径）走漏桶，
+ * 其余走经典恒定速度。**别按"画在哪个条上"分流** —— 那正是 2026-09-19 的坑。
+ *
+ * ⚠️ 只在「血条独立图层」（drawBattle 里那圈 drawEnemyHpBar）调用它：
+ *    那是唯一会"每帧不重不漏地遍历每一个怪"的地方（见 drawBattle 的 for 循环）。
+ * ⚠️ 千万别在画大血条时再推一次 —— BOSS 同时有「头顶小血条」和「顶部大血条」，
+ *    两边都推就是**一帧推两步**：鬼影缩得快一倍，而且谁先谁后会互相咬
+ *    （旧 bug：大血条带下限、小血条不带，小血条每帧把鬼影一路追平
+ *     → 大血条的白条永远为 0px）。
+ *    大血条只读（ghostPctOf），要什么值都由这里统一推进。
+ *
+ * @param {object} unit 怪物单位
+ * @param {number} dt 帧间隔（秒）
+ * @returns {number} 鬼影进度 0~1
+ */
+function advanceHpGhost(unit, dt) {
+  return (unit && (unit.tier || 0) >= 4)
+    ? advanceBossGhost(unit, dt)
+    : updateHpGhost(unit, dt, ENEMY_HP_GHOST_DRAIN_SEC);
+}
+
+/** 只读白条进度（不推进）：大血条 / 小血条读的是同一个鬼影 */
+function ghostPctOf(unit) {
+  const maxHp = unit.maxHp > 0 ? unit.maxHp : 1;
+  const ghost = typeof unit._hpGhost === 'number' ? unit._hpGhost : (unit.hp || 0);
+  return Math.max(0, Math.min(1, ghost / maxHp));
+}
+
 /** 取本帧的帧间隔（秒）：由 game_core.loop 写入 game.dt；无头测试/首帧兜底 1/60 */
 function frameDt(game) {
   const dt = game && game.dt;
@@ -433,16 +517,20 @@ function frameDt(game) {
  *     改成静态暗色垫底 + 细腻内高光，不闪不糊。
  *   · 掉血缓冲条重做：旧版拿"最近 8 秒伤害明细"做归一化，剩余比例其实是
  *     bufHp/bufTotal（永远从 1 开始），既不是血量也读不出信息。现在改为
- *     标准「延迟掉血」——实条立即更新，白色鬼影条慢慢缩（见 updateHpGhost）。
+ *     标准「延迟掉血」——实条立即更新，白色鬼影条慢慢缩。
+ *     口径见 advanceBossGhost（BOSS 血厚 50 倍，走的是"最近 N 秒伤害"的漏桶，
+ *     不是小怪那套恒定速度；换成恒定速度会一帧就被追平、白条根本画不出来）。
+ *   · ⛔ 本函数**只读**鬼影，不推进它：BOSS 头顶还有一条小血条（drawEnemyHpBar），
+ *     推进统一收口在那一层（每帧每个怪恰好一次，见 advanceHpGhost）。所以本函数
+ *     不再需要 dt —— 传了也没用。
  * @param {object} ctx 画布
  * @param {object} boss BOSS 单位
  * @param {number} cx 血条中心x（通常屏幕中心）
  * @param {number} cy 血条中心y
  * @param {string} team 'red' | 'blue'（决定配色）
  * @param {number} maxW 血条最大宽度
- * @param {number} [dt] 帧间隔（秒）；不传则按 1/60 推
  */
-function drawBossHealthBar(ctx, boss, cx, cy, team, maxW, dt) {
+function drawBossHealthBar(ctx, boss, cx, cy, team, maxW) {
   const w = Math.min(maxW, 320);
   const h = 14;
   const x = cx - w / 2;
@@ -451,8 +539,10 @@ function drawBossHealthBar(ctx, boss, cx, cy, team, maxW, dt) {
   const main = team === 'red' ? THEME.team.red.solid : THEME.team.blue.solid;
   const light = team === 'red' ? THEME.team.red.light : THEME.team.blue.light;
 
-  // 白色缓冲条（延迟掉血）：先推进鬼影，再按 ghostPct 画
-  const ghostPct = updateHpGhost(boss, (dt === undefined ? 1 / 60 : dt), BOSS_HP_GHOST_DRAIN_SEC);
+  // 白色缓冲条（延迟掉血）：**只读**取本帧的鬼影（推进由血条独立图层统一做，见 advanceHpGhost）。
+  // ⛔ 别在这里再调一次 updateHpGhost —— BOSS 头顶还有一条小血条，两边都推 = 一帧推两步，
+  //    鬼影缩得快一倍；历史上这里推、那里不带下限，结果是这条白条被追平到 0px、从来画不出来。
+  const ghostPct = ghostPctOf(boss);
 
   ctx.save();
 
@@ -534,11 +624,11 @@ function drawBossBars(game, titleCY, titleH) {
   const cx = game.W / 2;
   const maxW = game.W * 0.7;
   const gap = 8;
-  const dt = frameDt(game);
   const redBoss = getTeamBoss(game, 'red');
   const blueBoss = getTeamBoss(game, 'blue');
-  if (blueBoss) drawBossHealthBar(ctx, blueBoss, cx, titleCY - titleH / 2 - gap - 10, 'blue', maxW, dt);
-  if (redBoss)  drawBossHealthBar(ctx, redBoss,  cx, titleCY + titleH / 2 + gap + 10, 'red', maxW, dt);
+  // 不传 dt：白条鬼影的推进不在这一层（见 drawBossHealthBar 的注释）
+  if (blueBoss) drawBossHealthBar(ctx, blueBoss, cx, titleCY - titleH / 2 - gap - 10, 'blue', maxW);
+  if (redBoss)  drawBossHealthBar(ctx, redBoss,  cx, titleCY + titleH / 2 + gap + 10, 'red', maxW);
 }
 
 /**
@@ -601,16 +691,41 @@ function drawTower(ctx, game, tower) {
     }
   }
   
-  // 绘制攻击增幅标识（底部相对槽位底边，textBaseline='bottom' 使其底边对齐槽位底部）
-  if (tower.attackPowerBoost > 0 && slot) {
-    const boostText = `+${tower.attackPowerBoost}%`;
+  // 绘制进阶标识（底部相对槽位底边，textBaseline='bottom' 使其底边对齐槽位底部）
+  //   攻击塔 → '+400%'（攻击力增幅，真源 src/stage.js）
+  //   辅助塔 → '攻速100' / '穿透20'（它**真正发出**的光环值）
+  // ⚠️ 辅助塔不能再显示 '+400%' —— 它伤害为 0，那个数字读起来像"攻击力 +400%"，
+  //    实战里什么都没发生（旧版对菱形塔就是如此，进阶标识纯属装饰）。
+  const stageTag = towerStageTag(tower);
+  if (stageTag && slot) {
     const textBottom = anchorPointOf(slot, 'bottom', { y: 4 });
     ctx.fillStyle = THEME.accent.green;
     ctx.font = 'bold 10px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(boostText, tower.x, textBottom.y);
+    ctx.fillText(stageTag, tower.x, textBottom.y);
   }
+}
+
+/**
+ * 塔下那行进阶标识的文案（无进阶返回空串）。
+ * 所有数字都现算自 src/stage.js / tower.getAuraOutput —— 不读 tower.attackPowerBoost，
+ * 免得那个历史字段和真实星级各说各话。
+ * ⚠️ 文案要短：槽位间距只有 44px，太长会压到隔壁槽的标识上。
+ */
+function towerStageTag(tower) {
+  if (!tower) return '';
+  const stars = stageMod.clampStage(tower.stage);
+  if (stars <= 0) return '';
+
+  if (tower.isSupport) {
+    const out = towerMod.getAuraOutput(tower, meta.codexDamageMultiplier(tower.type));
+    if (out.attackSpeedMultiplier) return `攻速${Math.round(out.attackSpeedMultiplier)}`;
+    if (out.penetration) return `穿透${Math.round(out.penetration)}`;
+    return '';
+  }
+  const pct = stageMod.bonusPercent('damage', stars);
+  return pct > 0 ? `+${pct}%` : '';
 }
 
 // ========== 属性面板布局参数（自适应高度的唯一真源）==========
@@ -1192,8 +1307,17 @@ function drawPanelEnhance(ctx, block, panelX, y, panelW, game) {
     ctx.fillStyle = THEME.accent.gold;
     ctx.fillText(ellipsize(ctx, `需进阶到 ★${'★'.repeat(needStage - 1)}（当前 ${stage}★）才能强化`, availW), left, y + 37);
   } else if (maxed) {
+    // 宝石给的技能等级与强化**共用同一个上限**（skills.MAX_ENHANCE_TIMES）：
+    // 宝石把额度吃满时按钮必须变灰（否则玩家会花钱买一个被 clamp 掉的等级），
+    // 但必须说清"为什么已满"—— 否则玩家只会觉得"用了宝石，强化就失效了"。
+    const gemLv = tower ? skills.gemLevels(tower.type) : 0;
     ctx.fillStyle = THEME.text.off;
-    ctx.fillText('已满级：专属属性已达上限', left, y + 37);
+    ctx.fillText(
+      ellipsize(ctx, gemLv > 0
+        ? `已满级：宝石占 ${gemLv} 级（与强化共用上限）`
+        : '已满级：专属属性已达上限', availW),
+      left, y + 37
+    );
   } else {
     // 每次强化的收益（多效果技能拼成「暴击几率 +5% · 暴击伤害 +10%」，宽了自动省略）
     const gainLabel = skills.skillGainLabel(tower.type);
@@ -2468,6 +2592,9 @@ module.exports = {
   drawBossBars,
   getTeamBoss,
   updateHpGhost,
+  advanceHpGhost,
+  advanceBossGhost,
+  ghostPctOf,
   drawTowerIcon,
   drawTower,
   drawDragPreview,

@@ -622,21 +622,31 @@ class Game {
 
   /** 图签加成后的最终攻击力（战斗与属性面板同口径）
    *  攻击力四条线：
-   *    ① 3★ 阶段强化塔 → 基础攻击力 +5%/级（白字，受等级/阶段/图签/宝石加成影响）
+   *    ① 3★ 阶段的塔 → 基础攻击力 +5%/【强化次数】（白字，受等级/阶段/图签/宝石加成影响）
    *    ② 合成进阶（等级/阶段）—— 绿字
    *    ③ 图签 —— 绿字
    *    ④ 宝石（红宝石等）—— 绿字，乘算
+   *  ⚠️ 紫晶宝石「技能效果 +N%」**不属于这里** —— 它只放大固有技能的当前值
+   *     （见 skills.effectMultiplier / tower.getEnhanceAttr），别再把基础攻击力乘一遍。
    */
   towerDamage(tower, baseDamage) {
-    // ① 3★ 阶段强化塔的白字加成：每次强化 +5% 基础攻击力
+    // ① 3★ 阶段塔的白字加成：每次【强化次数】+5% 基础攻击力。
+    //    ⚠️ 次数口径 = towerMod.getEnhanceTimes = clamp(局内强化 + 宝石等级)，0 起、已夹上限。
+    //       历史事故：这里曾写 getEffectiveSkillLevel（【技能等级】Lv，1 起、含宝石）——
+    //       · 塔一放下就是 Lv.1 → 白送 5%（"每次强化 +5%"变成"每级技能 +5%"）；
+    //       · 宝石加的技能等级会顺手抬攻击力，而属性面板用的是另一套（enhanceLevel）
+    //         → 面板与战斗永久差 5%，宝石那一档面板完全看不见。
+    //       面板侧同源实现在 bonusStats.collectTowerStats（totalTimes），改一处必须改另一处。
     let whiteBonus = baseDamage;
     const stage = tower && tower.stage ? tower.stage : 0;
-    const enhanceLv = tower ? towerMod.getEffectiveSkillLevel(tower) : 0;
-    if (stage >= BALANCE.enhance.minStage && enhanceLv > 0) {
-      whiteBonus = baseDamage * (1 + enhanceLv * 0.05);
+    const times = tower ? towerMod.getEnhanceTimes(tower) : 0;
+    if (stage >= BALANCE.enhance.minStage && times > 0) {
+      whiteBonus = baseDamage * (1 + times * 0.05);
     }
+    // 进阶幅度**现算**（唯一真源 src/stage.js），不读 tower.attackPowerBoost ——
+    // 那个字段是历史遗留的"存下来的派生值"，一旦涨星/改表就会过期。
     const dmg = towerMod.calculateFinalDamage(
-      whiteBonus, tower.level, tower.attackPowerBoost
+      whiteBonus, tower.level, towerMod.getAttackPowerBoost(stage)
     );
     return dmg * meta.codexDamageMultiplier(tower.type) * towerMod.getGemDamageMultiplier(tower.type);
   }
@@ -677,7 +687,9 @@ class Game {
     }
 
     // ②③ 抗性 / 穿透 + 破解 + 递减减伤
-    const pen = sourceTower ? towerMod.getAttackProfile(sourceTower).penetration : 0;
+    // 穿透走 getEffectivePenetration（含菱形塔的穿透光环）；光环挂在塔身上、由
+    // auraManager 记账，直接读 getAttackProfile 是拿不到光环那一份的。
+    const pen = sourceTower ? this.getEffectivePenetration(sourceTower) : 0;
     // 破解与穿透共用同一条公式（都是直接抵扣敌人抗性）。别写成 `type === 'arrow' ? … : 0` ——
     // 破解现在是 TOWER_STATS 上的真实字段，写死塔型会让后加的"破解"技能静默失效。
     const brk = sourceTower ? towerMod.getAttackProfile(sourceTower).break : 0;
@@ -693,7 +705,7 @@ class Game {
 
     enemy.hp -= dmg;
     // 注：BOSS 大血条的"白色缓冲条"不再由战斗层记账 ——
-    // 渲染层直接用单位自己的 _hpGhost 按帧向下追平真实血量（见 renderer.updateHpGhost），
+    // 渲染层直接用单位自己的 _hpGhost 按帧追平真实血量（见 renderer.advanceHpGhost），
     // 少一份跨层状态就少一处不一致。
     let killed = false;
     if (enemy.hp <= 0) {
@@ -1334,11 +1346,21 @@ class Game {
   }
 
   /**
-   * 应用梯塔光环效果：遍历所有梯塔，给周围我方塔增加攻击速度
-   * 光环规则（2026-09 重构）：
-   *  - 光环强度随梯塔自身阶段提升：基础25 × (1 + 阶段) → 25 / 50 / 75 / 100
-   *  - 每个目标塔只保留一个生效光环，高阶来源覆盖低阶来源
-   *  - 在范围内每帧刷新持续时间；离开范围/塔死亡后 AURA_DURATION 秒自动失效
+   * 应用辅助塔光环效果：遍历所有辅助塔，给周围我方塔上光环
+   *   · 梯塔   → supportBuff（攻速光环，强度随进阶/图签放大）
+   *   · 菱形塔 → auraPenetration（穿透光环，强度随进阶放大、不吃图签）
+   * 光环规则（2026-09 二次重构）：
+   *  - 光环按【属性键】分别登记：不同属性可来自不同辅助塔并**同时生效**，互不排斥；
+   *  - 同一个属性键上多源竞争时由 auraManager 取最强来源（阶段高者胜）；
+   *  - 在范围内每帧刷新持续时间；离开范围/塔死亡后 AURA_DURATION 秒自动失效。
+   *
+   * ⚠️ 每条光环发多少**一律走 towerMod.getAuraOutput**（战斗与显示的同一份实现）——
+   *   本函数不许再自己乘 `(1+stage)` 或写死 `= auraPen`。
+   *   历史坑：旧版这里把穿透光环当"固定值"直接赋值，于是菱形塔 0★ 与 3★ 发出的
+   *   穿透一模一样，**整条进阶线对它完全空转**（而属性面板照报"阶段增幅 +300%"）。
+   * ⚠️ 别给 supportBuff 加"缺省就当成攻速 25"的兜底 —— 菱形塔在 TOWER_STATS 里
+   *    **没有** supportBuff，兜底会让它凭空多发一份 +25 攻速，既与"只提供穿透光环"
+   *    的承诺不符，又会和梯塔的攻速光环抢同一个属性键。
    */
   applyTrapezoidAuras() {
     for (const tower of this.towers) {
@@ -1346,17 +1368,13 @@ class Game {
 
       const stats = towerMod.getTowerRuntimeStats(tower);
       const range = stats.range || 150;
-      // 梯塔：supportBuff（攻速光环）；菱形塔：auraPenetration（穿透光环）
-      const baseBuff = stats.supportBuff || { attackSpeedMultiplier: 25 };
-      const auraPen = stats.auraPenetration || 0;
-      // 光环强度随自身阶段提升（1星+50、2星+75、3星+100），3星封顶
+      // 星级只用来做"多源竞争"的优先级；强度放大已经由 getAuraOutput 按属性各自算好
       const stage = Math.max(0, Math.min(tower.stage || 0, MAX_STAGE));
-      // 图签等级同样放大光环强度（与属性面板 bonusStats 的口径一致）
+      // 图签等级放大光环强度（穿透光环不吃图签，见 getAuraOutput）
       const codexMult = meta.codexDamageMultiplier(tower.type);
-      const buff = { attackSpeedMultiplier: baseBuff.attackSpeedMultiplier * (1 + stage) * codexMult };
-      if (auraPen > 0) {
-        buff.penetration = auraPen;
-      }
+
+      const buff = towerMod.getAuraOutput(tower, codexMult);
+      if (!Object.keys(buff).length) continue;   // 既不发攻速也不发穿透 → 无光环可给
 
       // 遍历所有我方塔，检查是否在光环范围内
       for (const other of this.towers) {
@@ -1370,7 +1388,7 @@ class Game {
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist <= range) {
-          // 高阶覆盖低阶；在范围内每帧刷新持续时间
+          // 同一属性键上由 auraManager 取最强来源；在范围内每帧刷新持续时间
           // meta.name：来源塔显示名（属性面板"生效效果"里展示光环出处）
           const srcDef = TOWER_DEFS[tower.type];
           this.auraManager.applyAura(tower.uniqueId, buff, stage, other.uniqueId, AURA_DURATION, {
@@ -1379,6 +1397,21 @@ class Game {
         }
       }
     }
+  }
+
+  /**
+   * 塔的最终穿透 = 自身穿透（原生 + 宝石 + 强化）+ 吸收到的穿透光环。
+   * 战斗侧**唯一**入口：光环挂在塔身上、由 auraManager 记账，而 getAttackProfile
+   * 只认塔自身的属性 —— 直接在那边读光环会拿不到（历史 bug：菱形塔光环面板显示
+   * 「穿透 +5」、applyDamage 里却永远是 0，等于辅助塔白放）。
+   * 口径与 bonusStats 的属性面板一致：那边把光环 buff 登记成 PENETRATION 点值，
+   * 与这里相加的是同一份数。
+   */
+  getEffectivePenetration(tower) {
+    if (!tower) return 0;
+    const self = towerMod.getAttackProfile(tower).penetration;
+    const aura = this.auraManager.getAuraValue(tower.uniqueId, 'penetration');
+    return Math.max(0, self + aura);
   }
 
   fireProjectile(tower, target, customDamage) {

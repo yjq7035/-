@@ -91,11 +91,14 @@ function buildSkillSlots(ctx, type, tower, contentW) {
       icon: skills.iconOf(sk),
       level: lv,
       levelText: `Lv.${lv}`,
-      // 数值行：一条效果一行（技能名 + 当前值 + 每级增量）
+      // 数值行：一条效果一行（技能名 + 实际生效值 + 每级增量）
+      // ⚠️ 实际生效值用 effectiveValueTextOf —— 会把紫晶宝石「技能效果 +N%」的放大
+      //    一并算进去，与属性面板 / 战斗（tower.getEnhanceAttr）同口径，不会"槽里显示
+      //    base、打起来又是另一个数"。
       effects: (sk.effects || []).map((e) => ({
         key: e.key,
         name: e.name,
-        valueText: skills.valueTextOf(e, lv),
+        valueText: skills.effectiveValueTextOf(type, e, lv),
         perText: `${skills.gainTextOf(e)}/级`,
       })),
       descLines: wrapLines(ctx, sk.desc, maxW),

@@ -1,0 +1,382 @@
+diff --git a/src/bonusStats.js b/src/bonusStats.js
+index 2f8ba07..6815cc7 100644
+--- a/src/bonusStats.js
++++ b/src/bonusStats.js
+@@ -11,10 +11,13 @@
+ //
+ // 数值口径（与战斗逻辑严格一致，改这里必须同步 tower.js / game_core.js）：
+ //   攻击力     final = floor(base × Π(1 + 各百分比来源/100))
+-//              —— 等级 +10%/级、阶段增幅 +100/200/400%，两者相乘而非相加
++//              —— 等级 +10%/级、进阶增幅（见 src/stage.js），两者相乘而非相加
+ //   攻速倍率   final = base + Σ光环点数（点数可为负 = 减速）
+ //   攻击间隔   final = 原生间隔 ÷ (最终攻速 / 100)
+-//   光环强度   final = base × (1 + 阶段×100%)，与 applyTrapezoidAuras 一致
++//   光环强度   final = (base + 技能点值) × Π(1 + 各百分比来源/100)
++//              —— 与 applyTrapezoidAuras 一致；进阶那一份的数值来自 src/stage.js
++//   进阶增幅   **不在这里定义**：放大哪些属性（focus）与放大多少都在 src/stage.js，
++//              本文件只负责把那个百分比登记成一条"阶段增幅"明细。
+ //
+ // 扩展方式：新增一类来源只要 push 一条 source 记录（见 SOURCE 常量），
+ //           面板会自动把它画成绿字/红字并列入明细，不需要改渲染代码。
+@@ -24,6 +27,7 @@ const towerMod = require('./tower');
+ const meta = require('./meta');
+ const gems = require('./gems');
+ const skills = require('./skills');
++const stageMod = require('./stage');
+ const { CODEX, BALANCE } = require('./config');
+ 
+ // ---------- 属性键 ----------
+@@ -214,27 +218,26 @@ function collectTowerStats(game, tower, stats, towerType) {
+     });
+   }
+ 
+-  // 1.2 阶段增幅：1/2/3 星 = +100 / +200 / +400%（3 星封顶）
+-  const stage = tower && tower.stage > 0 ? tower.stage : 0;
+-  const boost = tower ? (tower.attackPowerBoost || 0) : 0;
+-  if (boost > 0) {
+-    pushSource(sources, {
+-      attr: ATTR.DAMAGE,
+-      source: SOURCE.STAGE,
+-      label: `阶段增幅 ${stageText(stage)}`.trim(),
+-      kind: 'percent',
+-      percent: boost,
+-    });
+-  }
+-  // 辅助塔：阶段同时提升光环强度（+100%/星）
+-  if (isSupport && stage > 0) {
+-    pushSource(sources, {
+-      attr: ATTR.AURA_POWER,
+-      source: SOURCE.STAGE,
+-      label: `阶段增幅 ${stageText(stage)}`.trim(),
+-      kind: 'percent',
+-      percent: stage * 100,
+-    });
++  // 1.2 进阶（阶段）增幅 —— 真源 src/stage.js，本文件不再存第二份数字。
++  //   放大的是该塔的【进阶焦点属性】：攻击塔 = 攻击力；辅助塔 = 它**真正发出**的那条光环
++  //   （梯塔 → 光环强度 / 菱形塔 → 穿透光环）。
++  //   ⚠️ 别退回"按 isSupport 硬挂一条 AURA_POWER"的老写法 —— 那会让菱形塔（发的是穿透）
++  //      的面板写出「光环强度 +300%」这种假明细，而它自己的「穿透光环」行里反而
++  //      一条阶段明细都没有（数字不动 + 明细撒谎，玩家看到的就是"进阶没用"）。
++  const focusType = towerType || (tower && tower.type) || null;
++  const stage = tower ? stageMod.clampStage(tower.stage) : 0;
++  if (focusType && stage > 0) {
++    for (const attr of stageMod.focusOf(focusType)) {
++      const percent = stageMod.bonusPercent(attr, stage);
++      if (!percent) continue;
++      pushSource(sources, {
++        attr: attr,
++        source: SOURCE.STAGE,
++        label: `阶段增幅 ${stageText(stage)}`.trim(),
++        kind: 'percent',
++        percent: percent,
++      });
++    }
+   }
+ 
+   // 1.3 图签等级加成（跨局永久）：每级 +6%
+@@ -262,6 +265,16 @@ function collectTowerStats(game, tower, stats, towerType) {
+   //   猫眼石，暴击几率与暴击伤害两条明细会同时出现。遍历技能效果而不是写死某一条，
+   //   就是为了不让"多效果技能"漏掉第二条。
+   const gemBonus = tType ? gems.bonusForType(tType) : null;
++  // ---- 技能等级的"总额度"口径（唯一真源 src/skills.js）----
++  // 强化次数与宝石等级**共用同一个上限**（BALANCE.enhance.maxLevel）：宝石给的等级会占用
++  // 强化额度，最终生效的总额度 = clamp(强化次数 + 宝石等级)。
++  // ⚠️ 面板明细必须按【夹取后】的额度登记，否则会"面板数字一直涨、打起来纹丝不动"
++  //    （历史事故：E=4、宝石 +3 时面板报 40%、战斗只有 30%）。
++  const enhTimes = (tower && tower.enhanceLevel > 0) ? skills.clampEnhanceTimes(tower.enhanceLevel) : 0;
++  const gemTimes = (gemBonus && gemBonus.skillLevels) ? skills.clampEnhanceTimes(gemBonus.skillLevels) : 0;
++  const totalTimes = skills.clampEnhanceTimes(enhTimes + gemTimes);
++  const gemPart = Math.min(gemTimes, totalTimes);   // 宝石实际贡献的等级
++  const enhPart = totalTimes - gemPart;             // 强化在宝石之上额外贡献的等级
+   if (gemBonus && gemBonus.count > 0) {
+     const kinds = gemBonus.kinds;
+     const label = (pick) => gemLabelFor(kinds, pick);
+@@ -280,15 +293,37 @@ function collectTowerStats(game, tower, stats, towerType) {
+     if (gemBonus.range) {
+       pushSource(sources, { attr: ATTR.RANGE, source: SOURCE.GEM, label: label((e) => e.range), kind: 'points', value: gemBonus.range });
+     }
+-    if (gemBonus.skillLevels && tType) {
++    if (gemPart > 0 && tType) {
+       for (const eff of skills.getEffects(tType)) {
+         const attr = ENHANCE_ATTR_MAP[eff.key] || eff.key;
+         pushSource(sources, {
+           attr: attr,
+           source: SOURCE.GEM,
+-          label: `${label((e) => e.skillLevels)} Lv.+${gemBonus.skillLevels}`,
++          label: `${label((e) => e.skillLevels)} Lv.+${gemPart}`,
++          kind: 'points',
++          value: eff.per * gemPart,
++        });
++      }
++    }
++    // 技能效果 +N%（紫晶宝石）：放大固有技能**每一条效果**的当前值（base + per × 次数）。
++    //   放大后的那份增量以点值来源登记到该效果对应的属性行上 —— 与战斗口径
++    //   tower.getEnhanceAttr（= (base + per×n) × 系数 − base）严格同源，
++    //   所以嵌一颗紫晶，暴击率行会多出 +0.8%（5% × 16%）、暴击伤害行多出 +1.6%（10% × 16%）。
++    //   ⚠️ 别把它当成「攻击力 +N%」登记 —— 紫晶不碰攻击力（历史口径打架的根源）。
++    if (gemBonus.skillEffectPercent && tType) {
++      const times = totalTimes;        // 已夹上限的总额度（与战斗口径同源）
++      const mult = 1 + gemBonus.skillEffectPercent / 100;
++      for (const eff of skills.getEffects(tType)) {
++        const keyMeta = skills.EFFECT_KEYS[eff.key];
++        if (!keyMeta || !keyMeta.active) continue;   // 不生效的键（如生命）不登记
++        const boost = (eff.base + eff.per * times) * (mult - 1);
++        if (!boost) continue;
++        pushSource(sources, {
++          attr: ENHANCE_ATTR_MAP[eff.key] || eff.key,
++          source: SOURCE.GEM,
++          label: `${label((e) => e.skillEffectPercent)} 技能效果 +${gemBonus.skillEffectPercent}%`,
+           kind: 'points',
+-          value: eff.per * gemBonus.skillLevels,
++          value: boost,
+         });
+       }
+     }
+@@ -297,19 +332,22 @@ function collectTowerStats(game, tower, stats, towerType) {
+   // 1.35 塔强化（局内花金币，需 3★）
+   //   技能等级带来的增量登记成点值来源（绿字），不混入 base.damage。
+   //   一条技能的全部效果都会各出一条明细（三角塔 = 暴击几率 + 暴击伤害两行）。
+-  //   但 3★ 阶段强化会给白字基础攻击力 +5%/级（见下方 section 2 原生值）。
+-  const enhanceLv = (tower && tower.enhanceLevel > 0) ? tower.enhanceLevel : 0;
++  //   但 3★ 阶段强化会给白字基础攻击力 +5%/次（见下方 section 2 原生值）。
++  //   ⚠️ 这里登记的是【强化自己贡献的那一份】enhPart（= 总额度 − 宝石那一份），
++  //      与宝石明细相加后才等于战斗口径的总额度。宝石把额度吃满时 enhPart 会更小，
++  //      这正是"面板不许超报"的落点。
+   const enhanceAttrs = (tower && tower.enhanceAttrs) ? tower.enhanceAttrs : null;
+-  if (enhanceLv > 0 && enhanceAttrs) {
++  if (enhPart > 0 && enhanceAttrs) {
+     for (const key of Object.keys(enhanceAttrs)) {
+-      const v = enhanceAttrs[key];
++      const eff = skills.findEffect(tType, key);
++      const v = eff ? eff.per * enhPart : (enhanceAttrs[key] || 0);
+       if (!v) continue;
+       const attr = ENHANCE_ATTR_MAP[key] || key;
+       pushSource(sources, {
+         attr: attr,
+         source: SOURCE.ENHANCE,
+         // 用【技能等级】（Lv.1 起）而不是强化次数，才能和技能槽的「Lv.x」对得上
+-        label: '强化 Lv.' + (skills.LEVEL_BASE + enhanceLv) + ' · ' + buffMeta(key).name,
++        label: '强化 Lv.' + (skills.LEVEL_BASE + enhPart) + ' · ' + buffMeta(key).name,
+         kind: 'points',
+         value: v,
+       });
+@@ -334,11 +372,16 @@ function collectTowerStats(game, tower, stats, towerType) {
+   }
+ 
+   // ================= 2. 原生值 =================
+-  // 3★ 强化塔：基础攻击力 +5%/级（白字，属于原生值范畴，不是绿字来源）
+-  const stage3EnhanceLv = (tower && tower.stage >= BALANCE.enhance.minStage) ? enhanceLv : 0;
++  // 3★ 强化塔：基础攻击力 +5%/次（白字，属于原生值范畴，不是绿字来源）
++  // ⚠️ 口径 = 【强化次数总额度】totalTimes = clamp(局内强化 + 宝石等级) —— 与
++  //    game_core.towerDamage 严格同一份（那边直接调 towerMod.getEnhanceTimes）。
++  //    历史上这里写的是 tower.enhanceLevel（0 起、不含宝石），而战斗侧写的是
++  //    【技能等级 Lv】（1 起、含宝石）→ 面板与战斗永久差 5%，宝石加的等级面板更是
++  //    完全看不见。两条线必须同源，别再各写各的。
++  const stage3 = !!(tower && (tower.stage || 0) >= BALANCE.enhance.minStage);
+   const rawBaseDamage = st.damage || 0;
+-  const whiteBonusDamage = stage3EnhanceLv > 0
+-    ? rawBaseDamage * (1 + stage3EnhanceLv * 0.05)
++  const whiteBonusDamage = (stage3 && totalTimes > 0)
++    ? rawBaseDamage * (1 + totalTimes * 0.05)
+     : rawBaseDamage;
+   const base = {
+     damage: whiteBonusDamage,
+@@ -412,7 +455,11 @@ function collectTowerStats(game, tower, stats, towerType) {
+     range: finalRange,
+   // hp: finalHp,  // 已移除：图形塔无敌，不再显示
+     auraPower: (base.auraPower + auraPoints) * auraMult,
+-    auraPenetration: Math.max(0, base.auraPenetration + pointsSum(sources, ATTR.AURA_PENETRATION)),
++    // 穿透光环（菱形塔）：口径 = (原生 + 技能点值) × 进阶倍率 —— 与战斗侧
++    // towerMod.getAuraOutput 严格同源（那里也是 先加点值、再乘 stage.multiplier）。
++    // ⚠️ 别顺手把图签也乘进来：穿透光环按既定设计**不吃图签**（倍率里只有阶段那一项）。
++    auraPenetration: Math.max(0, (base.auraPenetration + pointsSum(sources, ATTR.AURA_PENETRATION))
++      * percentMultiplier(sources, ATTR.AURA_PENETRATION)),
+     critChance: finalCrit,
+     critMult: finalCritMult,
+     break: finalBreak,
+@@ -458,10 +505,15 @@ function collectTowerStats(game, tower, stats, towerType) {
+       const v = aura.buffs[key];
+       if (!v) continue;
+       const meta = buffMeta(key);
++      // ⚠️ 数值必须过 numText（最多 2 位小数）：光环值是浮点乘算出来的，
++      //    25 × 1 × 1.12 = 28.000000000000004 —— 直接把裸数字插进模板串，
++      //    这串尾巴就会原样印到面板的"生效效果"里。
++      const n = round2(v);
+       effects.push({
+-        sign: v > 0 ? 1 : -1,
++        // sign 取【四舍五入后】的值：负号要不要画，得看玩家真正看到的那个数
++        sign: n < 0 ? -1 : 1,
+         source: `${aura.sourceName}${aura.sourceStage > 0 ? ' ' + stageText(aura.sourceStage) : ''}`,
+-        text: `${meta.name}${v > 0 ? '+' : ''}${v}${meta.unit}`,
++        text: `${meta.name}${n > 0 ? '+' : ''}${numText(n)}${meta.unit}`,
+         remaining: Math.max(0, aura.remaining || 0),
+       });
+     }
+@@ -477,7 +529,7 @@ function buildRows(ctx) {
+   const { isSupport, base, bonus, final, sources } = ctx;
+   const rows = [];
+ 
+-  const signed = (v, unit) => (v > 0 ? `+${round2(v)}${unit}` : (v < 0 ? `${round2(v)}${unit}` : ''));
++  const signed = (v, unit) => (v > 0 ? `+${numText(v)}${unit}` : (v < 0 ? `${numText(v)}${unit}` : ''));
+ 
+   if (!isSupport) {
+     // 攻击力：50+50（+50 为等级/阶段带来的非原生增幅）
+@@ -496,7 +548,7 @@ function buildRows(ctx) {
+       rows.push({
+         key: ATTR.ATTACK_SPEED,
+         label: '攻速',
+-        baseText: `${round2(base.attackSpeedMultiplier)}%`,
++        baseText: `${numText(base.attackSpeedMultiplier)}%`,
+         bonusText: signed(bonus.attackSpeedMultiplier, '%'),
+         sign: Math.sign(bonus.attackSpeedMultiplier),
+         parts: [],
+@@ -522,7 +574,7 @@ function buildRows(ctx) {
+     rows.push({
+       key: ATTR.CRIT,
+       label: '暴击率',
+-      baseText: `${round2(base.critChance)}%`,
++      baseText: `${numText(base.critChance)}%`,
+       bonusText: signed(bonus.critChance, '%'),
+       sign: Math.sign(bonus.critChance),
+       parts: pointParts(sources, ATTR.CRIT),
+@@ -543,7 +595,7 @@ function buildRows(ctx) {
+     rows.push({
+       key: ATTR.PENETRATION,
+       label: '穿透',
+-      baseText: `${round2(base.penetration)}`,
++      baseText: `${numText(base.penetration)}`,
+       bonusText: signed(bonus.penetration, ''),
+       sign: Math.sign(bonus.penetration),
+       parts: pointParts(sources, ATTR.PENETRATION),
+@@ -554,7 +606,7 @@ function buildRows(ctx) {
+       rows.push({
+         key: ATTR.EXPLOSION_DAMAGE,
+         label: '二段爆炸伤害',
+-        baseText: `${round2(base.explosionDamage)}%`,
++        baseText: `${numText(base.explosionDamage)}%`,
+         bonusText: signed(bonus.explosionDamage, '%'),
+         sign: Math.sign(bonus.explosionDamage),
+         parts: pointParts(sources, ATTR.EXPLOSION_DAMAGE),
+@@ -562,7 +614,7 @@ function buildRows(ctx) {
+       rows.push({
+         key: ATTR.EXPLOSION_RADIUS,
+         label: '爆炸范围',
+-        baseText: `${round2(base.explosionRadius)}`,
++        baseText: `${numText(base.explosionRadius)}`,
+         bonusText: signed(bonus.explosionRadius, ''),
+         sign: Math.sign(bonus.explosionRadius),
+         parts: pointParts(sources, ATTR.EXPLOSION_RADIUS),
+@@ -575,22 +627,25 @@ function buildRows(ctx) {
+     rows.push({
+       key: ATTR.AURA_POWER,
+       label: '光环强度',
+-      baseText: `${round2(base.auraPower)}%`,
++      baseText: `${numText(base.auraPower)}%`,
+       bonusText: signed(bonus.auraPower, '%'),
+       sign: Math.sign(bonus.auraPower),
+       parts: percentParts(sources, ATTR.AURA_POWER).concat(pointParts(sources, ATTR.AURA_POWER)),
+     });
+   }
+ 
+-  // 穿透光环（菱形塔）：原生值 + 技能增量，与 game_core.applyTrapezoidAuras 同口径
++  // 穿透光环（菱形塔）：原生值 + 技能增量，再乘进阶倍率
++  //   —— 与 game_core.applyTrapezoidAuras / tower.getAuraOutput 同口径。
++  // ⚠️ parts 必须**百分比与点值都列**：进阶是百分比来源，只列点值会让这一行
++  //    有绿字却没有"阶段增幅"明细（数字涨了、玩家看不到为什么涨）。
+   if (base.auraPenetration > 0) {
+     rows.push({
+       key: ATTR.AURA_PENETRATION,
+       label: '穿透光环',
+-      baseText: `${round2(base.auraPenetration)}`,
++      baseText: `${numText(base.auraPenetration)}`,
+       bonusText: signed(bonus.auraPenetration, ''),
+       sign: Math.sign(bonus.auraPenetration),
+-      parts: pointParts(sources, ATTR.AURA_PENETRATION),
++      parts: percentParts(sources, ATTR.AURA_PENETRATION).concat(pointParts(sources, ATTR.AURA_PENETRATION)),
+     });
+   }
+ 
+@@ -598,21 +653,21 @@ function buildRows(ctx) {
+   if (isSupport) {
+     rows.push({
+       key: ATTR.RANGE, label: '光环范围',
+-      baseText: `${round2(base.range)}`,
++      baseText: `${numText(base.range)}`,
+       bonusText: signed(bonus.range, ''), sign: Math.sign(bonus.range),
+       parts: pointParts(sources, ATTR.RANGE),
+     });
+   } else {
+     rows.push({
+       key: ATTR.RANGE, label: '射程',
+-      baseText: `${round2(base.range)}`,
++      baseText: `${numText(base.range)}`,
+       bonusText: signed(bonus.range, ''), sign: Math.sign(bonus.range),
+       parts: pointParts(sources, ATTR.RANGE),
+     });
+   }
+   // rows.push({  // 已移除：图形塔无敌，不再显示生命
+   //   key: ATTR.HP, label: '生命',
+-  //   baseText: `${round2(base.hp)}`,
++  //   baseText: `${numText(base.hp)}`,
+   //   bonusText: signed(bonus.hp, ''), sign: Math.sign(bonus.hp),
+   //   parts: pointParts(sources, ATTR.HP),
+   // });
+@@ -635,7 +690,7 @@ function pushSpecialRow(rows, sources, cfg) {
+   rows.push({
+     key: cfg.key,
+     label: cfg.label,
+-    baseText: `${round2(cfg.base)}${cfg.unit}`,
++    baseText: `${numText(cfg.base)}${cfg.unit}`,
+     bonusText: signedNum(cfg.bonus, cfg.unit),
+     sign: Math.sign(cfg.bonus),
+     parts: pointParts(sources, cfg.key),
+@@ -645,14 +700,14 @@ function pushSpecialRow(rows, sources, cfg) {
+ /** 带符号的数值文本（0 返回空串；用于"基础值+加值"的加值一侧） */
+ function signedNum(v, unit) {
+   if (!v) return '';
+-  return `${v > 0 ? '+' : ''}${round2(v)}${unit || ''}`;
++  return `${v > 0 ? '+' : ''}${numText(v)}${unit || ''}`;
+ }
+ 
+ /** 把百分比来源整理成明细子行 */
+ function percentParts(sources, attr) {
+   return sources
+     .filter((s) => s.attr === attr && s.kind === 'percent')
+-    .map((s) => ({ source: s.source, label: s.label, text: `${s.percent > 0 ? '+' : ''}${s.percent}%`, sign: s.sign }));
++    .map((s) => ({ source: s.source, label: s.label, text: `${s.percent > 0 ? '+' : ''}${numText(s.percent)}%`, sign: s.sign }));
+ }
+ 
+ /** 把点值来源整理成明细子行 */
+@@ -664,7 +719,7 @@ function pointParts(sources, attr) {
+       return {
+         source: s.source,
+         label: s.label,
+-        text: `${s.value > 0 ? '+' : ''}${round2(s.value)}${meta.unit}`,
++        text: `${s.value > 0 ? '+' : ''}${numText(s.value)}${meta.unit}`,
+         sign: s.sign,
+       };
+     });
+@@ -674,6 +729,16 @@ function round2(v) {
+   return Math.round((v + Number.EPSILON) * 100) / 100;
+ }
+ 
++/**
++ * 面板数值文案：**最多保留 2 位小数**（整数不写小数点，小数不留末尾的 0）。
++ * ⚠️ 所有"实数"展示都必须走这里，不许直接把数字插进模板串：
++ *    光环 / 倍率都是浮点乘算出来的，25 × 1 × 1.12 在 JS 里等于 28.000000000000004，
++ *    直接 `${v}` 就把这串尾巴印到"生效效果"里了（玩家看到的就是乱码一样的长小数）。
++ */
++function numText(v) {
++  return String(round2(v));
++}
++
+ /** 数值格式化：整数显示整数，小数最多保留2位 */
+ function formatNum(v) {
+   const n = round2(v);
+@@ -694,5 +759,6 @@ module.exports = {
+   percentParts,
+   pointParts,
+   round2,
++  numText,
+   formatNum,
+ };

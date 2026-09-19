@@ -586,11 +586,14 @@ function synthesizeGems(uids) {
 
   let made = null;
   if (success) {
-    // 产物种类：在合成材料的种类范围内随机（全同名 → 必是该种）
-    const kinds = chosen.map((g) => g.kind);
-    const kind = kinds[Math.floor(Math.random() * kinds.length)];
+    // 产物：全种类随机一颗 +1 级（不再限所选材料范围）
+    const tiers = GEM_KINDS.map((g) => g.tier);
+    const tier = tiers[Math.floor(Math.random() * tiers.length)];
+    const kindsOfTier = GEM_KINDS.filter((g) => g.tier === tier).map((g) => g.id);
+    const kind = kindsOfTier[Math.floor(Math.random() * kindsOfTier.length)];
+    const madeLv = Math.min(tier + 1, 5);
     m.gemSeq = (m.gemSeq || 0) + 1;
-    made = { uid: 'g' + m.gemSeq, kind: kind, lv: lv + 1 };
+    made = { uid: 'g' + m.gemSeq, kind: kind, lv: madeLv };
     m.gems.push(made);
   }
   save(true);

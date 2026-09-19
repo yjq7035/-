@@ -279,14 +279,24 @@ log('\n===== ④ 战斗口径：宝石必须真的改变战斗数值 =====');
     meta.takeGem(T, 0);
   }
 
-  // —— 紫晶：射程 +16（运行时属性，且强化等级为 0 也要生效）——
+  // —— 紫晶：技能效果 +16%（放大固有技能「致命一击」两条效果的当前值）——
+  //    三角塔 = 暴击几率 5% → 5.8%（5% × 16%）、暴击伤害 220% → 221.6%（10% × 16%）。
+  //    ⚠️ 它**不碰攻击力** —— 曾被误当成「攻击力 +16%」叠在基础攻击上（口径打架）。
   const am = meta.gemList().filter((x) => x.kind === 'amethyst')[0] || (meta.addGem('amethyst'), meta.gemList().filter((x) => x.kind === 'amethyst')[0]);
   if (am) {
+    const dmgPre = g.towerDamage(tower, 100);
     meta.embedGem(T, 0, am.uid);
-    const rt = towerMod.getTowerRuntimeStats(tower);
-    ok('紫晶让射程 +16（强化等级 0 也生效）',
-      Math.abs(rt.range - (rtBefore.range + gems.gemDef('amethyst').effect.range)) < 1e-6,
-      `${rtBefore.range} → ${rt.range}`);
+    const p = towerMod.getAttackProfile(tower);
+    const pct = gems.gemDef('amethyst').effect.skillEffectPercent / 100;
+    ok('紫晶让暴击几率吃到「技能效果 +16%」（5% → 5.8%）',
+      Math.abs(p.critChance - profBefore.critChance * (1 + pct)) < 1e-6,
+      `${profBefore.critChance}% → ${p.critChance}%`);
+    ok('紫晶让暴击伤害也吃到「技能效果 +16%」（220% → 221.6%）',
+      Math.abs(p.critMult - profBefore.critMult - (config.TOWER_STATS.triangle.critDamage * pct) / 100) < 1e-6,
+      `${profBefore.critMult.toFixed(3)} → ${p.critMult.toFixed(3)}`);
+    ok('紫晶不加攻击力（技能效果 ≠ 攻击力）',
+      Math.abs(g.towerDamage(tower, 100) - dmgPre) < 1e-6,
+      `${dmgPre.toFixed(2)} → ${g.towerDamage(tower, 100).toFixed(2)}`);
     meta.takeGem(T, 0);
   }
 

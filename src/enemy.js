@@ -56,6 +56,10 @@ function spawnEnemy(type, pathPoints, waveNumber) {
   // 小血条不绘制，鬼影就一直没机会初始化 —— 等它真被打了才第一次绘制，
   // 初始值会退化成"当前血量"，于是**第一次挨打的白条永远不出现**。
   enemy._hpGhost = scaledHp;
+  // BOSS 走"漏桶"口径（renderer.advanceBossGhost），桶也要在出生时清零：
+  // 单位现在不池化，但把"出生即初始化"这条规矩一次写全，免得将来复用对象时
+  // 带着上一只的旧桶（表现为"刚出生就挂着一段白条"）。
+  enemy._hpGhostPool = 0;
   // 初始朝向：取路径第一段切线方向（首帧即有正确朝向，供渲染朝向指示器）
   if (pathPoints.length >= 2) {
     enemy.facing = Math.atan2(pathPoints[1].y - pathPoints[0].y, pathPoints[1].x - pathPoints[0].x);

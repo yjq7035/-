@@ -48,32 +48,21 @@ function gemName(kind, lv) {
 }
 
 /**
- * 宝石在指定等级下的效果数值（效果随等级线性放大：Lv.N = 基础值 × N）。
- * 合成产物 +1 级 → 加成翻倍一档，这是"合成值得做"的数值根基。
+ * 宝石在指定等级下的效果数值。
+ * 当前设计：GEM_KINDS 的每行已自带对应 tier 的基值，
+ * 不再依赖 lv 乘算（否则 tier 和 lv 两条线会打架）。
+ * 合成产物的意义：每阶有独立的名称/颜色/基值，
+ * 效果文案用 effectText(kind) 即可（显示该宝石的基础效果）。
  */
 function effectAt(kind, lv) {
   const def = gemDef(kind);
   if (!def) return {};
-  const mult = Math.max(1, Math.floor(lv || 1));
-  const e = def.effect || {};
-  const out = {};
-  for (const k of Object.keys(e)) out[k] = e[k] * mult;
-  return out;
+  return Object.assign({}, def.effect || {});
 }
 
-/** 宝石在指定等级下的效果文案，如 红宝石 Lv.2 → 「攻击力 +16%」 */
+/** 宝石在指定等级下的效果文案（显示该宝石的基础效果） */
 function effectTextAt(kind, lv) {
-  const def = gemDef(kind);
-  if (!def) return '';
-  const e = effectAt(kind, lv);
-  const parts = [];
-  if (e.damagePercent) parts.push(`攻击力 +${e.damagePercent}%`);
-  if (e.attackSpeedMultiplier) parts.push(`攻速 +${e.attackSpeedMultiplier}`);
-  if (e.critChance) parts.push(`暴击率 +${e.critChance}%`);
-  if (e.penetration) parts.push(`穿透 +${e.penetration}`);
-  if (e.range) parts.push(`射程 +${e.range}`);
-  if (e.skillLevels) parts.push(`固有技能 +${e.skillLevels} 级`);
-  return parts.length ? parts.join(' · ') : def.desc;
+  return effectText(kind);
 }
 
 /** 宝石颜色（未知 id 用中性灰，绝不返回 undefined —— 画布会把它变成"透明"） */
@@ -90,7 +79,8 @@ function gemColor(kind) {
  * @returns {{
  *   count:number, kinds:string[],
  *   damagePercent:number, attackSpeedMultiplier:number, critChance:number,
- *   penetration:number, range:number, skillLevels:number
+ *   penetration:number, range:number, skillLevels:number,
+ *   skillEffectPercent:number
  * }}
  */
 function bonusForType(type) {
@@ -103,6 +93,7 @@ function bonusForType(type) {
     penetration: 0,
     range: 0,
     skillLevels: 0,
+    skillEffectPercent: 0,
   };
   if (!type || !TOWER_DEFS[type]) return out;
 
@@ -118,6 +109,7 @@ function bonusForType(type) {
     out.penetration += e.penetration || 0;
     out.range += e.range || 0;
     out.skillLevels += e.skillLevels || 0;
+    out.skillEffectPercent += e.skillEffectPercent || 0;
   }
   return out;
 }
@@ -168,10 +160,24 @@ function randomKind() {
   return GEM_ORDER[Math.floor(Math.random() * GEM_ORDER.length)];
 }
 
-/** 掉落文案，如「获得宝石 · 红宝石 Lv.1（攻击力 +8%）」 */
+/** 掉落文案，如「获得宝石 · 炽焰红宝石 Lv.2（攻击力 +16%）」 */
 function dropText(kind, lv) {
   const def = gemDef(kind);
   return def ? `获得宝石 · ${gemName(kind, lv)}（${def.desc}）` : '获得宝石';
+}
+
+/** 合成规则：3 颗同 kind 同 tier 合成 1 颗 +1 tier（上限 5） */
+const SYNTH_RULES = { 1: 3, 2: 3, 3: 3, 4: 3 };
+const MAX_TIER = 5;
+function canSynth(kind, lv) {
+  const def = gemDef(kind);
+  if (!def) return false;
+  if (lv >= MAX_TIER) return false;
+  const need = SYNTH_RULES[lv] || 3;
+  return need;
+}
+function synthResult(kind, lv) {
+  return { kind, lv: lv + 1 };
 }
 
 // ==================== 绘制 ====================

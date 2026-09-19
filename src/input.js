@@ -1071,9 +1071,10 @@ function tryPlaceTower(game, dragType, slot, fromShop) {
   if (slotTower) {
     const dragTower = getDragTower(game);
     if (dragTower && towerMod.canMergeUpgrade(slotTower, dragTower)) {
-      // 合成成功：目标槽塔阶段+1，攻击增幅+100%
-      slotTower.stage += 1;
-      slotTower.attackPowerBoost = towerMod.getAttackPowerBoost(slotTower.stage);
+      // 合成成功：目标槽塔进阶一星（顺带同步历史字段 attackPowerBoost）
+      // ⚠️ 走 setStage —— 唯一的进阶写入点。放大什么、放大多少由 src/stage.js 决定，
+      //    这里不许自己 += stage 后手算增幅（辅助塔的焦点不是攻击力）。
+      towerMod.setStage(slotTower, (slotTower.stage || 0) + 1);
       // 如果从商店拖放，消耗金币并计入累计
       if (fromShop) {
         game.gold -= cost;

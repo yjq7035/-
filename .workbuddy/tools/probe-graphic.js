@@ -9,6 +9,11 @@
 //   ⑤ 战斗口径用 getInnateStackCap（原生 100 + 强化 20/级），不再硬编码 100
 //   ⑥ 大血条：不发光（0 个径向渐变 / 0 个椭圆）、掉血白条按帧向下追平、
 //      回血立刻贴合、鬼影永不小于实血
+//   ⑥b 【2026-09-19 补】BOSS 的白条**真的画得出来**：BOSS 血厚 50 倍，
+//      小怪那套恒定速度会在绘制前把鬼影追平（白条恒 0px，用户就是这么报的）；
+//      改走漏桶口径后按"每秒伤害 × 时间常数"给长度。判据跑真实 render 管线、
+//      量的是**露在实条外面的白条像素**，不是内部状态。
+//      反向验证：把口径改回旧的一套，⑥b 立刻红在 `峰值 0.00px`。
 //   ⑦ 战斗层不再记账 _dmgBuf（跨层状态已删）
 //   ⑧ 塔型键 graphic → parallel 改名完整（配置表 / 源码残留 / 旧存档迁移）
 // 附：把图标 / 血条 / 两个面板回放成 SVG，拼一份自包含 HTML 给人眼核对。
@@ -45,6 +50,42 @@ const log = (s) => out.push(s);
 // 别用 indexOf('255, 255, 255') —— 血条的静态内高光是 0.22，会整片误报。
 const GHOST_FILL_PREFIX = 'rgba(255, 255, 255, 0.8';
 const hasGhost = (fills) => fills.some((f) => f.indexOf(GHOST_FILL_PREFIX) >= 0);
+
+/**
+ * 本帧**露在白条外面**的那截有多宽（px）—— 也就是玩家真正看见的"白色缓冲条"。
+ *
+ * 为什么不是"鬼影矩形的宽度"：白条是画在实条下面的，实条盖住左边一大截，
+ * 露出来的只有"鬼影 - 实血"那一段（饱和时鬼影矩形 ≈ 整条宽，但露出的可能只有几个像素）。
+ * 所以量法 = 鬼影矩形宽 - 紧随其后的实条矩形宽。
+ *   · 大血条（h=14）：实条是渐变填充，颜色是对象 → String() 出来是 '[object Object]'
+ *   · 小血条（h=4）  ：实条是纯色，取"下一个不是白条色的 fill"
+ *
+ * 为什么要量像素而不是读 `_hpGhost`：鬼影是内部状态，它在 updateHpGhost 里被追平是
+ * 悄无声息的 —— 2026-09-19 那个 bug 正是"鬼影有值、白条 0px"（一帧的追赶量 >
+ * 单次伤害，绘制前就被追平）。只有量像素才抓得住"玩家眼里有没有"。
+ *
+ * 关联方式：spy.fills 只在 ctx.fill 里 push，rec.ops 里的 'fill' 也在同一次调用里 push，
+ * 所以第 i 个颜色 ↔ 第 i 条 fill 边界一一对应。
+ * 只认 0.8x 这档白（大条 0.82 / 小条 0.8）—— 鬼影前锋亮边是 0.95、静态内高光是 0.22，
+ * 用 indexOf('255, 255, 255') 会把它们当成白条整片误报。
+ */
+function exposedGhostWidth(rec, fills, big) {
+  const seq = [];
+  for (const op of rec.ops) if (op[0] === 'fill') seq.push(op[1]);
+  for (let i = 0; i < seq.length; i++) {
+    const c = fills[i];
+    if (!c || c.indexOf(GHOST_FILL_PREFIX) !== 0) continue;
+    const g = seq[i];
+    if (!g || (big ? g.h <= 10 : g.h > 10)) continue;
+    for (let k = i + 1; k < seq.length; k++) {
+      const c2 = fills[k];
+      const isRealBar = big ? c2 === '[object Object]' : c2.indexOf(GHOST_FILL_PREFIX) !== 0;
+      if (isRealBar && seq[k]) return Math.max(0, g.w - seq[k].w);
+    }
+    return g.w;                       // 没找到实条（只画了白条）→ 整条都算白
+  }
+  return 0;                           // 本帧压根没画白条
+}
 
 // ---------- 带探针的录制 ctx（顺手统计径向渐变 / 椭圆 / 每次 fill 的颜色）----------
 function makeSpyCtx() {
@@ -144,14 +185,20 @@ const BAR_DT = 1 / 60;
 function mkBoss(maxHp, pct) {
   return {
     alive: true, tier: 4, color: '#FF0000', size: 28, x: 195, y: 300,
-    maxHp: maxHp, hp: maxHp * pct,
+    // 鬼影初值 = 满血（与 enemy.spawnEnemy 一致）：否则"出生后第一次挨打"的白条不出现
+    maxHp: maxHp, hp: maxHp * pct, _hpGhost: maxHp, _hpGhostPool: 0,
   };
 }
-/** 只画血条（不画整个战场），返回本帧的探针结果 */
+/**
+ * 只画大血条（不画整个战场），返回本帧的探针结果。
+ * ⚠️ 鬼影**不由大血条推进**：全项目唯一推进点是血条独立图层（drawEnemyHpBar），
+ *    这里显式调 advanceHpGhost 来模拟那一层，否则测出来的永远是"白条 0px"。
+ */
 function drawBarOnce(boss, dt) {
   const { ctx, rec, spy } = makeSpyCtx();
-  renderer.drawBossHealthBar(ctx, boss, 195, 60, 'red', 320, dt);
-  return { spy, rec, fills: spy.fills };
+  renderer.advanceHpGhost(boss, dt);
+  renderer.drawBossHealthBar(ctx, boss, 195, 60, 'red', 320);
+  return { spy, rec, fills: spy.fills, ghostW: exposedGhostWidth(rec, spy.fills, true) };
 }
 {
   const boss = mkBoss(25000, 1);
@@ -171,7 +218,8 @@ function drawBarOnce(boss, dt) {
   // 逐帧推进：单调不增、且永不低于实血
   let prev = ghostStart;
   let monotonic = true, neverBelow = true, frames = 0;
-  while (frames < 90 && boss._hpGhost > boss.hp + 1e-6) {
+  const pool0 = ghostStart - boss.hp;                 // 入桶的伤害（= 掉掉的那 40% 满血）
+  while (frames < 400 && boss._hpGhost > boss.hp + 1e-6) {
     drawBarOnce(boss, BAR_DT);
     if (boss._hpGhost > prev + 1e-6) monotonic = false;
     if (boss._hpGhost < boss.hp - 1e-6) neverBelow = false;
@@ -180,11 +228,44 @@ function drawBarOnce(boss, dt) {
   }
   ok('白条单调向下、永不回升', monotonic);
   ok('白条永不掉到实血以下', neverBelow);
-  ok('白条会追上实血（最终彻底消失）', boss._hpGhost <= boss.hp + 1e-6, `${(frames * BAR_DT).toFixed(2)}s 追平`);
-  // 追赶速度 = 满管 / 0.9s，所以缺口 40% 时理论耗时 = 0.9 × 40% = 0.36s
-  const expectSec = 0.9 * 0.4;
-  ok('追平耗时符合 0.9s/满管 的设计值', Math.abs(frames * BAR_DT - expectSec) < 0.06,
-    `实测 ${(frames * BAR_DT).toFixed(2)}s vs 理论 ${expectSec.toFixed(2)}s`);
+  ok('白条会追上实血（最终彻底消失）', boss._hpGhost <= boss.hp + 1e-6, `${(frames * BAR_DT).toFixed(2)}s 归零`);
+
+  // ---- 口径（2026-09-19 定）：BOSS = 漏桶，白条 ≈ 最近 0.5s 吃到的伤害，按 e 指数消退 ----
+  // 指数律：τ=0.5s 后桶里应剩 pool0 × 1/e
+  {
+    const e = mkBoss(25000, 1);
+    e.hp = 15000;                                     // 一次掉 40%
+    renderer.advanceHpGhost(e, BAR_DT);               // 入桶
+    const g0 = e._hpGhost - e.hp;
+    for (let i = 0; i < 30; i++) renderer.advanceHpGhost(e, BAR_DT);   // 再走 0.5s = 一个时间常数
+    const want = g0 / Math.E;
+    ok('消退遵守指数律：一个时间常数后剩 1/e',
+      Math.abs((e._hpGhost - e.hp) - want) < g0 * 0.02,
+      `实测 ${(e._hpGhost - e.hp).toFixed(0)} vs 理论 ${want.toFixed(0)}（t=0 时 ${g0.toFixed(0)}）`);
+  }
+  // 归零时刻 = τ × ln(入桶 / 掐尾阈值)：e 指数的尾巴不能真的无穷长
+  {
+    const want = 0.5 * Math.log(pool0 / (boss.maxHp * 0.001));
+    ok('归零耗时符合 τ × ln(入桶伤害 / 掐尾阈值)（尾巴被掐掉，不是渐近不停）',
+      Math.abs(frames * BAR_DT - want) < 0.12,
+      `实测 ${(frames * BAR_DT).toFixed(2)}s vs 理论 ${want.toFixed(2)}s`);
+  }
+  // 🔴 这条才是用户报的那个 bug 的正身：**持续小额伤害**下白条必须稳定可见。
+  // 旧实现（恒定速度）在 BOSS 身上一帧就追平 → 白条恒为 0px。
+  // 漏桶的稳态缺口 = 每秒伤害 × τ，与"单次伤害有多小"无关。
+  {
+    const dpsFrac = 0.10;                             // 每秒打掉 10% 满血
+    const stream = mkBoss(25000, 1);
+    for (let i = 0; i < 300; i++) {                   // 持续 5s
+      stream.hp -= stream.maxHp * dpsFrac * BAR_DT;
+      renderer.advanceHpGhost(stream, BAR_DT);
+    }
+    const steady = (stream._hpGhost - stream.hp) / stream.maxHp;
+    const want = dpsFrac * 0.5;                       // 每秒伤害 × τ
+    ok('持续小额伤害：稳态白条 ≈ 每秒伤害 × 时间常数（不再被一帧追平）',
+      Math.abs(steady - want) < 0.03,
+      `实测 ${(steady * 100).toFixed(1)}% vs 理论 ${(want * 100).toFixed(0)}%`);
+  }
   const settled = drawBarOnce(boss, BAR_DT);
   ok('追平后不再画白条', !hasGhost(settled.fills), settled.fills.join(' | '));
 
@@ -219,6 +300,88 @@ function drawBarOnce(boss, dt) {
   const enemyMod = require(path.join(ROOT, 'src', 'enemy'));
   const fresh = enemyMod.spawnEnemy('normal', [{ x: 0, y: 0 }, { x: 100, y: 0 }], 1);
   ok('新刷的怪：鬼影初值 = 满血', fresh._hpGhost === fresh.maxHp, `ghost=${fresh._hpGhost} maxHp=${fresh.maxHp}`);
+}
+
+// ============================================================================
+log('\n===== ④b BOSS 大血条的白条：真实管线下真的画得出来 =====');
+// 事故背景（2026-09-19 用户报"小怪血条有白条、BOSS 大血条没有"）：
+//   · BOSS 的 maxHp 是小怪的 50 倍（enemy.js）→ 塔打它一下只掉条宽的 0.1%~0.5%；
+//   · 小怪那套"满管 0.6~0.9s 追平"的恒定速度，换算成每帧要缩掉满管的 1.85% ——
+//     **比一次伤害还多**，鬼影在绘制之前就被追平，白条一帧都没进过画布
+//     （实测峰值 0.01~0.78px、可见帧 0%）；
+//   · 更阴的一层：BOSS 同时有「头顶小血条」和「顶部大血条」，两层各推一次鬼影，
+//     小血条那层若沿用恒定速度 → 每帧把鬼影一路追平 → 大血条的白条永远 0px。
+// 修法：BOSS 走"漏桶"（白条 ≈ 最近 0.5s 吃到的伤害，见 renderer.advanceBossGhost），
+//      且推进统一收口到血条独立图层，大血条只读。
+// 这节跑**真实管线**（update + render），量"本帧画进画布的白条像素"。
+{
+  const enemyMod = require(path.join(ROOT, 'src', 'enemy'));
+  const { ctx, rec, spy } = makeSpyCtx();
+  const g = mkGame(ctx, 390, 844);
+  g.scene = 'battle';
+  g.battleStarted = true;
+
+  const boss = enemyMod.spawnEnemy('boss', g.pathPoints, 10);   // maxHp = 50000 = 小怪的 50 倍
+  g.enemies.push(boss);
+  g.enemiesToSpawn = [];
+  g.waveInProgress = true;
+  g.currentWave = 10;
+  g.currentLevel = 1;
+
+  // 伤害直给（不经塔），只为把"相对伤害很小"这个真实条件造出来：
+  // 每帧 0.5% 满血（= 每秒 30% 满血）—— 单帧那一跳远小于旧实现每帧追平的 1.85%，
+  // 也就是原来"必然看不见"的量级。稳态白条应当 ≈ 每秒伤害 × τ = 15% 条宽。
+  const CHIP = boss.maxHp * 0.005;
+  const N = 120;
+  g.dt = BAR_DT;
+  const bigW = [], smallW = [];
+  for (let i = 0; i < N; i++) {
+    boss.hp -= CHIP;
+    rec.ops.length = 0; rec.texts.length = 0; rec.rects.length = 0; rec.clips.length = 0;
+    spy.fills.length = 0;
+    renderer.render(g);
+    bigW.push(exposedGhostWidth(rec, spy.fills, true));    // 顶部大血条露出的白条（h=14）
+    smallW.push(exposedGhostWidth(rec, spy.fills, false)); // 头顶小血条露出的白条（h=4）
+  }
+  const peakBig = Math.max.apply(null, bigW);
+  const peakSmall = Math.max.apply(null, smallW);
+  const barW = Math.min(g.W * 0.7, 320);
+  const want = barW * 0.15;                            // 每秒 30% × τ 0.5s = 15% 条宽
+  ok('BOSS 大血条的白条真的画出来了（不再是 0px）', peakBig >= 4,
+    `峰值 ${peakBig.toFixed(2)}px / 理论 ${want.toFixed(1)}px（条宽 ${barW}）`);
+  ok('白条长度对得上"每秒伤害 × 时间常数"', Math.abs(peakBig - want) < want * 0.3,
+    `实测 ${peakBig.toFixed(2)}px vs 理论 ${want.toFixed(1)}px（±30%）`);
+  ok('白条没有糊满半条（Boss 大血条的本体还看得清）', peakBig <= barW * 0.4,
+    `峰值 ${peakBig.toFixed(2)}px vs 上限 ${(barW * 0.4).toFixed(0)}px`);
+  ok('BOSS 头顶小血条也在画白条（两条共用同一个鬼影，不打架）', peakSmall >= 1,
+    `峰值 ${peakSmall.toFixed(2)}px`);
+
+  // 停火后按 e 指数消退：先明显变短，再彻底归零（既不是"冻住"，也不是"啪一下就没"）
+  const tailW = [];
+  for (let i = 0; i < 200; i++) {
+    rec.ops.length = 0; spy.fills.length = 0;
+    renderer.render(g);
+    if (i === 39) tailW.push(exposedGhostWidth(rec, spy.fills, true));   // 停火 0.67s
+  }
+  const afterBig = exposedGhostWidth(rec, spy.fills, true);
+  const afterSmall = exposedGhostWidth(rec, spy.fills, false);
+  ok('停火 0.67s：白条明显在缩（不是冻住）', tailW[0] < peakBig * 0.7 && tailW[0] > 0,
+    `0.67s 时 ${tailW[0].toFixed(2)}px vs 峰值 ${peakBig.toFixed(2)}px`);
+  ok('停火 3.3s：白条彻底消失（指数尾巴被掐掉，不会赖着不走）',
+    afterBig === 0 && afterSmall === 0, `大条 ${afterBig.toFixed(2)}px / 小条 ${afterSmall.toFixed(2)}px`);
+
+  // 口径分流的直接判据：同样一次 250 伤害，小怪那套一帧就追平，BOSS 那套留下来
+  {
+    const mob = { alive: true, tier: 0, color: '#808080', size: 16, x: 0, y: 0,
+      maxHp: 50000, hp: 50000 - 250, _hpGhost: 50000 };
+    renderer.advanceHpGhost(mob, BAR_DT);
+    const mobLeft = mob._hpGhost - mob.hp;
+    const b2 = { tier: 4, maxHp: 50000, hp: 50000 - 250, _hpGhost: 50000, _hpGhostPool: 0 };
+    renderer.advanceHpGhost(b2, BAR_DT);
+    const bossLeft = b2._hpGhost - b2.hp;
+    ok('口径按 tier 分流：同样掉 250 血，小怪被一帧追平、BOSS 的白条留下来',
+      mobLeft < 1 && bossLeft > 200, `小怪剩 ${mobLeft.toFixed(1)} / BOSS 剩 ${bossLeft.toFixed(1)}`);
+  }
 }
 
 // ============================================================================
@@ -408,20 +571,20 @@ ICON_TYPES.forEach((type, i) => {
 });
 const svgIcons = ctxIcons.toSVG();
 
-// ---- 血条时序：一条 BOSS 从满血挨到 45% ----
+// ---- 血条时序：一条 BOSS 从满血挨到 55%，然后停火消退 ----
 const BAR_W = 400, BAR_H = 250;
 const ctxBars = createSvgCtx(BAR_W, BAR_H, '#0d1017');
 {
   const boss = mkBoss(25000, 1);
   const cx = 200;
-  // 时间轴：满血 → 掉到 55%（白条立刻出现）→ 逐帧往下追 → 0.41s 追平
-  // （追赶速度 = 满管 / 0.9s，要补 45% 的缺口 ≈ 0.405s，所以时间点选在 0.1 / 0.25 / 0.45）
+  // 时间轴（BOSS = 漏桶口径）：白条长度 ≈ 最近 0.5s 吃到的伤害，停火后按 e 指数消退，
+  // 低于满血 0.1% 的尾巴被掐掉。所以时间点按时间常数取：0.5s 剩 37%、1.5s 剩 5%、3.2s 归零。
   const rows = [
     ['满血：不画白条', 1, 0],
-    ['掉到 55%：实条已到位，白条 = 残留的旧血量', 0.55, 0],
-    ['0.10s：白条正在缩', 0.55, 0.10],
-    ['0.25s：白条追到一半', 0.55, 0.25],
-    ['0.45s：已追平，白条消失', 0.55, 0.45],
+    ['掉到 55%：实条已到位，白条 = 最近这一下吃到的伤害', 0.55, 0],
+    ['停火 0.50s（一个时间常数）：白条剩 37%', 0.55, 0.5],
+    ['停火 1.50s：白条只剩 5%', 0.55, 1.0],
+    ['停火 3.20s：追平，白条消失', 0.55, 1.7],
   ];
   let elapsed = 0;
   rows.forEach(([label, pct, t], i) => {
@@ -433,7 +596,10 @@ const ctxBars = createSvgCtx(BAR_W, BAR_H, '#0d1017');
     ctxBars.fillText(label, 12, cy - 15);
     boss.hp = 25000 * pct;
     const steps = Math.max(1, Math.round((t - elapsed) / BAR_DT));
-    for (let s = 0; s < steps; s++) renderer.drawBossHealthBar(ctxBars, boss, cx, cy, 'red', 320, BAR_DT);
+    for (let s = 0; s < steps; s++) {
+      renderer.advanceHpGhost(boss, BAR_DT);       // 推进 = 血条独立图层的职责，这里显式模拟
+      renderer.drawBossHealthBar(ctxBars, boss, cx, cy, 'red', 320);
+    }
     elapsed = t;
   });
 }
@@ -523,10 +689,11 @@ const html = `<!DOCTYPE html>
 <div class="row">
   <div class="phone">${svgBars}</div>
   <div class="note">
-    <p><b>掉血手感</b>：实条（红色阵营色）扣血当帧就到位，读数永远准；白色鬼影条 = 上一次的旧血量，只允许向下追，所以会残留一截慢慢缩。追赶速度按"满管 0.9 秒"折算，掉多少就按比例缩多久（下图掉了 45%，约 0.41 秒追平）。</p>
+    <p><b>掉血手感</b>：实条（阵营色）扣血当帧就到位，读数永远准；白色缓冲条 = <b>最近 0.5 秒吃到的伤害</b>，露在实条右边，停火后按 e 指数消退（0.5s 剩 37%、1.5s 剩 5%、3.2s 归零）。</p>
+    <p><b>为什么 BOSS 不用小怪那套</b>：小怪血薄，一发打掉条宽一大截，白条按"满管 0.6 秒"的恒定速度缩就够看；<b>BOSS 的血量是小怪的 50 倍</b>，一发只掉 0.1%~0.5% —— 恒定速度换算下来一帧要缩 1.85%，比一发伤害还多，鬼影在画之前就被追平，<b>白条一帧都没进过画布</b>（实测峰值 0.01~0.78px、可见帧 0%）。所以 BOSS 改走"漏桶"：把零散小伤害累起来，稳态长度 = 每秒伤害 × 0.5s。</p>
     <p><b>旧的"白条"其实是假的</b>：老实现用"最近 8 秒伤害明细"归一化，进度写的是 <code>bufHp / bufTotal</code> —— 那两项都是从伤害量算的，跟血量没有任何关系，所以白条永远从满格开始、也读不出"还剩多少血"。</p>
     <p><b>发光动画已删</b>：那两层脉动径向渐变（外圈椭圆）不再绘制，改成静态暗色垫底 + 顶部内高光，不闪也不糊。</p>
-    <p><b>小怪小血条</b>共用同一套 <code>updateHpGhost</code>（0.6 秒追平），掉血反馈全线统一。</p>
+    <p><b>推进只有一处</b>：血条独立图层（<code>drawEnemyHpBar</code>）每帧推进一次，大血条只读同一个鬼影 —— 两个条各推一次的话会一帧推两步，两条还会互相咬。</p>
   </div>
 </div>
 

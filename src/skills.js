@@ -443,6 +443,31 @@ function valueTextOf(effect, level) {
   return effect.unit === '倍' ? `×${v}` : `${v}${effect.unit || ''}`;
 }
 
+/**
+ * 技能效果放大系数（紫晶宝石「技能效果 +N%」）= 1 + N/100。
+ * 作用于固有技能**每一条效果的当前值**（base + per × 次数），
+ * ⚠️ 不是只放大强化增量 —— Lv.1 时增量为 0，只放大增量 = 宝石完全空转
+ *    （历史事故：嵌了紫晶，面板上暴击几率 / 暴击伤害纹丝不动）。
+ * 宝石挂在塔型上（跨局永久），所以只要给 type 就能算出来。
+ */
+function effectMultiplier(type) {
+  if (!type) return 1;
+  return 1 + (gems.bonusForType(type).skillEffectPercent || 0) / 100;
+}
+
+/** 技能效果的**实际生效值** = 当前值 × 技能效果系数（含紫晶宝石的放大） */
+function effectiveValueOf(type, effect, level) {
+  if (!effect) return 0;
+  return valueOf(effect, level) * effectMultiplier(type);
+}
+
+/** 技能效果实际生效值的文案（技能槽显示用；单位口径与 valueTextOf 一致） */
+function effectiveValueTextOf(type, effect, level) {
+  if (!effect) return '';
+  const v = round2(effectiveValueOf(type, effect, level));
+  return effect.unit === '倍' ? `×${v}` : `${v}${effect.unit || ''}`;
+}
+
 /** 每级增量文案：'+5%' / '+1倍' / '+15' */
 function gainTextOf(effect) {
   if (!effect) return '';
@@ -494,8 +519,11 @@ function skillStepText(type, level) {
  * 该塔某项技能属性的增量（叠加在 TOWER_STATS 原生值之上的那份）。
  *
  *   强化次数 n = clamp(强化等级 + 宝石等级)
- *   · key 是本塔技能里的某条效果 → 增量 = per × n
- *     （「技能宝石」就是从这里生效的：不需要任何额外分支，全项目取属性都走这一个口）
+ *   · key 是本塔技能里的某条效果 → 增量 = (base + per × n) × 技能效果系数 − base
+ *     —— 也就是"实际生效值 − 原生值"，所以调用方照旧写 `原生值 + getEnhanceAttr(...)`
+ *        就得到实际值。系数来自紫晶宝石（技能效果 +N%），对 base 与强化增量一视同仁，
+ *        Lv.1 也照涨（只放大增量的话 Lv.1 会完全空转）。
+ *     （「技能宝石」猫眼石也是从这里生效的：不需要任何额外分支，全项目取属性都走这一个口）
  *   · 其它 key → 照旧读 tower.enhanceAttrs（applyTo 写入的那份），没有就 0
  *
  * ⚠️ 别把第一条改回"只读 enhanceAttrs" —— 那样宝石加的技能等级会在战斗里蒸发。
@@ -504,7 +532,7 @@ function skillStepText(type, level) {
 function bonusFor(tower, key) {
   if (!tower || !key) return 0;
   const eff = findEffect(tower.type, key);
-  if (eff) return eff.per * enhanceTimesOf(tower);
+  if (eff) return effectiveValueOf(tower.type, eff, levelOf(tower)) - eff.base;
   if (!tower.enhanceAttrs) return 0;
   return tower.enhanceAttrs[key] || 0;
 }
@@ -701,6 +729,9 @@ module.exports = {
   valueOf,
   bonusOf,
   valueTextOf,
+  effectMultiplier,
+  effectiveValueOf,
+  effectiveValueTextOf,
   gainTextOf,
   stepTextOf,
   skillValueText,

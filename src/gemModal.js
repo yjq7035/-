@@ -54,7 +54,7 @@ function synthRuleLines() {
   const s = GEM.synth;
   return [
     `${s.minCount} 颗同级起 · 基础成功率 ${s.baseRate}%`,
-    `每多 1 颗 +${s.perExtra}% · 成功获得随机一种 +1 级`,
+    `每多 1 颗 +${s.perExtra}% · 成功全种类随机一颗 +1 级`,
   ];
 }
 
@@ -792,7 +792,7 @@ function drawSynth(game) {
   ctx.textAlign = 'left';
   ctx.font = '9.5px Arial';
   ctx.fillStyle = THEME.text.off;
-  ctx.fillText('成功：获得所选范围内随机一种 +1 级 · 失败：材料消耗',
+  ctx.fillText('成功：全种类随机一颗 +1 级 · 失败：材料消耗',
     L.x + SYNTH_UI.padX, L.y + L.h - SYNTH_UI.footH + 22);
 
   drawButton(ctx, {
