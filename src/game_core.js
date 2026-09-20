@@ -655,16 +655,16 @@ class Game {
    *     （见 skills.effectMultiplier / tower.getEnhanceAttr），别再把基础攻击力乘一遍。
    */
   towerDamage(tower, baseDamage) {
-    // ① 3★ 阶段塔的白字加成：每次【强化次数】+5% 基础攻击力。
-    //    ⚠️ 次数口径 = towerMod.getEnhanceTimes = clamp(局内强化 + 宝石等级)，0 起、已夹上限。
+    // ① 3★ 阶段塔的白字加成：每次【生效技能次数】+5% 基础攻击力。
+    //    ⚠️ 次数口径 = towerMod.getSkillTimes = 学习 + 额外（宝石 / 十字塔共享），0 起、不夹上限。
     //       历史事故：这里曾写 getEffectiveSkillLevel（【技能等级】Lv，1 起、含宝石）——
     //       · 塔一放下就是 Lv.1 → 白送 5%（"每次强化 +5%"变成"每级技能 +5%"）；
     //       · 宝石加的技能等级会顺手抬攻击力，而属性面板用的是另一套（enhanceLevel）
     //         → 面板与战斗永久差 5%，宝石那一档面板完全看不见。
-    //       面板侧同源实现在 bonusStats.collectTowerStats（totalTimes），改一处必须改另一处。
+    //       面板侧同源实现在 bonusStats.collectTowerStats（skillTimes = 学习 + 宝石 + 共享），改一处必须改另一处。
     let whiteBonus = baseDamage;
     const stage = tower && tower.stage ? tower.stage : 0;
-    const times = tower ? towerMod.getEnhanceTimes(tower) : 0;
+    const times = tower ? towerMod.getSkillTimes(tower) : 0;
     if (stage >= BALANCE.enhance.minStage && times > 0) {
       whiteBonus = baseDamage * (1 + times * 0.05);
     }
@@ -1003,14 +1003,12 @@ class Game {
 
   // ========== 塔强化（局内花金币：只抬该塔的专属特殊属性，不给伤害）==========
 
-  /** 强化到下一级的花费；已满级返回 Infinity
-   *  等级走 towerMod.getEffectiveSkillLevel（强化 + 宝石），不然嵌了技能宝石的塔
-   *  会按更低的等级报价 —— 越强化越便宜，属于送钱。 */
+  /** 强化到下一级的花费；已学满返回 Infinity
+   *  ⚠️ 报价按【学习次数】报（局内花金币学出来的次数）—— 额外等级（宝石 / 十字塔共享）
+   *  不占学习额度，也就不该把价钱顶上去：嵌了猫眼石的塔仍按 1/2/3… 次报价。 */
   enhanceCost(tower) {
     if (!tower) return Infinity;
-    // 报价按【强化次数】（0 起）报；宝石等级也算进次数里 —— 嵌了猫眼石的塔本该更贵，
-    // 否则会按更低的等级报价（越强化越便宜，等于送钱）。
-    return towerMod.getEnhanceCost(tower.type, towerMod.getEnhanceTimes(tower));
+    return towerMod.getEnhanceCost(tower.type, towerMod.getLearnTimes(tower));
   }
 
   /** 该塔能否在属性面板里强化（需 3★ + 未满级 + 有实体塔） */
@@ -1053,13 +1051,14 @@ class Game {
     towerMod.applyEnhanceAttrs(tower);
     tower.enhancePicks = tower.enhancePicks || [];
     tower.enhancePicks.push(opt.key);
-    // 展示口径同样走【有效技能等级】（Lv.1 起，含宝石），否则嵌了技能宝石的塔
-    // 会报出"强化到 Lv.1"这种和面板 Lv.3 对不上的数字（skillLv 就是面板上的那个数）。
+    // 展示口径走 skills.levelText（"当前/可学"），与属性面板 / 技能槽同一份 ——
+    // 否则会报出"强化到 Lv.1"这种和面板对不上的数字（skillLv 就是面板上的那个数）。
     const effLv = towerMod.getEffectiveSkillLevel(tower);
     return {
       ok: true,
-      level: effLv,                     // 面板口径：技能等级（1..6）
-      enhanceTimes: tower.enhanceLevel, // 存盘口径：强化次数（0..5）
+      level: effLv,                     // 技能等级 Lv（1 起，含额外等级）
+      levelText: towerMod.getSkillLevelText(tower),   // "当前/可学"
+      enhanceTimes: tower.enhanceLevel, // 存盘口径：学习次数（0..5）
       effectiveLevel: effLv,
       cost: cost,
       option: opt,
@@ -1380,6 +1379,18 @@ class Game {
           continue;
         }
         
+        // 闪电塔：闪电连锁（主目标→副目标传导）
+        if (tower.type === 'bolt') {
+          const towerStats = towerMod.getTowerRuntimeStats(tower);
+          const effectiveInterval = towerStats.attackInterval / (effectiveAttackSpeed / 100);
+          tower.attackTimer = effectiveInterval;
+          // 先弹主目标（画出主弹道闪电 + 打满主目标伤害）
+          this.fireProjectile(tower, nearestTarget);
+          // 再扫链：chainRange 内未死亡、非主目标的副目标
+          this.fireBoltChain(tower, nearestTarget, towerStats.chainRange || 75);
+          continue;
+        }
+
         // 普通塔正常伤害计算，使用配置中的 attackInterval
         const towerStats = towerMod.getTowerRuntimeStats(tower);
         const effectiveInterval = towerStats.attackInterval / (effectiveAttackSpeed / 100);
@@ -1547,6 +1558,63 @@ class Game {
       alive: true,
       angle: angle, // 弹道朝向角度
     });
+  }
+
+  /**
+   * 闪电塔：闪电连锁——攻击主目标时，电流传导到附近敌人。
+   *
+   * 流程：
+   *   1. 先打主目标（与 fireProjectile 一致）
+   *   2. 以主目标为圆心扫 chainRange 半径，取 chainCount-1 个最近活敌人
+   *   3. 对每个副目标弹链（链伤害 = 主目标伤害 × chainRatio，不暴击）
+   */
+  fireBoltChain(tower, mainTarget) {
+    const towerDef = TOWER_DEFS[tower.type];
+    const towerStats = towerMod.getTowerRuntimeStats(tower);
+    const mainDmg = this.towerDamage(tower, towerStats.damage);
+    const chainCount = towerMod.getSpecialValue(tower.type, towerMod.getEffectiveSkillLevel(tower), 'chainCount');
+    const chainRange = towerMod.getSpecialValue(tower.type, towerMod.getEffectiveSkillLevel(tower), 'chainRange');
+    const chainRatio = towerMod.getSpecialValue(tower.type, towerMod.getEffectiveSkillLevel(tower), 'chainRatio') / 100;
+
+    // 1. 主目标弹道（带闪电折线视觉）
+    this.projectiles.push({
+      x: tower.x, y: tower.y,
+      targetX: mainTarget.x, targetY: mainTarget.y,
+      targetType: mainTarget, sourceTower: tower,
+      speed: 400, color: towerDef.color,
+      type: 'bolt', damage: mainDmg, alive: true, angle: aim.aimAtTarget(tower, mainTarget),
+    });
+    // 链判定弹道（纯视觉，伤害已在下方同步结算）
+    let hits = 0;
+
+    // 2. 扫链：取 chainCount-1 个最近活敌人（不含主目标）
+    const candidates = this.enemies.filter(e => {
+      if (!e.alive) return false;
+      if (e === mainTarget) return false;
+      return Math.hypot(e.x - mainTarget.x, e.y - mainTarget.y) <= chainRange;
+    });
+    candidates.sort((a, b) => Math.hypot(a.x - mainTarget.x, a.y - mainTarget.y)
+                             - Math.hypot(b.x - mainTarget.x, b.y - mainTarget.y));
+
+    for (let i = 0; i < chainCount - 1 && i < candidates.length; i++) {
+      const hit = candidates[i];
+      const chainDmg = Math.max(1, Math.round(mainDmg * chainRatio));
+      // 链伤害不暴击（闪电传导本身已算高伤害）
+      const result = this.applyDamage(tower, hit, chainDmg, {
+        allowCrit: false,
+        source: { type: 'chain_bolt', mainTarget },
+      });
+      // 链弹道视觉：从主目标到副目标
+      this.projectiles.push({
+        x: mainTarget.x, y: mainTarget.y,
+        targetX: hit.x, targetY: hit.y,
+        sourceTower: tower,
+        speed: 500, color: '#FFA500',
+        type: 'chain_bolt', damage: 0,
+        alive: true, angle: 0,
+      });
+      hits++;
+    }
   }
 
   /**

@@ -162,19 +162,21 @@ function drawEnhancePicker(game) {
 
   const sk = skills.getInnateSkill(tower.type);
   const L = getEnhanceLayout(game);
-  // ⚠️ 两套口径别混：展示用【技能等级 Lv】（1 起、含宝石），报价用【强化次数】（0 起）
-  const lv = towerMod.getEffectiveSkillLevel(tower);
-  const maxLv = skills.MAX_LEVEL;
-  const cost = towerMod.getEnhanceCost(tower.type, towerMod.getEnhanceTimes(tower));
+  // 学习额度：只有【学习次数】会涨/会满 —— 额外等级（宝石 / 十字塔共享）不占这个额度。
+  const learned = skills.learnedLevel(tower);
+  const learnCap = skills.baseLearnCap(tower.type);
+  const maxed = learned >= learnCap;
+  const cost = towerMod.getEnhanceCost(tower.type, learned);
   const affordable = game.gold >= cost;
-  const maxed = lv >= maxLv;
 
-  // 已学等级（局内强化次数）与附加等级（宝石/共享）分开显示 —— 两者口径不同，别相加着写。
-  // ⚠️ 真源是 tower.enhanceLevel（0..5）；用 clampEnhanceTimes 夹一下，
-  //    与技能槽（skillSlot）读的是同一个值，两处不会各说各话。
-  const learned = skills.clampEnhanceTimes(tower.enhanceLevel || 0);
-  const bonusLv = skills.gemLevels(tower.type) + (skills.auraBuff(tower, 'skillLevels') || 0);
-  const canAffordNext = affordable && lv < maxLv;
+  // 学习等级（局内花金币学出来的次数）与额外等级（宝石 / 共享）分开显示 —— 口径不同，别相加着写。
+  // ⚠️ 学习等级真源是 tower.enhanceLevel（0..5）；额外等级来自宝石 + 十字塔共享；
+  //    与技能槽（skillSlot）/ 属性面板读的是同一个值，三处不会各说各话。
+  const bonusLv = skills.extraLevel(tower, tower.type);
+  // 等级口径 2026-09-20：当前等级 = 学习等级 + 额外等级；可学等级 = 额外等级 + 可学基数
+  const curLv = learned + bonusLv;
+  const capLv = skills.learnableCap(tower, tower.type);
+  const canAffordNext = affordable && !maxed;
 
   ctx.save();
 
@@ -193,7 +195,7 @@ function drawEnhancePicker(game) {
   ctx.fill();
   ctx.stroke();
 
-  // 标题：固有技能 · 塔名   已学 0/5 + 附加 N = 当前 Lv.x → Lv.y
+  // 标题：固有技能 · 塔名   当前 0/5 → 1/5（或 已满）
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.font = 'bold 15px Arial';
@@ -204,12 +206,12 @@ function drawEnhancePicker(game) {
   ctx.font = 'bold 13px Arial';
   ctx.fillStyle = maxed ? THEME.text.off : THEME.accent.green;
   if (maxed) {
-    ctx.fillText(`当前 Lv.${lv} · 已满`, L.panel.x + L.panel.w - ENHANCE_UI.padX, L.titleCY);
+    ctx.fillText(`当前 ${curLv}/${capLv} · 已满`, L.panel.x + L.panel.w - ENHANCE_UI.padX, L.titleCY);
   } else {
-    // 标题只放"等级迁移"。等级明细（已学 / 附加）在下面的【等级明细行】里，
+    // 标题只放"等级迁移"。等级明细（学习 / 额外）在下面的【等级明细行】里，
     // ⛔ 别再往标题里塞括号明细：13px 下那串有 206.7px，加上左边"固有技能 · 塔名"的
     //    129.8px = 336.5px，而浮层内宽只有 252~270px —— 实测每种屏宽都重叠 66~85px。
-    ctx.fillText(`Lv.${lv} → Lv.${skills.nextLevel(lv)}`, L.panel.x + L.panel.w - ENHANCE_UI.padX, L.titleCY);
+    ctx.fillText(`${curLv}/${capLv} → ${curLv + 1}/${capLv}`, L.panel.x + L.panel.w - ENHANCE_UI.padX, L.titleCY);
   }
 
   // 分隔线（标题与正文之间，风格统一）
@@ -217,7 +219,7 @@ function drawEnhancePicker(game) {
 
   // 信息三行：
   //   行0：左 = 本次提升哪个技能；右 = 花费
-  //   行1：等级明细：已学等级 0/5（强化进度） / 附加等级 5（猫眼石）
+  //   行1：等级明细：学习等级 0/5（强化进度） / 额外等级 5（猫眼石）
   //   行2：金币状态 / 技能说明
   ctx.textAlign = 'left';
   ctx.font = 'bold 12px Arial';
@@ -232,13 +234,14 @@ function drawEnhancePicker(game) {
   ctx.fillStyle = maxed ? THEME.text.off : (affordable ? THEME.accent.gold : THEME.accent.danger);
   ctx.fillText(maxed ? '已满级' : `花费 💰${cost}`, L.panel.x + L.panel.w - ENHANCE_UI.padX, L.infoLines[0]);
 
-  // 等级明细行：已学等级（强化进度，绿/暗色）+ 附加等级（宝石，蓝/灰）
+  // 等级明细行：学习等级（学习进度，绿/暗色）+ 额外等级（宝石/共享，金/灰）
+  //   当前等级 = 学习等级 + 额外等级；可学等级 = 额外等级 + 可学基数（额外只抬当前与可学，不占学习额度）。
   ctx.textAlign = 'left';
   ctx.font = '11px Arial';
   ctx.fillStyle = THEME.text.secondary;
   const bonusColor = bonusLv > 0 ? THEME.accent.gold : THEME.text.dim;
-  const learnedStr = `已学等级: ${learned}/${skills.MAX_ENHANCE_TIMES}`;
-  const bonusStr = bonusLv > 0 ? `附加等级: ${bonusLv}（${skills.gemLevels(tower.type) > 0 ? '猫眼石' : '其他'}）` : `附加等级: 0`;
+  const learnedStr = `学习等级: ${learned}/${learnCap}`;
+  const bonusStr = bonusLv > 0 ? `额外等级: ${bonusLv}（${skills.gemLevels(tower.type) > 0 ? '猫眼石' : '其他'}）` : `额外等级: 0`;
   const combinedX = L.panel.x + ENHANCE_UI.padX;
   const learnedW = ctx.measureText(learnedStr).width;
   ctx.fillText(learnedStr, combinedX, L.infoLines[1]);
@@ -250,7 +253,7 @@ function drawEnhancePicker(game) {
   ctx.font = '11px Arial';
   ctx.fillStyle = THEME.text.secondary;
   let subText;
-  if (maxed) subText = '技能等级已达上限（含宝石）';
+  if (maxed) subText = `学习已达上限（${learned}/${learnCap}）；宝石 / 共享的等级另算`;
   else if (!affordable) subText = `金币不足（现有 💰${game.gold}）`;
   else subText = sk ? ellipsize(ctx, sk.desc || '', L.panel.w - ENHANCE_UI.padX * 2) : '';
   ctx.fillText(subText, L.panel.x + ENHANCE_UI.padX, L.infoLines[2]);
@@ -280,8 +283,10 @@ function drawOptionCard(game, card, tower) {
   const { x, y, w, h } = card;
   const pressed = theme.isButtonPressed(game, 'enhance:opt:' + opt.key);
   const picked = pickCount(tower, opt.key);
-  // 与浮层标题同口径：技能等级（Lv.1 起、含宝石）—— 卡片里的「当前 → 下一级」才对得上面板
-  const lv = towerMod.getEffectiveSkillLevel(tower);
+  // 卡片展示"再学一次会多什么"，基准取【当前等级】= Lv.1 + 生效次数（学习 + 宝石 + 共享）
+  // —— 必须与技能槽 / 属性面板显示的数值同口径：拿"学习等级"当基准的话，
+  //    嵌了猫眼石的塔会写成「暴击几率 5% → 10%」，而槽里明明是 30%（面板撒谎）。
+  const lvNow = skills.LEVEL_BASE + skills.effectiveTimesOf(tower);
 
   ctx.save();
 
@@ -331,7 +336,7 @@ function drawOptionCard(game, card, tower) {
     ctx.font = 'bold 12px Arial';
     const gainW = ctx.measureText(gainStr).width;
 
-    const stepStr = effectStepText(eff, lv);
+    const stepStr = effectStepText(eff, lvNow);
     const availW = Math.max(20, w - 28 - nameW - 6 - gainW - 8);
     ctx.fillStyle = THEME.text.primary;
     ctx.fillText(ellipsize(ctx, stepStr, availW), left + nameW + 6, cy);

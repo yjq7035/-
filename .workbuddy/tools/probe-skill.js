@@ -275,15 +275,16 @@ log('\n===== ④ 猫眼石 → 技能等级 +1 → 两条效果同时涨 =====')
   const crit = skills.findEffect('triangle', 'critChance');
   const cdmg = skills.findEffect('triangle', 'critDamage');
   ok('猫眼石嵌入成功：技能等级 Lv.1 → Lv.2（等级 +1）', r.ok && skills.levelOf(tower) === 2,
-    `level=${skills.levelOf(tower)} / 次数=${skills.enhanceTimesOf(tower)}`);
+    `level=${skills.levelOf(tower)} / 次数=${skills.effectiveTimesOf(tower)}`);
   ok('暴击几率 +per', Math.abs(p1.critChance - (p0.critChance + crit.per)) < 1e-9,
     `${p0.critChance}% → ${p1.critChance}%`);
   ok('暴击伤害也 +per（宝石同样作用于第二条效果）',
     Math.abs(p1.critMult - (p0.critMult + cdmg.per / 100)) < 1e-9,
     `${p0.critMult.toFixed(2)} → ${p1.critMult.toFixed(2)}`);
-  ok('技能槽 Lv 与战斗口径一致（预览态 = Lv.1 + 宝石等级）',
-    skillSlot.buildSkillSlots(null, 'triangle', null, 260)[0].level === 2,
-    `槽内 Lv.${skillSlot.buildSkillSlots(null, 'triangle', null, 260)[0].level}`);
+  const slot4 = skillSlot.buildSkillSlots(null, 'triangle', null, 260)[0];
+  ok('技能槽当前等级与战斗口径一致（预览态无学习 + 1 猫眼石 → 当前 1、可学 1+5=6，显示 "1/6"）',
+    slot4 && slot4.level === 1 && slot4.levelText === '1/6',
+    slot4 ? `槽内 level=${slot4.level} text=${slot4.levelText}` : '无槽');
   meta.resetAll();
 }
 
@@ -503,26 +504,28 @@ log('\n===== ⑨ 等级口径：默认 Lv.1、上限 Lv.6（不存在 Lv.0）===
   ok(`强化 ${config.BALANCE.enhance.maxLevel} 次 → Lv.${skills.MAX_LEVEL}（满级）`,
     skills.levelOf(maxed) === skills.MAX_LEVEL && skills.isMaxLevel(skills.levelOf(maxed)) === true,
     `Lv.${skills.levelOf(maxed)}`);
-  ok('次数口径 ≠ 等级口径（差 1：次数 0 = Lv.1）',
-    skills.enhanceTimesOf(maxed) === config.BALANCE.enhance.maxLevel
+  ok('次数口径 ≠ 等级口径（差 1：学习 0 次 = Lv.1）',
+    skills.learnedLevel(maxed) === config.BALANCE.enhance.maxLevel
     && skills.levelOf(maxed) === config.BALANCE.enhance.maxLevel + 1,
-    `次数 ${skills.enhanceTimesOf(maxed)} → Lv.${skills.levelOf(maxed)}`);
+    `学习 ${skills.learnedLevel(maxed)} → Lv.${skills.levelOf(maxed)}`);
 
-  // 技能槽默认态
+  // 技能槽默认态：新口径显示 "当前等级/可学等级"
   const slot = skillSlot.buildSkillSlots(null, 'triangle', bare, 260)[0];
-  ok('技能槽默认显示 Lv.1', slot && slot.level === 1 && slot.levelText === 'Lv.1',
+  ok('技能槽显示 "当前/可学" 格式（数字/数字）', slot && /^\d+\/\d+$/.test(slot.levelText),
     slot ? slot.levelText : '无槽');
 
-  // 属性面板顶行 + 强化浮层标题：两处 UI 都得写 Lv.1，且不能写出 Lv.7
+  // 属性面板顶行 + 强化浮层标题：两处 UI 都得按新口径写 "当前/可学"。
+  // ⚠️ 用 provider 把宝石加成隔离为 0，确保「无额外等级 → 当前=学习=0」这种基础态可断言。
   const env = mkPanelGame('triangle');
   const g = env.g;
+  skills.setGemLevelProvider(() => 0);
   rec.texts.length = 0;
   let err = null;
   try { renderer.render(g); } catch (e) { err = e; }
-  ok(`属性面板顶行写「固有技能 Lv.1/${skills.MAX_LEVEL}」`,
-    !err && rec.texts.some((t) => String(t.text).indexOf(`固有技能 Lv.1/${skills.MAX_LEVEL}`) >= 0),
+  ok('属性面板顶行写「固有技能 0/5」',
+    !err && rec.texts.some((t) => String(t.text).indexOf('固有技能 0/5') >= 0),
     err ? err.message
-      : (rec.texts.map((t) => t.text).filter((s) => String(s).indexOf('固有技能 Lv') >= 0).join(' | ') || '没找到该行'));
+      : (rec.texts.map((t) => t.text).filter((s) => String(s).indexOf('固有技能') >= 0).join(' | ') || '没找到该行'));
 
   if (g.panelEnhanceBtn) {
     const b = g.panelEnhanceBtn;
@@ -531,22 +534,25 @@ log('\n===== ⑨ 等级口径：默认 Lv.1、上限 Lv.6（不存在 Lv.0）===
   rec.texts.length = 0;
   err = null;
   try { renderer.render(g); } catch (e) { err = e; }
-  ok('强化浮层标题写「Lv.1 → Lv.2」',
-    !err && rec.texts.some((t) => String(t.text).indexOf('Lv.1 → Lv.2') >= 0),
+  ok('强化浮层标题写「0/5 → 1/5」',
+    !err && rec.texts.some((t) => String(t.text).indexOf('0/5 → 1/5') >= 0),
     err ? err.message
       : (rec.texts.map((t) => t.text).filter((s) => String(s).indexOf('→') >= 0).join(' | ') || '没找到标题'));
   g.enhancePicker = null;
+  skills.setGemLevelProvider(null);
 
-  // 满级时浮层标题不许写出 Lv.7
+  // 满级塔：技能等级行必须仍是 "固有技能 N/M"（M=可学上限、N 有限整数，绝不越界）
   const gMax = mkPanelGame('triangle').g;
   gMax.selectedTower.enhanceLevel = config.BALANCE.enhance.maxLevel;
   gMax.gold = 999999;
   rec.texts.length = 0;
   err = null;
   try { renderer.render(gMax); } catch (e) { err = e; }
-  ok('满级塔渲染不抛异常且不出现 Lv.7',
-    !err && !rec.texts.some((t) => String(t.text).indexOf(`Lv.${skills.MAX_LEVEL + 1}`) >= 0),
-    err ? err.message : `指令 ${rec.ops.length} 条`);
+  const skillLine = !err && rec.texts.map((t) => String(t.text)).find((s) => s.indexOf('固有技能 ') === 0);
+  const m = skillLine && skillLine.match(/^固有技能 (\d+)\/(\d+)$/);
+  ok('满级塔渲染不抛异常且技能等级显示 "N/M"（M=可学上限、N 有限整数）',
+    !err && !!m && Number(m[2]) === skills.learnableCap('triangle') && isFinite(Number(m[1])),
+    err ? err.message : (skillLine || '没找到「固有技能」行'));
 
   // 强化一次后：toast 报的是技能等级 Lv.2（不是"强化到 Lv.1"那种与面板对不上的数字）
   const t3 = mkTower('triangle');
@@ -584,6 +590,108 @@ log('\n===== ⑨ 等级口径：默认 Lv.1、上限 Lv.6（不存在 Lv.0）===
     && skills.levelOf(gEnd.selectedTower) === skills.MAX_LEVEL,
     `成功 ${steps} 次 → Lv.${skills.levelOf(gEnd.selectedTower)}`);
 }
+
+// ============================================================================
+// ⑩ 等级口径：当前 = 额外 + 学习；可学 = 额外 + 可学基数(5)
+// ----------------------------------------------------------------------------
+// 2026-09-20 定稿（本次修的就是它）：额外等级（宝石 / 十字塔共享）**不占**学习额度，
+// 且**真正抬升**战斗生效的等级 —— 面板 / 技能槽 / 战斗三处同源，
+// 不许出现"显示涨了、打起来没变"或"显示 11/16 却只能学到 5"。
+//   · 学习等级 = 局内花金币学出来的次数（0..5，唯一真源 tower.enhanceLevel）
+//   · 额外等级 = 宝石等级 + 十字塔共享等级
+//   · 当前等级 = 学习 + 额外（**不夹上限**，就是战斗取值用的生效次数）
+//   · 可学等级 = 额外 + 可学基数(=5) —— "这条技能最高能到几级"
+//     ⚠️ 可学等级不是固定 5：宝石 / 共享堆出来的是"地基"，玩家还能在其上再学 5 级。
+//        玩家实测「十字塔共享 +11 级、自己从未强化」正确显示 11/16（曾被压成 11/5）。
+// 用 setGemLevelProvider 隔离全局宝石态，精确控制额外等级。
+// ============================================================================
+log('===== ⑩ 新口径：当前 = 额外 + 学习；可学 = 额外 + 基数（显示 "X/Y"）=====');
+const mkTL = (enh) => ({ type: 'triangle', enhanceLevel: enh, enhanceAttrs: {} });
+
+skills.setGemLevelProvider(() => 0);   // 额外等级 = 0 → 可学等级 = 5
+ok('无额外等级：当前 = 学习等级（0 强化 → 0/5）',
+  skills.levelText(mkTL(0), 'triangle') === '0/5' && skills.currentLevel(mkTL(0), 'triangle') === 0,
+  skills.levelText(mkTL(0), 'triangle'));
+ok('无额外等级：学习 3 次 → 当前 3 / 可学 5（3/5）',
+  skills.currentLevel(mkTL(3), 'triangle') === 3 && skills.levelText(mkTL(3), 'triangle') === '3/5',
+  skills.levelText(mkTL(3), 'triangle'));
+
+skills.setGemLevelProvider(() => 2);   // 额外等级 = 2（如 2 颗猫眼石）→ 可学等级 = 7
+ok('有额外等级：当前 = 学习 + 额外（0 学 + 2 宝石 → 2/7）',
+  skills.currentLevel(mkTL(0), 'triangle') === 2 && skills.levelText(mkTL(0), 'triangle') === '2/7',
+  skills.levelText(mkTL(0), 'triangle'));
+ok('有额外等级：3 学 + 2 宝石 → 当前 5 / 可学 7（5/7）',
+  skills.currentLevel(mkTL(3), 'triangle') === 5 && skills.levelText(mkTL(3), 'triangle') === '5/7',
+  skills.levelText(mkTL(3), 'triangle'));
+
+// ★ 玩家实测回归（本次报的 bug）：十字塔共享 +11 级、玩家从未强化 → 必须显示 11/16
+skills.setGemLevelProvider(() => 11);  // 额外等级 = 11
+ok('★ 额外 11 级 + 从未强化 → 显示 11/16（不是被压成 11/5）',
+  skills.currentLevel(mkTL(0), 'triangle') === 11 && skills.levelText(mkTL(0), 'triangle') === '11/16',
+  skills.levelText(mkTL(0), 'triangle'));
+
+// 可学等级 = 额外 + 基数（随额外同步抬升）；可学基数固定不变
+const capBase = skills.baseLearnCap('triangle');
+skills.setGemLevelProvider(() => 5);   // 额外等级 = 5 → 可学等级 = 10
+ok('可学等级 = 额外等级 + 可学基数（额外 5 → 可学 10）',
+  skills.learnableCap(mkTL(0), 'triangle') === 10 && skills.baseLearnCap('triangle') === capBase,
+  `可学=${skills.learnableCap(mkTL(0), 'triangle')} / 基数=${capBase}`);
+ok('额外等级只抬当前，学习等级不受外部加成影响',
+  skills.learnedLevel(mkTL(3)) === 3 && skills.baseLearnCap('triangle') === capBase,
+  `学习=${skills.learnedLevel(mkTL(3))} / 基数=${capBase}`);
+
+// ---- 额外等级必须【真正生效】（战斗取值不夹 5），且不挤占学习额度 ----
+const critE = skills.findEffect('triangle', 'critChance');
+skills.setGemLevelProvider(() => 5);   // 额外 5、学习 0
+const t0 = mkTL(0);
+ok('额外等级真的生效：额外 5、学习 0 → 暴击几率增量 = per × 5（没被夹在"学习上限 5"里）',
+  Math.abs(skills.bonusFor(t0, 'critChance') - critE.per * 5) < 1e-9,
+  `增量 ${skills.bonusFor(t0, 'critChance')}%（per=${critE.per}）`);
+ok('额外等级不占学习额度：额外 5、学习 0 → 仍可强化（canEnhance=true）',
+  towerMod.canEnhance(t0) === true && skills.learnedLevel(t0) === 0,
+  `canEnhance=${towerMod.canEnhance(t0)} / 学习=${skills.learnedLevel(t0)}`);
+ok('强化报价只按【学习次数】：额外等级不抬价',
+  towerMod.getEnhanceCost('triangle', skills.learnedLevel(t0)) === towerMod.getEnhanceCost('triangle', 0),
+  `💰${towerMod.getEnhanceCost('triangle', 0)}`);
+
+// 学满 5 次 + 额外 5 → 当前 10 / 可学 10（"地基"之上还能再学满）
+const t5 = mkTL(5);
+ok('额外 5 + 学满 5 → 显示 10/10，战斗增量 = per × 10（额外那份真的算进去了）',
+  skills.levelText(t5, 'triangle') === '10/10'
+  && Math.abs(skills.bonusFor(t5, 'critChance') - critE.per * 10) < 1e-9,
+  `${skills.levelText(t5, 'triangle')} / 增量 ${skills.bonusFor(t5, 'critChance')}%`);
+ok('学满后确实不能再学（canEnhance=false）', towerMod.canEnhance(t5) === false,
+  `学习 ${skills.learnedLevel(t5)}/${skills.baseLearnCap('triangle')}`);
+
+// 面板与战斗同源（额外等级用**真实宝石**提供，避免 provider 只作用于显示侧）
+skills.setGemLevelProvider(null);
+meta.resetAll();
+meta.grantPoints(999999);
+meta.upgradeCodex('triangle');
+const pt = { type: 'triangle', level: 1, stage: 0, enhanceLevel: 2, enhanceAttrs: {}, auraBuffs: {} };
+towerMod.applyEnhanceAttrs(pt);
+meta.embedGem('triangle', 0, meta.addGem('opal').gem.uid);
+const infoG = bonusStats.collectTowerStats(mkGame(390, 844), pt, config.TOWER_STATS.triangle, 'triangle');
+const profG = towerMod.getAttackProfile(pt);
+ok('面板与战斗同源（宝石 +1、学习 2 → 生效 3）：暴击率 final 一致，且 = 原生 + per × 3',
+  Math.abs(infoG.final.critChance - profG.critChance) < 1e-9
+  && Math.abs(infoG.final.critChance - (config.TOWER_STATS.triangle.critChance + critE.per * 3)) < 1e-9,
+  `面板 ${infoG.final.critChance}% / 战斗 ${profG.critChance}% / 期望 ${config.TOWER_STATS.triangle.critChance + critE.per * 3}%`);
+meta.resetAll();
+
+// 所有技能类型均应用同一公式（本游戏 17 型均为固有技能，统一口径）
+skills.setGemLevelProvider(() => 0);
+let allFmt = true, allBad = '';
+for (const type of config.TOWER_ORDER) {
+  const txt = skills.levelText(mkTL(2), type);
+  const mm = txt.match(/^(\d+)\/(\d+)$/);
+  if (!mm || Number(mm[1]) !== 2 || Number(mm[2]) !== 5) {
+    allFmt = false; allBad += ` ${type}:${txt}`;
+  }
+}
+ok('全部技能类型均按同一公式计算（学习 2、无额外 → "2/5"）', allFmt,
+  allFmt ? `${config.TOWER_ORDER.length} 型统一` : allBad);
+skills.setGemLevelProvider(null);
 
 log('');
 log(`=== 技能系统汇总：失败 ${fails} 条 ===`);

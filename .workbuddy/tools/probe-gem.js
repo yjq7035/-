@@ -329,9 +329,9 @@ log('\n===== ④ 战斗口径：宝石必须真的改变战斗数值 =====');
   ok('固有技能等级 +1 真的抬高了战斗数值（叠加上限）',
     r.ok && Math.abs(capAfter - (capBefore + spDef.per)) < 1e-6,
     `${spDef.name}: ${capBefore} → ${capAfter}（per=${spDef.per}${spDef.unit}）`);
-  ok('技能槽显示的 Lv 与战斗口径一致（Lv.1 默认 + 宝石 1 级 = Lv.2）',
-    skillSlot.buildSkillSlots(null, 'parallel', null, 280)[0].level === 2,
-    `槽内 Lv.${skillSlot.buildSkillSlots(null, 'parallel', null, 280)[0].level}`);
+  ok('技能槽显示与战斗口径一致（预览态 = 学习0 + 宝石1 → 当前 1 / 可学 1+5=6）',
+    (() => { const s = skillSlot.buildSkillSlots(null, 'parallel', null, 280)[0]; return s.level === 1 && s.levelText === '1/6'; })(),
+    `槽内 ${skillSlot.buildSkillSlots(null, 'parallel', null, 280)[0].levelText}`);
 
   // —— 宝石加成汇总（面板 / 图签 / 战斗共用的那一份）——
   const bonus = gems.bonusForType('parallel');

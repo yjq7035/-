@@ -14,7 +14,8 @@
 //
 // ★ 技能等级从 Lv.1 起算（2026-09-18 定稿）：
 //   塔一放下，它的固有技能就是 **Lv.1**。不存在"Lv.0"—— 那等于"技能没生效"，
-//   与「固有技能一放下就生效」自相矛盾。等级范围 Lv.1 ~ Lv.6（默认 1 + 最多强化 5 次）。
+//   与「固有技能一放下就生效」自相矛盾。【学习】上限 Lv.1 ~ Lv.6（默认 1 + 最多学习 5 次）；
+//   宝石 / 十字塔共享给的【额外等级】不占这 5 次，当前等级可以超过 Lv.6（见下方取值口径）。
 //
 // 数据形状：
 //   SKILLS[type] = {
@@ -30,13 +31,21 @@
 //   }
 //
 // 取值口径（全项目唯一真源 —— 改这里就等于改战斗）：
-//   强化次数 n  = clamp(局内强化次数 + 宝石等级, 0, BALANCE.enhance.maxLevel)  —— 0..5
-//   技能等级 Lv = LEVEL_BASE + n = 1 + n                                      —— 1..6
-//   当前值(Lv)  = base + per × n  —— 面板 / 技能槽 / 强化浮层展示（valueTextOf）
-//   强化增量(n) = per × n         —— 写进 tower.enhanceAttrs，并由 tower.getEnhanceAttr
-//                                   叠加到战斗取值上（战斗侧只有这一个入口）
+//   学习等级 learned = clamp(局内强化次数, 0, 可学基数)   —— 0..5，只有花金币强化才涨
+//   额外等级 extra   = 宝石等级 + 十字塔共享等级          —— ≥0，外部途径给的"地基"
+//   当前等级 current = learned + extra                    —— 0 起，**真正生效**的技能等级
+//   可学等级 cap     = extra + 可学基数(默认 5)           —— 这条技能最高能到的等级
+//   当前值(等级 L)   = base + per × (L − 1)               —— 面板 / 技能槽 / 强化浮层展示
+//   强化增量         = per × learned                      —— 写进 tower.enhanceAttrs，
+//                                                           并由 tower.getEnhanceAttr
+//                                                           叠加到战斗取值上（战斗侧只有这一个入口）
 //   塔的实际数值 = TOWER_STATS 原生值 + 强化增量 ⇒ **Lv.1 显示的就是原生值本身**，
 //   所以 base 必须与原生值相等，面板才不会撒谎。
+//
+// ⚠️ 2026-09-20 修正：额外等级**不再**与"学习额度"共用同一个上限。
+//   宝石 / 十字塔共享堆出来的等级是"地基"，玩家还能在它之上再学 5 级 ——
+//   0/5 → 宝石 +2 → 2/7 → 学满 → 7/7。历史上额外等级会吃掉那 5 次学习额度
+//   （显示 2/5、顶到 5 就再也学不动，且超出 5 的等级战斗里不生效）。
 //
 // ⚠️ base 必须与 TOWER_STATS 里同名的原生值一致（战斗结算 = 原生 + per×n，若 base 与原生
 //    不一致，面板显示的"当前值"就是假的）。原生里确实没有对应字段的属性（例如某些塔的
@@ -230,12 +239,12 @@ const SKILLS = {
     ],
   },
   bolt: {
-    id: 'bolt_crit', name: '雷霆暴击', innate: true, icon: 'critChance',
-    desc: '给全塔最高倍率的闪电炮补上暴击几率。',
+    id: 'bolt_chain', name: '雷电链', innate: true, icon: 'chainCount',
+    desc: '攻击主目标时，电流传导到附近敌人；升级可延长传导距离和数量。',
     effects: [
-      // base = 5：闪电塔原生就带 5% 暴击（= TOWER_STATS.bolt.critChance）。
-      // 旧版原生 0 → 这个技能 Lv.1 什么都不做，与"固有技能一放下就生效"矛盾，已废。
-      { key: 'critChance', name: '暴击几率', base: 5, per: 4, unit: '%', desc: '命中时触发暴击的概率（暴击倍率全塔最高）' },
+      { key: 'chainCount', name: '传导数量', base: 2, per: 1, unit: '', desc: '每次攻击传导到的目标总数（含主目标）' },
+      { key: 'chainRange', name: '传导距离', base: 75, per: 15, unit: '', desc: '电流从主目标传导到副目标的距离（像素）' },
+      { key: 'chainRatio', name: '传导伤害比例', base: 75, per: 5, unit: '%', desc: '副目标伤害 = 主目标 × 这个比例（每级 +5%）' },
     ],
   },
   // ---- 第三批扩展：平行塔 ----
@@ -342,24 +351,30 @@ function effectKeyMeta(key) {
 // ============================================================================
 // 等级与取值
 // ----------------------------------------------------------------------------
-// 两套口径必须分清（历史上混用会凭空多送一级）：
-//   【强化次数 n】0 起，0..5 —— 存盘的就是它（tower.enhanceLevel），宝石给 +1
-//   【技能等级 Lv】1 起，1..6 —— 只用于展示与取值基数，Lv = LEVEL_BASE + n
+// 三套口径必须分清（历史上混用会凭空多送一级）：
+//   【学习次数 learned】0 起，0..5 —— 存盘的就是它（tower.enhanceLevel），只有花金币才涨
+//   【生效次数 times】  0 起，无上限 —— 学习 + 额外（宝石 / 十字塔共享），战斗取值看它
+//   【技能等级 Lv】     1 起 —— 只用于展示与取值基数，Lv = LEVEL_BASE + 生效次数
 // ============================================================================
 
 /** 技能默认等级：塔一放下就是 Lv.1（不是 Lv.0）—— 2026-09-18 定稿 */
 const LEVEL_BASE = 1;
 
-/** 局内最多能强化几次（= config.BALANCE.enhance.maxLevel，花金币逐次 +1） */
+/** 局内最多能学几次（= config.BALANCE.enhance.maxLevel，花金币逐次 +1） */
 const MAX_ENHANCE_TIMES = BALANCE.enhance.maxLevel;
 
-/** 技能等级上限 = 默认 1 + 最多 5 次强化 = 6（宝石等级也算在这个上限里） */
+/**
+ * 【学习等级】的上限（默认 5）= 默认等级 1 + 最多 5 次学习 = Lv.6。
+ * ⚠️ 它**只是学习上限**，不是技能等级上限：额外等级（宝石 / 十字塔共享）另算，
+ *    所以"当前等级"可以远超 6（见 currentLevel / learnableCap）。
+ */
 const MAX_LEVEL = LEVEL_BASE + MAX_ENHANCE_TIMES;
 
 /**
- * 把【强化次数】夹进 [0, MAX_ENHANCE_TIMES]。
- * ⚠️ 这是"次数"口径（0 起，存档里 tower.enhanceLevel 就是它）——
- *    别把【技能等级】（1 起）喂进来，那会凭空多送一级。
+ * 把【学习次数】夹进 [0, MAX_ENHANCE_TIMES]。
+ * ⚠️ 这是"学习次数"口径（0 起，存档里 tower.enhanceLevel 就是它）——
+ *    别把【技能等级】（1 起）喂进来，那会凭空多送一级；
+ *    也别拿它去夹【生效次数】（= 学习 + 额外），那会把宝石 / 共享的等级吃掉。
  */
 function clampEnhanceTimes(times) {
   const n = Number(times);
@@ -374,9 +389,15 @@ function clampLevel(level) {
   return Math.min(MAX_LEVEL, lv);
 }
 
-/** 技能等级 → 强化次数（Lv.1 → 0、Lv.6 → 5）：base 之上要乘 per 的那一份 */
+/**
+ * 技能等级 → 生效次数（Lv.1 → 0、Lv.6 → 5）：base 之上要乘 per 的那一份。
+ * ⚠️ 这里**不夹 MAX_LEVEL**：额外等级（宝石 / 十字塔共享）可以超过"学习上限 5"，
+ *    夹了就会"技能槽写着 8/13、数值却只有 6 级的"。学习上限由 baseLearnCap 管。
+ */
 function levelToTimes(level) {
-  return clampLevel(level) - LEVEL_BASE;
+  const lv = Number(level);
+  if (!isFinite(lv) || lv <= LEVEL_BASE) return 0;
+  return Math.floor(lv) - LEVEL_BASE;
 }
 
 /** 已满级？（满了既不能再强化，也不该再报价） */
@@ -404,27 +425,119 @@ function gemLevels(type) {
 }
 
 /**
- * 塔的【强化次数】（0 起）= clamp(局内强化等级 + 宝石等级)。
- * 宝石给的是"技能等级 +1"，折算成次数就是 +1 —— 与强化一次完全等价。
- * 战斗取值只看这一份（bonusFor）；展示要的是它 +1（levelOf）。
+ * 塔的【生效技能等级次数】（0 起）= 学习等级 + 额外等级 —— 就是 currentLevel。
+ * 战斗取值（bonusFor）与展示（levelText / 技能槽数值）都读这一份，两边不会各说各话。
+ * ⚠️ 它**不夹 MAX_ENHANCE_TIMES**：额外等级（宝石 / 十字塔共享）是独立于"学习额度"
+ *    的地基，可学等级 = 额外 + 5。历史上这里夹了 5，于是
+ *      · 宝石 / 共享把 5 次学习额度吃光 → 玩家再也学不动（"2/7"永远到不了 7）；
+ *      · "当前 8" 里超出 5 的那部分战斗里不生效 → 面板撒谎。
  */
-function enhanceTimesOf(tower) {
+function effectiveTimesOf(tower) {
   if (!tower) return 0;
-  // 十字塔「共享资源」的 skillLevels 也计入有效次数（与 bonusFor 口径一致）。
-  return clampEnhanceTimes((tower.enhanceLevel || 0) + gemLevels(tower.type) + auraBuff(tower, 'skillLevels'));
+  return currentLevel(tower, tower.type);
 }
 
 /**
- * 塔实例的【有效技能等级】= Lv.1 + (强化次数 + 宝石等级 + 十字塔共享等级) —— 1..6。
- * 面板上的「Lv.x」、强化浮层的「x → x+1」、技能槽全部用它 —— 三处同源才不会各说各话。
+ * 塔实例的【技能等级 Lv】= Lv.1 + 生效次数 —— 1 起，**没有上限**（额外等级可以超过 6）。
+ * 只用于"Lv.N"这种展示文案（toast / 图签）；面板与技能槽显示的是 levelText（当前/可学）。
  */
 function levelOf(tower) {
-  return LEVEL_BASE + enhanceTimesOf(tower);
+  return LEVEL_BASE + effectiveTimesOf(tower);
 }
 
-/** 预览（商店 / 图签，没有实体塔）时的等级 = Lv.1 + 宝石等级（强化是局内的，不跨局） */
+/** 预览（商店 / 图签，没有实体塔）时的等级 = Lv.1 + 宝石等级（学习是局内的，不跨局） */
 function previewLevel(type) {
-  return LEVEL_BASE + clampEnhanceTimes(gemLevels(type));
+  return LEVEL_BASE + extraLevel(null, type);
+}
+
+// ============================================================================
+// 等级口径（2026-09-20 定稿）：技能等级【显示】= "当前等级/可学等级"
+// ----------------------------------------------------------------------------
+// 规则：当前等级 = 额外等级 + 学习等级
+//   · 学习等级 (learnedLevel)：玩家花金币在局内学出来的基础等级；
+//                             0 起，0..可学基数（唯一真源 = tower.enhanceLevel）。
+//   · 额外等级 (extraLevel)  ：宝石 / 十字塔共享等【外部途径】给的临时等级加成。
+//   · 可学基数 (baseLearnCap)：玩家能"学"的次数上限（固定 5）—— 外部加成不修改它。
+//   · 可学等级 (learnableCap)：= 额外等级 + 可学基数 = 这条技能【最高能到达的等级】。
+//       ⚠️ 它不是固定 5。宝石 / 共享堆出来的等级是"地基"，玩家还能在其上再学 5 级 ——
+//          十字塔共享 +11 级、自己从未学习时，正确显示是 "11/16"（曾被错误地压成 "11/5"）。
+//   · 当前等级 (currentLevel)：= 额外等级 + 学习等级 —— 也是战斗实际生效的等级。
+//
+// ⚠️ 三处必须同源（别各写各的）：
+//   · 展示：levelText = "当前/可学"；技能槽数值 = valueOf(effect, currentLevel)
+//   · 战斗：bonusFor 的生效次数 = currentLevel（不夹 5）
+//   · 学习门槛：canEnhance / 报价只数【学习等级】（额外等级不占学习额度）
+// ============================================================================
+
+/** 学习等级：局内花金币学出来的次数（0 起，夹在 [0, 可学基数]）。无实体塔（预览态）= 0。 */
+function learnedLevel(tower) {
+  if (!tower) return 0;
+  const n = Number(tower.enhanceLevel);
+  if (!isFinite(n) || n <= 0) return 0;
+  return Math.min(baseLearnCap(tower.type), Math.floor(n));
+}
+
+/**
+ * 额外等级：通过宝石 / 十字塔共享等外部途径获得的临时等级加成。
+ * @param {object|null} tower 实体塔（提供共享光环读取）；预览态可传 null
+ * @param {string} [type] 塔类型（预览态必须给，否则取 tower.type）
+ */
+function extraLevel(tower, type) {
+  const t = type || (tower && tower.type);
+  if (!t) return 0;
+  const gem = gemLevels(t);
+  const shared = tower ? auraBuff(tower, 'skillLevels') : 0;
+  return Math.max(0, gem + shared);
+}
+
+/**
+ * 当前等级 = 额外等级 + 学习等级 —— 也是战斗实际生效的等级（bonusFor 走同一份）。
+ */
+function currentLevel(tower, type) {
+  return learnedLevel(tower) + extraLevel(tower, type);
+}
+
+/**
+ * 可学基数：玩家在一条技能上能"学"的次数上限。固定值，外部加成（宝石 / 共享）绝不修改它。
+ * 缺省 = 全局上限 MAX_ENHANCE_TIMES（5）；特定技能可在 SKILLS[type].learnCap 覆盖。
+ * ⚠️ 别把它和下面 levelText 的分母（learnableCap）搞混：这个是不吃任何加成的基数。
+ */
+function baseLearnCap(type) {
+  const sk = getInnateSkill(type);
+  if (sk && typeof sk.learnCap === 'number' && sk.learnCap > 0) return sk.learnCap;
+  return MAX_ENHANCE_TIMES;
+}
+
+/**
+ * 可学等级（**显示口径**，即技能槽 / 面板 "当前/可学" 里的分母）
+ *   = 额外等级 + 可学基数 = 这条技能【最高能到达的等级】。
+ * 语义：宝石 / 十字塔共享给的那份等级是"地基"，玩家还能在它之上再学 5 级。
+ *   例：十字塔共享 +11 级、玩家从未强化 → 当前 11、可学 16（显示 "11/16"）。
+ * 允许两种调用：
+ *   learnableCap(tower, type) —— 实体塔（额外含自身宝石 + 收到的共享）
+ *   learnableCap(type)        —— 预览态（无实体塔；额外只含塔型宝石）
+ */
+function learnableCap(towerOrType, type) {
+  let tower = null;
+  let t = type;
+  if (typeof towerOrType === 'string') {
+    t = type || towerOrType;
+  } else {
+    tower = towerOrType || null;
+    t = type || (tower && tower.type);
+  }
+  if (!t) return 0;
+  return extraLevel(tower, t) + baseLearnCap(t);
+}
+
+/**
+ * 技能等级显示文案 = "当前等级/可学等级"。
+ * @example 无强化无宝石 → "0/5"；强化 2 次 → "2/5"；嵌 1 颗猫眼石 → "1/6"；
+ *          十字塔共享 +11（从未强化）→ "11/16"
+ */
+function levelText(tower, type) {
+  const t = type || (tower && tower.type);
+  return `${currentLevel(tower, t)}/${learnableCap(tower, t)}`;
 }
 
 /** 效果当前值 = base + per × (等级 - 1)；Lv.1 时就是原生值本身 */
@@ -481,10 +594,16 @@ function gainTextOf(effect) {
   return `+${round2(effect.per)}${effect.unit || ''}`;
 }
 
-/** 「当前 → 下一级」文案：'5% → 10%'（已满级时两端相同，不会写出越界的下一级） */
+/**
+ * 「当前 → 下一级」文案：'5% → 10%'
+ * ⚠️ 不夹 MAX_LEVEL：传进来的是【当前等级】（= 学习 + 额外，可超过学习上限 Lv.6），
+ *    夹了会在高等级塔上写出"85% → 30%"这种倒挂。学习门槛由 canEnhance 单独把关。
+ */
 function stepTextOf(effect, level) {
   if (!effect) return '';
-  return `${valueTextOf(effect, level)} → ${valueTextOf(effect, nextLevel(level))}`;
+  const lv = Number(level);
+  const cur = (isFinite(lv) && lv > LEVEL_BASE) ? Math.floor(lv) : LEVEL_BASE;
+  return `${valueTextOf(effect, cur)} → ${valueTextOf(effect, cur + 1)}`;
 }
 
 // ---- 技能级（多条效果合起来）的文案 ----
@@ -543,10 +662,10 @@ function bonusFor(tower, key) {
     // 该塔当前接收到的共享光环（十字塔「共享资源」把宝石里的
     // 猫眼石/紫晶石也一并转给邻塔）—— 数值由 game_core.syncTowerAuras 每帧快照到
     // tower.auraBuffs，战斗与面板读的是同一份，所以两边不会各说各话。
-    //   技能等级 +N  → 已由 enhanceTimesOf 计入 effectiveTimes（见 skills.js:411）
+    //   技能等级 +N  → 已由 effectiveTimesOf 计入生效次数（= 学习 + 额外，不夹 5）
     //   技能效果 +N% → 与紫晶宝石同一档：系数相加（不是再乘一次）
     const auraPct = auraBuff(tower, 'skillEffectPercent');
-    const times = levelToTimes(levelOf(tower));
+    const times = effectiveTimesOf(tower);
     const mult = effectMultiplier(tower.type) + auraPct / 100;
     return (eff.base + eff.per * times) * mult - eff.base;
   }
@@ -568,13 +687,14 @@ function auraBuff(tower, key) {
 /**
  * 把塔的强化等级重新结算成 enhanceAttrs（单一真源：先清空再按 per × 次数全量写入，
  * 等级回退也不会残留旧值）。多效果技能会把每一条效果都写进去。
- * ⚠️ 这里用的是【强化次数】（tower.enhanceLevel 本身），不是技能等级 —— 别写成 clampLevel。
+ * ⚠️ 这里用的是【学习等级】（只数花金币学出来的次数）—— 额外等级（宝石 / 共享）不进
+ *    这份存档字段，战斗侧由 bonusFor 现算，别写成 clampLevel / 生效次数。
  * @returns {object} tower.enhanceAttrs
  */
 function applyTo(tower) {
   if (!tower) return {};
   tower.enhanceAttrs = {};
-  const n = clampEnhanceTimes(tower.enhanceLevel);
+  const n = learnedLevel(tower);
   if (n <= 0) return tower.enhanceAttrs;
   for (const e of getEffects(tower.type)) {
     tower.enhanceAttrs[e.key] = e.per * n;
@@ -753,9 +873,16 @@ module.exports = {
   nextLevel,
   setGemLevelProvider,
   gemLevels,
-  enhanceTimesOf,
+  effectiveTimesOf,
   levelOf,
   previewLevel,
+  // 新口径：当前等级 = 额外等级 + 学习等级，显示 "当前等级/可学等级"
+  learnedLevel,
+  extraLevel,
+  currentLevel,
+  baseLearnCap,
+  learnableCap,
+  levelText,
   valueOf,
   bonusOf,
   valueTextOf,

@@ -267,6 +267,16 @@ function collectTowerStats(game, tower, stats, towerType) {
     }
   }
 
+  // 1.31 十字塔「共享资源」转过来的技能等级 —— 必须**先**收集：
+  //   下面宝石的「技能效果 +N%」与 3★ 白字加成都按【生效次数 = 学习 + 宝石 + 共享】
+  //   折算（与战斗 towerMod.getSkillTimes 同一份），放到后面会少算共享那几级。
+  const auras = collectAuras(game, tower);
+  let auraSkillLv = 0;
+  for (const aura of auras) {
+    const b = aura.buffs || {};
+    if (b.skillLevels) auraSkillLv += b.skillLevels;
+  }
+
   // 1.32 宝石（嵌入图签槽位、与固有技能绑定，跨局永久）
   //   与图签同档的"永久加成"，但走独立的 GEM 来源 —— 明细里能一眼看出这几点加成
   //   是珠子给的还是图签给的。
@@ -275,16 +285,19 @@ function collectTowerStats(game, tower, stats, towerType) {
   //   猫眼石，暴击几率与暴击伤害两条明细会同时出现。遍历技能效果而不是写死某一条，
   //   就是为了不让"多效果技能"漏掉第二条。
   const gemBonus = tType ? gems.bonusForType(tType) : null;
-  // ---- 技能等级的"总额度"口径（唯一真源 src/skills.js）----
-  // 强化次数与宝石等级**共用同一个上限**（BALANCE.enhance.maxLevel）：宝石给的等级会占用
-  // 强化额度，最终生效的总额度 = clamp(强化次数 + 宝石等级)。
-  // ⚠️ 面板明细必须按【夹取后】的额度登记，否则会"面板数字一直涨、打起来纹丝不动"
-  //    （历史事故：E=4、宝石 +3 时面板报 40%、战斗只有 30%）。
-  const enhTimes = (tower && tower.enhanceLevel > 0) ? skills.clampEnhanceTimes(tower.enhanceLevel) : 0;
-  const gemTimes = (gemBonus && gemBonus.skillLevels) ? skills.clampEnhanceTimes(gemBonus.skillLevels) : 0;
-  const totalTimes = skills.clampEnhanceTimes(enhTimes + gemTimes);
-  const gemPart = Math.min(gemTimes, totalTimes);   // 宝石实际贡献的等级
-  const enhPart = totalTimes - gemPart;             // 强化在宝石之上额外贡献的等级
+  // ---- 技能等级的"生效次数"口径（唯一真源 src/skills.js）----
+  // 2026-09-20 定稿：额外等级（宝石 / 十字塔共享）**不占**学习额度，三者各自独立累加：
+  //   · 学习次数 enhTimes    = 花金币学出来的次数（0..5，唯一真源 tower.enhanceLevel）
+  //   · 宝石等级 gemTimes    = 猫眼石「技能等级 +N」（跨局永久）
+  //   · 共享等级 auraSkillLv = 十字塔「共享资源」转过来的等级
+  //   生效次数 = 三者之和（**不夹上限**）—— 与战斗 towerMod.getSkillTimes 严格同源。
+  // ⚠️ 别再退回 clampEnhanceTimes(学习 + 宝石)：那会把额外等级吃掉，
+  //    面板数字比战斗低好几级（历史事故：E=4、宝石 +3 时面板报 40%、战斗只有 30%）。
+  const enhTimes = skills.learnedLevel(tower);
+  const gemTimes = tType ? skills.gemLevels(tType) : 0;
+  const totalTimes = enhTimes + gemTimes;
+  const gemPart = gemTimes;   // 宝石贡献的等级
+  const enhPart = enhTimes;   // 学习（花金币强化）贡献的等级
   if (gemBonus && gemBonus.count > 0) {
     const kinds = gemBonus.kinds;
     const label = (pick) => gemLabelFor(kinds, pick);
@@ -327,7 +340,8 @@ function collectTowerStats(game, tower, stats, towerType) {
     //   所以嵌一颗紫晶，暴击率行会多出 +0.8%（5% × 16%）、暴击伤害行多出 +1.6%（10% × 16%）。
     //   ⚠️ 别把它当成「攻击力 +N%」登记 —— 紫晶不碰攻击力（历史口径打架的根源）。
     if (gemBonus.skillEffectPercent && tType) {
-      const times = totalTimes;        // 已夹上限的总额度（与战斗口径同源）
+      // 生效次数 = 学习 + 宝石 + 十字塔共享（与战斗 skills.bonusFor 的 effectiveTimesOf 同源）
+      const times = totalTimes + auraSkillLv;
       const mult = 1 + gemBonus.skillEffectPercent / 100;
       for (const eff of skills.getEffects(tType)) {
         const keyMeta = skills.EFFECT_KEYS[eff.key];
@@ -349,9 +363,9 @@ function collectTowerStats(game, tower, stats, towerType) {
   //   技能等级带来的增量登记成点值来源（绿字），不混入 base.damage。
   //   一条技能的全部效果都会各出一条明细（三角塔 = 暴击几率 + 暴击伤害两行）。
   //   但 3★ 阶段强化会给白字基础攻击力 +5%/次（见下方 section 2 原生值）。
-  //   ⚠️ 这里登记的是【强化自己贡献的那一份】enhPart（= 总额度 − 宝石那一份），
-  //      与宝石明细相加后才等于战斗口径的总额度。宝石把额度吃满时 enhPart 会更小，
-  //      这正是"面板不许超报"的落点。
+  //   ⚠️ 这里登记的是【学习自己贡献的那一份】enhPart（= 学习次数，0..5）——
+  //      宝石 / 十字塔共享那两份另走各自的来源行，三份相加才是战斗的生效次数
+  //      （不夹上限；额外等级不占学习额度，所以 enhPart 不会被宝石挤小）。
   const enhanceAttrs = (tower && tower.enhanceAttrs) ? tower.enhanceAttrs : null;
   if (enhPart > 0 && enhanceAttrs) {
     for (const key of Object.keys(enhanceAttrs)) {
@@ -378,12 +392,7 @@ function collectTowerStats(game, tower, stats, towerType) {
   //     · skillEffectPercent   → 与紫晶宝石同一档（系数相加）→ 放大每条效果的当前值
   //   展开公式与 skills.bonusFor 严格同源（那边是 (base + per×次数) × (技能效果系数 + 共享% )），
   //   逐项拆开后：技能等级 → per×N×系数；技能效果 → (base + per×(次数 + 共享等级)) × N%。
-  const auras = collectAuras(game, tower);
-  let auraSkillLv = 0;
-  for (const aura of auras) {
-    const b = aura.buffs || {};
-    if (b.skillLevels) auraSkillLv += b.skillLevels;
-  }
+  //   （auras / auraSkillLv 已在 1.31 处收集 —— 宝石那一档也要用它，别在这里重复声明）
   for (const aura of auras) {
     for (const key of Object.keys(aura.buffs || {})) {
       const v = aura.buffs[key];
@@ -439,15 +448,16 @@ function collectTowerStats(game, tower, stats, towerType) {
 
   // ================= 2. 原生值 =================
   // 3★ 强化塔：基础攻击力 +5%/次（白字，属于原生值范畴，不是绿字来源）
-  // ⚠️ 口径 = 【强化次数总额度】totalTimes = clamp(局内强化 + 宝石等级) —— 与
-  //    game_core.towerDamage 严格同一份（那边直接调 towerMod.getEnhanceTimes）。
+  // ⚠️ 口径 = 【生效次数】= 学习 + 宝石 + 十字塔共享（不夹上限）—— 与
+  //    game_core.towerDamage 严格同一份（那边直接调 towerMod.getSkillTimes）。
   //    历史上这里写的是 tower.enhanceLevel（0 起、不含宝石），而战斗侧写的是
   //    【技能等级 Lv】（1 起、含宝石）→ 面板与战斗永久差 5%，宝石加的等级面板更是
   //    完全看不见。两条线必须同源，别再各写各的。
   const stage3 = !!(tower && (tower.stage || 0) >= BALANCE.enhance.minStage);
   const rawBaseDamage = st.damage || 0;
-  const whiteBonusDamage = (stage3 && totalTimes > 0)
-    ? rawBaseDamage * (1 + totalTimes * 0.05)
+  const skillTimes = totalTimes + auraSkillLv;
+  const whiteBonusDamage = (stage3 && skillTimes > 0)
+    ? rawBaseDamage * (1 + skillTimes * 0.05)
     : rawBaseDamage;
   const base = {
     damage: whiteBonusDamage,

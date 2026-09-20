@@ -1,0 +1,13 @@
+provider=0: levelText(0学)=0/5 levelText(3学)=3/5 baseCap=5 cap=5 cur(3学)=3
+provider=1: levelText(0学)=1/6 levelText(3学)=4/6 baseCap=5 cap=6 cur(3学)=4
+provider=2: levelText(0学)=2/7 levelText(3学)=5/7 baseCap=5 cap=7 cur(3学)=5
+provider=5: levelText(0学)=5/10 levelText(3学)=8/10 baseCap=5 cap=10 cur(3学)=8
+provider=11: levelText(0学)=11/16 levelText(3学)=14/16 baseCap=5 cap=16 cur(3学)=14
+额外=0 学习=0 → 0/5（期望 0/5）
+额外=2 学习=0 → 2/7（期望 2/7）
+额外=8 学习=0 → 8/13（期望 8/13）
+额外 2→8（学习固定 3）：5/7 → 11/13（期望 5/7 → 11/13，可学基数始终 5）
+截图场景 半圆塔(共享+11, 0学): 11/16  (期望 11/16)
+预览态 learnableCap('triangle')=7  levelText(null)=2/7
+战斗口径: levelOf(0学)=1 effectiveTimesOf(0学)=0 levelOf(5学)=6 effectiveTimesOf(5学)=5 (期望 1 / 0 / 6 / 5)
+audit 问题数=0

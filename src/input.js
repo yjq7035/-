@@ -343,6 +343,10 @@ function handleTouchStart(game, e) {
 function handleTouchMove(game, e) {
   // ========== 宝石浮层内部滚动（嵌入列表 / 合成多选列表）==========
   // 必须排在各场景滚动之前：浮层是模态，手指按在浮层上时滚的只能是浮层列表。
+  // 注意：这里的判定**不能**带 "!game._gemModalScrolling" 守卫——
+  //   touchStartPos 在每次移动时都会重置为当前坐标，如果只有"首次超过阈值"才进入，
+  //   之后 dy 永远 < 6 就再也不会触发，列表只跳一格就卡死。
+  //   所以用两个独立 if：① 未滚过且 dy>=6 才激活；② 已滚过则持续用增量更新。
   if ((game.scene === 'codex' || game.scene === 'bag') && gemModal.hasActive(game) &&
       game.touchStartPos && !game._gemModalScrolling) {
     const scrollable = (game.gemSynth && gemModal.isSynthScrollable(game)) ||
@@ -352,20 +356,30 @@ function handleTouchMove(game, e) {
       const dy = pos.y - game.touchStartPos.y;
       if (Math.abs(dy) >= 6) {
         game._gemModalScrolling = true;
-        if (game.gemSynth) {
-          const L = gemModal.getSynthLayout(game);
-          gemModal.setSynthScroll(game, L.scroll - dy);
-        } else if (game.gemPicker) {
-          const L = gemModal.getEmbedPickerLayout(game);
-          gemModal.setEmbedPickerScroll(game, L.scroll - dy);
-        }
-        game.touchStartPos = { x: pos.x, y: pos.y };
         game._gemModalTouch = null;   // 滚过了就不算点按
         releaseButton(game);
       }
     }
-    return;
   }
+  if ((game.scene === 'codex' || game.scene === 'bag') && gemModal.hasActive(game) &&
+      game.touchStartPos && game._gemModalScrolling) {
+    const scrollable = (game.gemSynth && gemModal.isSynthScrollable(game)) ||
+      (!game.gemSynth && !game.gemInfo && game.gemPicker && gemModal.isEmbedPickerScrollable(game));
+    if (scrollable) {
+      const pos = getTouchPos(e);
+      const dy = pos.y - game.touchStartPos.y;
+      if (game.gemSynth) {
+        const L = gemModal.getSynthLayout(game);
+        gemModal.setSynthScroll(game, L.scroll - dy);
+      } else if (game.gemPicker) {
+        const L = gemModal.getEmbedPickerLayout(game);
+        gemModal.setEmbedPickerScroll(game, L.scroll - dy);
+      }
+      game.touchStartPos = { x: pos.x, y: pos.y };
+    }
+  }
+  // 滚过了就不算点按，下面不要再处理
+  if (game._gemModalScrolling) return;
 
   // ========== 天赋列表滚动 ==========
   if (game.scene === 'talents' && game.touchStartPos && talents.isScrollable(game) && !game.pendingDrag) {
@@ -849,7 +863,7 @@ function applyEnhancePick(game, key) {
     const gains = (sp.gains || []).map((g) => `${g.name} +${g.gain}${g.unit || ''}`).join(' · ')
       || (sp.gain ? `${sp.gain}${sp.unit || ''}` : '');
     const gain = gains ? `　${sp.name} ${gains}（现 ${sp.text}）` : '';
-    toast(game, `强化 Lv.${res.level}${gain}`, THEME.accent.green);
+    toast(game, `强化 ${res.levelText || ('Lv.' + res.level)}${gain}`, THEME.accent.green);
   } else {
     const msg = res.reason === 'gold' ? `金币不足（需要 ${res.cost}）`
       : (res.reason === 'stage' ? `需先进阶到 ${res.need}★`

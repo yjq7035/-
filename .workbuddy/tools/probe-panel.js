@@ -226,7 +226,9 @@ for (const [W, H] of RES) {
   const texts = rec.texts.map((t) => t.text);
   ok('宝石态·circle 面板出现「宝石」区块', texts.some((t) => t === '宝石'), texts.filter((t) => /宝石|红宝石|翡翠/.test(t)).join(' / ') || '无');
   ok('宝石态·circle 面板列出国色宝石名', texts.some((t) => /红宝石|翡翠|猫眼石|黄玉|蓝宝石/.test(t)), texts.filter((t) => /石/.test(t)).join(' / '));
-  ok('宝石态·circle 技能槽显示 Lv>0（猫眼石+1 级）', texts.some((t) => /^Lv\.[1-9]/.test(t)), texts.filter((t) => /^Lv\./.test(t)).join(' / ') || '无 Lv 文本');
+  ok('宝石态·circle 技能槽显示「当前/可学」且当前>0（猫眼石+1 级 → 当前 1 / 可学 1+5=6）',
+    texts.some((t) => /^\d+\/\d+$/.test(t) && Number(t.split('/')[0]) >= 1),
+    texts.filter((t) => /^\d+\/\d+$/.test(t)).join(' / ') || '无 当前/可学 文本');
 
   // 判据：① 分隔线不许压在宝石卡上；② 两卡间距必须正好 = gemGap；③ 两卡之间没有多余装饰。
   // 注：录制到的分隔线 y 是那条"梭形"线的**上沿**（drawTaperedDivider 的 y 是中心、半厚 2.5），
@@ -306,10 +308,11 @@ for (const [W, H] of [[390, 844], [414, 896], [428, 926]]) {
 // 执行到：探针 16 套全绿，玩家一选中塔就 TypeError → 主循环 try/catch 吞掉 →
 // 面板整块不出现。教训：**预览态和实体态是两条路径，只测一条等于没测**。
 //
-// 这一轮建真塔（tower.createTower）并强化 2 次（→ 已学 2/5、Lv.3），断言：
+// 这一轮建真塔（tower.createTower）并学习 2 次（→ 学习 2；可学 = 额外 + 5），断言：
 //   ① 画出不抛异常，且文字不越界（复用 checkPanel 的全套几何断言）；
-//   ② 技能槽第一行同时有「Lv.N」与「已学 n/5」两个口径（少一个就等于丢信息）；
-//   ③ 每条文字的 x/y 都是**有限数** —— `fillText(text, x, undefined)` 在真机上是
+//   ② 技能槽第一行显示「当前/可学」（新口径，少这个就等于丢信息）；
+//   ③ 属性面板顶行「固有技能 N/M」也按新口径（可学上限固定）；
+//   ④ 每条文字的 x/y 都是**有限数** —— `fillText(text, x, undefined)` 在真机上是
 //      静默不画，不抛错，只能在这里守（强化浮层的 infoLines 就是这么少了一行）。
 // ============================================================================
 for (const [W, H] of RES) {
@@ -321,21 +324,21 @@ for (const [W, H] of RES) {
     continue;
   }
   log(`\n===== 第四轮 ${W}x${H}（选中实体塔 · 已强化 2 次） =====`);
-  let missLv = 0, missLearn = 0, badCoord = 0, sample = '';
+  let missLv = 0, missTop = 0, badCoord = 0, sample = '';
   for (const type of TYPES) {
     const t = towerMod.createTower(type, 100, 100);
-    t.enhanceLevel = 2;              // 已学 2/5 → Lv.3（同时锁两个口径）
+    t.enhanceLevel = 2;              // 学习 2 次 → 当前 = 2 + 额外；可学 = 额外 + 5
     checkPanel(g, type, '实体塔·', t);
 
     const texts = rec.texts.map((x) => x.text);
-    if (!texts.some((s) => /^Lv\.\d/.test(s))) { missLv++; if (!sample) sample = texts.slice(-4).join('/'); }
-    if (!texts.some((s) => /^已学 \d\/\d/.test(s))) missLearn++;
+    if (!texts.some((s) => /^\d+\/\d+$/.test(s))) { missLv++; if (!sample) sample = texts.slice(-4).join('/'); }
+    if (!texts.some((s) => /^固有技能 \d+\/\d+$/.test(s))) missTop++;
     for (const x of rec.texts) if (!isFinite(x.x) || !isFinite(x.y)) badCoord++;
   }
-  ok(`${W}x${H} 实体塔态：技能槽给出 Lv.N`, missLv === 0,
-    missLv ? `${missLv}/${TYPES.length} 型没有 Lv 文本（末尾文字：${sample}）` : `${TYPES.length} 型都有`);
-  ok(`${W}x${H} 实体塔态：技能槽给出「已学 n/5」`, missLearn === 0,
-    missLearn ? `${missLearn}/${TYPES.length} 型没有已学文本` : `${TYPES.length} 型都有`);
+  ok(`${W}x${H} 实体塔态：技能槽给出 "当前/可学"`, missLv === 0,
+    missLv ? `${missLv}/${TYPES.length} 型没有 X/Y 文本（末尾文字：${sample}）` : `${TYPES.length} 型都有`);
+  ok(`${W}x${H} 实体塔态：属性面板顶行「固有技能 N/M」`, missTop === 0,
+    missTop ? `${missTop}/${TYPES.length} 型没有顶行文本` : `${TYPES.length} 型都有`);
   ok(`${W}x${H} 实体塔态：全部文字坐标有限`, badCoord === 0,
     badCoord ? `${badCoord} 条文字的 x/y 不是有限数` : '无 undefined / NaN 坐标');
 }
@@ -369,6 +372,12 @@ for (const [W, H] of RES) {
     infoLines.length >= 3 && isFinite(infoLines[2]) && onLine(0) > 0 && onLine(1) >= 2 && onLine(2) > 0,
     `infoLines=${JSON.stringify(infoLines)} 每行文字数=${[0, 1, 2].map(onLine).join('/')}`
     + ` ｜ 行2 内容：${rec.texts.filter((x) => Math.abs(x.y - infoLines[2]) < 0.5).map((x) => x.text).join(' ')}`);
+
+  // 等级明细行：新口径拆成「学习等级」与「额外等级」两个口径（额外只抬当前、不动可学）
+  const txtAll = rec.texts.map((x) => x.text);
+  ok(`${W}x${H} 强化浮层等级明细含「学习等级」与「额外等级」`,
+    txtAll.some((s) => s.indexOf('学习等级') >= 0) && txtAll.some((s) => s.indexOf('额外等级') >= 0),
+    txtAll.filter((s) => s.indexOf('等级') >= 0).join(' | ') || '无等级明细');
 }
 
 log('');

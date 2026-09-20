@@ -8,15 +8,15 @@
 // 的数值行数随效果条数变化。三角塔的固有技能「致命一击」就是这样一张卡：
 //
 //   ┌──────────────────────────────────────────┐
-//   │ ┌────┐  致命一击        已学 1/5   Lv.2    │
+//   │ ┌────┐  致命一击              1/5          │
 //   │ │icon│  暴击几率 15%（+5%/级）             │
 //   │ └────┘  暴击伤害 20%（+10%/级）            │
 //   │         命中时…（说明换行）                 │
 //   └──────────────────────────────────────────┘
 //
-// 第一行右侧两段是两个不同口径，别混：
-//   ·「已学 n/5」= 局内花金币强化了几次 —— 真源 **tower.enhanceLevel**（0..5，预览态不显示）
-//   ·「Lv.N」   = 有效技能等级 = Lv.1 + 已学 + 宝石等级 + 十字塔共享等级（skills.levelOf）
+// 第一行右侧那一段 = 技能等级，口径 "当前等级/可学等级"（唯一真源 skills.levelText）：
+//   · 当前等级 = 学习等级（局内花金币强化，真源 tower.enhanceLevel）+ 额外等级（宝石 / 十字塔共享）
+//   · 可学等级 = 额外等级 + 可学基数(5)
 //   两者都由 skills 现算，本文件不存任何等级副本。
 //
 // ⚠️ 两条铁律（踩过坑）：
@@ -25,8 +25,8 @@
 //      数值行的行数也来自同一个 buildSkillSlots —— 加一条效果会自动长高，不用改布局。
 //   ② 说明文字一律换行（wrapLines）；数值行按可用宽度 ellipsize，绝不硬画。
 //
-// Lv 的口径：tower 存在时 = 强化等级 + 宝石等级（skills.levelOf）；
-//           预览（商店/图签，没有实体塔）时 = 宝石等级（珠子是跨局的，预览也该体现）。
+// 数值行的口径：当前等级（学习 + 额外，不夹上限）→ skills.effectiveValueTextOf；
+//   预览（商店/图签，没有实体塔）时学习等级为 0，只剩宝石那份（珠子是跨局的，预览也该体现）。
 // 技能表本身在 src/skills.js —— 本文件只负责"把技能画成一张卡"。
 // ============================================================================
 
@@ -88,22 +88,20 @@ function buildSkillSlots(ctx, type, tower, contentW) {
   const out = [];
   const maxW = descMaxWidth(contentW);
   for (const sk of list) {
-    // 等级：有实体塔 → 强化 + 宝石；预览 → 只看宝石（强化是局内的，不跨局）
-    const lv = tower ? skills.levelOf(tower) : skills.previewLevel(type);
-    // 「已学」= 局内花金币强化出来的次数（唯一真源 = tower.enhanceLevel，0..5）。
-    // ⚠️ 这里曾经错写成 `tower.skillLevels[sk.id]` —— 那个字段全项目**只有读、没有写**
-    //    （真实存在的是 gems.skillLevels(type)，是宝石等级，不是塔上的字段）。
-    //    后果：只要面板带着"选中的实体塔"渲染，第一座塔就会在这里抛 TypeError，
-    //    被主循环 try/catch 吞掉 → 玩家看到的是"点了塔，面板压根不出现"。
-    //    预览（商店 / 图签，无实体塔）传 null：局内强化不跨局，槽里只显示 Lv。
-    const learnLv = tower ? skills.clampEnhanceTimes(tower.enhanceLevel || 0) : null;
+    // 等级（新口径 2026-09-20）：显示 "当前等级/可学等级"
+    //   当前等级 = 额外等级（宝石 / 十字塔共享）+ 学习等级（局内强化）
+    //   可学等级 = 额外等级 + 可学基数(5) = 这条技能最高能到的等级
+    //   —— 可学基数固定 5、外部加成绝不修改它；宝石 / 共享抬的是"地基"，
+    //      玩家还能在其上再学 5 级，所以分母会跟着额外等级涨（0/5 → 2/7 → 8/13）。
+    const learnLv = skills.learnedLevel(tower);   // 学习等级（0 起，局内强化次数）
+    const lv = skills.currentLevel(tower, type);   // 当前等级 = 学习 + 额外
     out.push({
       id: sk.id,
       name: sk.name,
       innate: !!sk.innate,
       icon: skills.iconOf(sk),
       level: lv,
-      levelText: `Lv.${lv}`,
+      levelText: skills.levelText(tower, type),   // "当前等级/可学等级"
       learnLv,
       // 数值行：一条效果一行（技能名 + 实际生效值 + 每级增量）
       // ⚠️ 实际生效值用 effectiveValueTextOf —— 会把紫晶宝石「技能效果 +N%」的放大
@@ -194,40 +192,24 @@ function drawOneSlot(ctx, x, y, w, h, slot, tint) {
   const textW = x + w - SKILL_SLOT.padX - textX;
   let ty = y + SKILL_SLOT.padY;
 
-  // 行 1：技能名（左） + 「已学 n/5」（暗，可选） + Lv.N（右，加粗）
-  // ⚠️ 右侧两段的宽度必须**先量再决定画不画**：窄屏上宁可不画"已学"，
-  //    也绝不许文字捅出槽外（历史事故：面板文字越界 116px）。
-  //    技能名截断用的就是同一个 rightW —— 算宽与画字不许各写一份。
+  // 行 1：技能名（左） + "当前等级/可学等级"（右，加粗）
+  //   levelText = skills.levelText = "当前/可学"；当前等级 > 0（有强化或宝石加成）
+  //   才高亮成绿色，否则灰显。窄屏上技能名截断用的就是同一个 lvW —— 算宽与画字不许各写一份。
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'right';
   ctx.font = 'bold 12px Arial';
   const lvStr = slot.levelText;
   const lvW = ctx.measureText(lvStr).width;
-  const nameGap = 8;          // 技能名与右侧两段之间的最小呼吸
-  let learnStr = '';          // 空串 = 不画（放不下，或本来就是预览态）
-  let learnW = 0;
-  if (slot.learnLv != null) {
-    ctx.font = '11px Arial';
-    const s = `已学 ${slot.learnLv}/${skills.MAX_ENHANCE_TIMES}`;
-    const w = ctx.measureText(s).width;
-    // 名字至少留 44px 才给"已学"腾位 —— 名字比次数重要
-    if (textW - lvW - nameGap - w - 44 >= 0) { learnStr = s; learnW = w + nameGap; }
-  }
 
   ctx.textAlign = 'left';
   ctx.font = SKILL_SLOT.nameFont;
   ctx.fillStyle = THEME.text.primary;
-  ctx.fillText(theme.ellipsize(ctx, slot.name, Math.max(28, textW - lvW - learnW - 6)), textX, ty + SKILL_SLOT.nameH / 2);
+  ctx.fillText(theme.ellipsize(ctx, slot.name, Math.max(28, textW - lvW - 6)), textX, ty + SKILL_SLOT.nameH / 2);
 
+  // 当前/可学 永远画：它才是这一槽最要紧的等级信息（当前含宝石/共享加成，可学固定）
   ctx.textAlign = 'right';
-  if (learnStr) {
-    ctx.font = '11px Arial';
-    ctx.fillStyle = THEME.text.dim;
-    ctx.fillText(learnStr, textX + textW - lvW - nameGap, ty + SKILL_SLOT.nameH / 2);
-  }
-  // Lv 永远画：它含宝石 / 共享光环的等级，是这一槽最要紧的一句话
   ctx.font = 'bold 12px Arial';
-  ctx.fillStyle = slot.level > skills.LEVEL_BASE ? THEME.accent.green : THEME.text.dim;
+  ctx.fillStyle = slot.level > 0 ? THEME.accent.green : THEME.text.dim;
   ctx.fillText(lvStr, textX + textW, ty + SKILL_SLOT.nameH / 2);
   ty += SKILL_SLOT.nameH;
 

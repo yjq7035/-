@@ -49,7 +49,7 @@ const TOWER_DEFS = {
   octagon:       { name: '八边塔', color: '#00BFA5', cost: 240, rarity: 2 },
   cross:         { name: '十字塔', color: '#F50057', cost: 210, rarity: 1 },
   arrow:         { name: '箭形塔', color: '#FFA000', cost: 280, rarity: 2 },
-  bolt:          { name: '闪电塔', color: '#D500F9', cost: 380, rarity: 3 },
+  bolt:          { name: '闪电塔', color: '#FFD700', cost: 380, rarity: 3 },
   // ---- 第三批扩展：固有技能「连续射击」平行塔（双横轮廓）----
   // 注：内部键用 parallel（形状名，与 triangle / circle / … 同构）；
   //     历史上曾叫 graphic —— 那个名字与"图形塔"这个塔族统称撞车，2026-09 改名。
@@ -72,7 +72,8 @@ const TOWER_DEFS = {
 //                               暴击率高的时候它才值钱，所以配高倍率的塔都给一点起步暴击率。
 //                               三角塔的固有技能另有"暴击伤害 +N%"（直接加到这个倍率上）。
 //   注：敌人抗性减伤见 BALANCE.armorK 的递减公式；穿透为 0 时按"无抵扣"结算。
-//   注：技能等级范围 Lv.1~Lv.6（默认 1 + 最多 5 次强化），不存在 Lv.0 —— 见 src/skills.js。
+//   注：技能等级【学习】上限 Lv.1~Lv.6（默认 1 + 最多 5 次学习），不存在 Lv.0 —— 见 src/skills.js。
+//       宝石 / 十字塔共享给的【额外等级】另算（不占学习额度，当前等级可超过 Lv.6）。
 //
 // 本表里这四条字段是"原生值"，它们的成长由【固有技能】负责（表在 src/skills.js）：
 //   eliteMult        精英伤害倍率 —— 六边塔：对 tier>=3（精英/BOSS/最终BOSS）的伤害倍数
@@ -147,7 +148,8 @@ const TOWER_STATS = {
   // critChance = 原生「暴击几率 5%」= 固有技能「雷霆暴击」的 base（见 src/skills.js）。
   //   闪电塔的卖点是"全塔最高暴击倍率（200%）"，所以它必须有起步暴击率 ——
   //   旧版写"原生暴击几率为 0"，等于技能 Lv.1 空转，已作废。
-  bolt:          { damage: 70, range: 220, attackSpeedMultiplier: 100, attackInterval: 1.5, critChance: 5, critMult: 2.0, penetration: 0, isSupport: false, description: '闪电炮塔，暴击倍率全塔最高（200%），原生暴击几率 5%。' },
+  //   闪电塔的核心机制：攻击主目标时，电流传导到附近的敌人（连锁）。
+  bolt:          { damage: 65, range: 180, attackSpeedMultiplier: 100, attackInterval: 1.5, critChance: 5, critMult: 2.0, penetration: 0, isSupport: false, description: '闪电塔：攻击主目标时，电流传导到附近敌人（连锁）。暴击倍率全塔最高（200%），原生暴击几率 5%。' },
   // ---- 第三批扩展：固有技能「连续射击」平行塔 ----
   // 攻击间隔 0.25s（100% 攻速）；攻击力 35。
   // 固有技能「连续射击」的实现见 game_core.updateTowers 的 parallel 分支：
@@ -238,7 +240,7 @@ const BALANCE = {
   // 门槛：只有进阶到 minStage（3★封顶）的图形塔才能强化。
   // ==========================================================================
   enhance: {
-    maxLevel: 5,      // 最多可强化次数（技能等级 = Lv.1 + 强化次数 + 宝石等级 → 满级 Lv.6）
+    maxLevel: 5,      // 最多可【学习】次数（学习上限 = Lv.1 + 5 = Lv.6；宝石 / 共享的额外等级不占它）
     minStage: 3,      // 需要进阶到几星才能强化（MAX_STAGE = 3★）
     costRate: 0.9,    // 升到 L 级的造价 = 塔基础造价 × costRate × L（越强化越贵）
   },

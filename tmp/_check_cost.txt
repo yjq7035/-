@@ -1,0 +1,24 @@
+=== 口径 ===
+learnedLevel(学习)   = 0
+extraLevel(额外)     = 11
+currentLevel(当前)   = 11
+learnableCap(可学)   = 16
+levelText(显示)      = 11/16
+getEnhanceTimes(次数) = 5
+getEffectiveSkillLevel= 6
+canEnhance           = false
+enhanceCost(按次数)  = Infinity
+enhanceCost(按学习0) = 162
+baseCost             = 180
+costRate             = 0.9
+render err=none
+=== 面板出现的关键文字 ===
+  10/99999
+  💰250
+  💰180
+  💰150
+  固有技能
+  11/16
+  固有技能 11/16
+  已满级：专属属性已达上…
+  已满级
