@@ -24,6 +24,8 @@ const JOBS = [
   ['probe-panel',   path.join(TOOLS, 'probe-panel.js'),   [path.join(TOOLS, '_panel.txt')]],
   ['probe-codex',   path.join(TOOLS, 'probe-codex.js'),   [path.join(TOOLS, '_codex.txt')]],
   ['probe-gem',     path.join(TOOLS, 'probe-gem.js'),     [path.join(TOOLS, '_gem.txt')]],
+  // 功能性宝石家族（商店出现概率）：祈愿 +3% / 镇守 3★时 -3%，加权抽样 + 蒙特卡洛实测
+  ['probe-shop-pull', path.join(TOOLS, 'probe-shop-pull.js'), [path.join(TOOLS, '_shop_pull.txt')]],
   // 宝石 × 强化/升级/进阶 叠加专项：全塔型矩阵 + 面板 vs 战斗同口径（含技能等级上限）
   ['probe-gem-stack', path.join(TOOLS, 'probe-gem-stack.js'), [path.join(TMP, '_gemstack.txt')]],
   // 技能系统专项：技能表契约 + "一技能多效果"（三角塔暴击/爆伤）+ 强化与宝石链路

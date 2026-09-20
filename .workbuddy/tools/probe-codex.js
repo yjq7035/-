@@ -388,6 +388,48 @@ log('\n===== 全塔型已解锁绘制（图签）+ 定义完整性 =====');
   }
 }
 
+// ============================================================================
+// ⑨ 辅助塔图签属性区必须印"它真正发的光环"
+// ----------------------------------------------------------------------------
+// 事故（2026-09-19）：属性区那行只印梯塔口径的「光环 +N%」，读的是 stats.supportBuff；
+// 而菱形塔在 TOWER_STATS 里**没有** supportBuff（它发的是 auraPenetration）——
+// 于是菱形塔图签恒显示「光环 +0%」，玩家看到的就是"穿透光环效果没了"。
+// 为什么这套回归没抓住？战斗侧一直是好的（probe-aura / probe-stage 全绿），
+// 洞只在"印在屏幕上的那行字"里 —— 而 ⑧ 只查 undefined / 越界，不查这句口径。
+// 所以本节按"期望文案由 TOWER_STATS 现算"来断言，并配一条反向判据。
+// ============================================================================
+log('\n===== 辅助塔图签属性区 = 它真正发的光环 =====');
+{
+  const SUPPORT = config.TOWER_ORDER.filter((t) => config.TOWER_STATS[t] && config.TOWER_STATS[t].isSupport);
+  const g = mkGame(375, 667);
+  g.scene = 'codex';
+  const attrOf = (type) => {
+    g.codexSelected = type;
+    g.codexSheetScroll = 0;
+    rec.texts.length = 0;
+    codex.drawCodex(g);
+    return rec.texts.map((t) => t.text).filter((s) => /^(光环|穿透|共享|范围|目标)/.test(s));
+  };
+
+  ok('辅助塔共 3 型（梯塔 / 菱形塔 / 十字塔）', SUPPORT.length === 3, SUPPORT.join('/'));
+  for (const type of SUPPORT) {
+    const st = config.TOWER_STATS[type];
+    // 期望文案与战斗口径同源：邻接共享 → shareRatio；穿透光环 → auraPenetration；否则 → 攻速光环
+    const want = st.auraMode === 'adjacent'
+      ? `共享 +${st.shareRatio || 0}%`
+      : (st.auraPenetration
+        ? `穿透 +${st.auraPenetration}`
+        : `光环 +${(st.supportBuff && st.supportBuff.attackSpeedMultiplier) || 0}%`);
+    const got = attrOf(type);
+    ok(`「${type}」图签属性区印出它真正发的光环`, got.indexOf(want) >= 0,
+      got.indexOf(want) >= 0 ? want : `期望「${want}」，实际 [${got.join(' , ')}]`);
+  }
+  // 反向判据：菱形塔一旦印成梯塔口径（光环 +0%）必须变红 —— 这正是玩家报的那句话
+  const dia = attrOf('diamond');
+  ok('★ 反向：菱形塔不会印成「光环 +0%」（改回旧实现必红）',
+    dia.indexOf('光环 +0%') < 0, `[${dia.join(' , ')}]`);
+}
+
 log(`\n=== 图签汇总：${RES.length} 分辨率 × ${config.TOWER_ORDER.length} 塔型，失败 ${fails} 条 ===`);
 log(`=== 判据戳：TOWER_ORDER=${config.TOWER_ORDER.length} 型 / 面板三段式(sheetHeaderH=${codex.CODEX_UI.sheetHeaderH}) / ${new Date().toISOString()} ===`);
 

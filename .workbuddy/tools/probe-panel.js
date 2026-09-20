@@ -19,7 +19,7 @@
 // ============================================================================
 const path = require('path');
 const fs = require('fs');
-const { makeCtx, makeRec } = require('./harness');
+const { makeCtx, makeRec, gemCards, dividerLines } = require('./harness');
 
 global.document = { addEventListener() {}, removeEventListener() {} };
 global.requestAnimationFrame = () => 0;
@@ -81,6 +81,18 @@ function prepGems(types) {
       if (!added.ok) continue;
       meta.embedGem(t, i, added.gem.uid);
     }
+  }
+}
+
+/** 让某塔型解锁到 2 级并嵌 2 颗宝石（复刻玩家截图：秘术猫眼 + 星辉紫晶） */
+function prepTwoGems(type) {
+  while (meta.codexLevel(type) < 2) meta.upgradeCodex(type);
+  for (const kind of ['opal', 'amethyst']) {
+    const i = meta.gemSockets(type).findIndex((s) => s.unlocked && !s.kind);
+    if (i < 0) break;
+    const added = meta.addGem(kind);
+    if (!added.ok) break;
+    meta.embedGem(type, i, added.gem.uid);
   }
 }
 
@@ -196,7 +208,8 @@ for (const [W, H] of RES) {
   for (const type of GEM_TYPES) checkPanel(g, type, '宝石态·');
 
   // 宝石区块必须真的画出来了（否则"嵌了看不见"）
-  rec.texts.length = 0;
+  // ⚠️ 四份记录一起清 —— 只清 texts 会让下面的几何断言吃到"上一批面板"的矩形
+  rec.texts.length = 0; rec.rects.length = 0; rec.clips.length = 0; rec.ops.length = 0;
   g.panelTowerType = 'circle';
   g.showPanel = true;
   renderer.drawTowerPanel(g);
@@ -204,6 +217,75 @@ for (const [W, H] of RES) {
   ok('宝石态·circle 面板出现「宝石」区块', texts.some((t) => t === '宝石'), texts.filter((t) => /宝石|红宝石|翡翠/.test(t)).join(' / ') || '无');
   ok('宝石态·circle 面板列出国色宝石名', texts.some((t) => /红宝石|翡翠|猫眼石|黄玉|蓝宝石/.test(t)), texts.filter((t) => /石/.test(t)).join(' / '));
   ok('宝石态·circle 技能槽显示 Lv>0（猫眼石+1 级）', texts.some((t) => /^Lv\.[1-9]/.test(t)), texts.filter((t) => /^Lv\./.test(t)).join(' / ') || '无 Lv 文本');
+
+  // 判据：① 分隔线不许压在宝石卡上；② 两卡间距必须正好 = gemGap；③ 两卡之间没有多余装饰。
+  // 注：录制到的分隔线 y 是那条"梭形"线的**上沿**（drawTaperedDivider 的 y 是中心、半厚 2.5），
+  //     所以"净间距"直接拿它减卡片底边即可，重叠判据就是 clear >= 0。
+  //     面板被矮屏挤压时每个分隔线区块会被压到 6px 高，线两侧必然贴死 —— 那种情况下
+  //     只要求"不重叠"；"设计间距"由第三轮（宽屏 + 2 颗宝石）单独锁。
+  const UI = renderer.PANEL_UI;   // 布局真源（renderer 已导出给探针）
+  const cards = gemCards(rec, UI.gemRowH);   // 几何抽取在 harness 里（出图工具共用同一份）
+  const dividers = dividerLines(rec);
+  const nGem = gems.embeddedEntries('circle').length;
+  ok(`${W}x${H} 宝石卡张数 = 已嵌宝石数`, cards.length === nGem,
+    `画出 ${cards.length} 张 / 实嵌 ${nGem} 颗`);
+
+  const squeezed = (g.panelScrollMax || 0) > 0;   // 面板被屏幕挤压 → 分隔线块会被压扁
+  let minClear = Infinity;
+  for (const c of cards) {
+    const below = dividers.filter((d) => d.y > c.y).sort((a, b) => a.y - b.y)[0];
+    if (!below) continue;
+    minClear = Math.min(minClear, below.y - (c.y + c.h));
+  }
+  const need = 0;   // 挤压与否一律不许重叠；"设计间距 6.5px"见第三轮
+  ok(`${W}x${H} 宝石卡不被下方分隔线压住`, !isFinite(minClear) || minClear >= need,
+    `最近净间距 ${isFinite(minClear) ? minClear.toFixed(1) : 'n/a'}px（${squeezed ? '面板被挤压' : '面板不滚动'}；${dividers.length} 条分隔线 / ${cards.length} 张卡）`);
+
+  let minCardGap = Infinity;
+  for (let i = 1; i < cards.length; i++) {
+    minCardGap = Math.min(minCardGap, cards[i].y - (cards[i - 1].y + cards[i - 1].h));
+  }
+  ok(`${W}x${H} 相邻宝石卡间距 = gemGap(${UI.gemGap})`,
+    !isFinite(minCardGap) || Math.abs(minCardGap - UI.gemGap) < 0.01,
+    `实测 ${isFinite(minCardGap) ? minCardGap.toFixed(1) : 'n/a'}px`);
+
+  let stray = 0;
+  for (let i = 1; i < cards.length; i++) {
+    const a = cards[i - 1], b = cards[i];
+    for (const r of rec.rects) {
+      if (r.h <= 8 && r.w > 20 && r.y >= a.y + a.h - 1 && r.y + r.h <= b.y + 1) stray++;
+    }
+  }
+  ok(`${W}x${H} 两张宝石卡之间没有多余装饰元素`, stray === 0, stray ? `发现 ${stray} 个 inset 小长条` : '干净');
+}
+
+// ============================================================================
+// 第三轮：玩家截图场景（梯塔 / 2 颗宝石 / 宽屏、面板不滚动）
+// ----------------------------------------------------------------------------
+// 这一轮专门锁"设计间距"：宝石区块高度必须涵盖"n 张卡 + (n−1) 段间距"，
+// 少算一份 → 第 2 张卡就会探出区块，把下面那条分隔线顶到卡片边框上
+// （玩家原话："下面的分割线也弄自适应"）。
+// 只取宽屏：这些尺寸下面板一定装得下、分隔线块不会被压扁，间距必须是设计值 6.5px。
+// ============================================================================
+prepTwoGems('trapezoid');
+for (const [W, H] of [[390, 844], [414, 896], [428, 926]]) {
+  const g = mkGame(W, H);
+  g.panelTowerType = 'trapezoid';
+  g.selectedTower = null;
+  g.showPanel = true;
+  g.gold = 9999;
+  g.panelScrollOffset = 0;
+  rec.texts.length = 0; rec.rects.length = 0; rec.clips.length = 0; rec.ops.length = 0;
+  renderer.drawTowerPanel(g);
+
+  const cards = gemCards(rec, renderer.PANEL_UI.gemRowH);
+  const last = cards[cards.length - 1];
+  const below = dividerLines(rec).filter((d) => last && d.y > last.y).sort((a, b) => a.y - b.y)[0];
+  const clear = (last && below) ? below.y - (last.y + last.h) : NaN;
+  ok(`${W}x${H} 梯塔 2 宝石：末卡与下方分隔线留出设计间距`,
+    cards.length === 2 && isFinite(clear) && clear >= 5,
+    `${cards.length} 张卡，净间距 ${isFinite(clear) ? clear.toFixed(1) : 'n/a'}px（设计 6.5px，要求 ≥5）`
+    + `  面板 ${g._panelRect.w}x${g._panelRect.h} 滚动 ${g.panelScrollMax}`);
 }
 
 log('');

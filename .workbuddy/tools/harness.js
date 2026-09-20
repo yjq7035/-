@@ -201,4 +201,34 @@ function bounds(path) {
 /** 造一个干净记录容器 */
 function makeRec() { return { texts: [], rects: [], clips: [], ops: [] }; }
 
-module.exports = { makeCtx, makeRec, textWidth, fontPx };
+// ---------------------------------------------------------------------------
+// 两种"能从录制结果里认出来"的图形（探针与出图工具共用，别各写一份）
+// ---------------------------------------------------------------------------
+
+/**
+ * 塔属性面板里的【宝石卡】矩形。
+ * 判据：满内容宽 + 高 = PANEL_UI.gemRowH。
+ * ⚠️ 每张卡会被记两条（roundRectPath 先给 fill 用一次、再给 stroke 用一次）→ 按几何去重，
+ *    否则"相邻卡间距"会量到 -40 那种自己跟自己的差值。
+ * @param {object} rec makeRec() 的产物
+ * @param {number} rowH renderer.PANEL_UI.gemRowH
+ */
+function gemCards(rec, rowH) {
+  const seen = {};
+  return rec.rects
+    .filter((r) => r.w > 100 && Math.abs(r.h - rowH) < 0.01)
+    .filter((r) => { const k = `${r.x},${r.y},${r.w},${r.h}`; if (seen[k]) return false; seen[k] = 1; return true; })
+    .sort((a, b) => a.y - b.y);
+}
+
+/**
+ * 面板里的【切割分隔线】位置。线是梭形（drawTaperedDivider 中心 ±2.5），bounds 取外接盒
+ * → 得到一条 w≈内容宽、h=5 的 fill；其 y 是线的**上沿**。
+ */
+function dividerLines(rec) {
+  return rec.ops
+    .filter((o) => o[0] === 'fill' && o[1] && o[1].w > 100 && o[1].h > 0 && o[1].h <= 8)
+    .map((o) => o[1]);
+}
+
+module.exports = { makeCtx, makeRec, textWidth, fontPx, gemCards, dividerLines };

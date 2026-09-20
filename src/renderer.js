@@ -751,6 +751,7 @@ const PANEL_UI = {
   descSize: 12.5,
   skillH: 24,
   gemRowH: 40,          // 宝石条单行高（36 的珠子 + 上下呼吸）
+  gemGap: 5,            // 相邻两张宝石卡之间的间距（**区块高度与绘制共用**，见 gemBlockHeight）
   enhanceH: 52,         // 强化按钮区（含标签行）
   footerH: 24,
 };
@@ -770,6 +771,21 @@ const ROW_LABEL_COLOR = {
   penetration: THEME.accent.gold,
   break: THEME.accent.gold,
 };
+
+/**
+ * 宝石区块总高（**唯一真源**）：标题 + n 张卡 + 卡间 gap。
+ *
+ * ⚠️ 必须与 drawPanelGems 的 cardY 步进（cardH + gemGap）严格同源 ——
+ *    旧实现只按 n×gemRowH 预留高度、绘制却按 (gemRowH + 5) 步进，两张卡起
+ *    最后一张就会比区块多探出 5×(n−1) px；而区块高度决定"下面那条分隔线画在哪"
+ *    （分隔线画在下一个区块的正中），于是分隔线正好压在最后一张宝石卡的边框上。
+ *    这里与 src/skillSlot.js 的 skillSlotsHeight（槽高 + outerGap）是同一套算法。
+ * @param {number} n 该塔型已嵌入的宝石数量
+ */
+function gemBlockHeight(n) {
+  if (!(n > 0)) return 0;
+  return PANEL_UI.sectionTitleH + n * PANEL_UI.gemRowH + (n - 1) * PANEL_UI.gemGap;
+}
 
 /**
  * 绘制塔属性面板（高度自适应）
@@ -811,7 +827,8 @@ function drawTowerPanel(game) {
   // 宝石槽条：展示该塔型已嵌入的宝石（嵌入操作在图签里做，这里负责"看得到"）
   // 嵌入条目带等级（合成产物 > Lv.1），名字按需求带上 Lv
   const gemEntries = gems.embeddedEntries(towerType);
-  const gemBlockH = gemEntries.length > 0 ? PANEL_UI.sectionTitleH + PANEL_UI.gemRowH : 0;
+  // 高度含卡间距（唯一真源，见 gemBlockHeight）—— 少算一份，下面的分隔线就会压到卡片上
+  const gemBlockH = gemBlockHeight(gemEntries.length);
 
   // 组装区块（累加高度，杜绝重叠）
   const blocks = [];
@@ -846,7 +863,7 @@ function drawTowerPanel(game) {
     push({ type: 'skill', h: skillBlockH, slots: skillSlots, color: towerDef.color });
   }
 
-  // 宝石区块（已嵌入的宝石，与固有技能绑定）
+  // 宝石区块（已嵌入的宝石，与固有技能绑定，向下排列）
   if (gemEntries.length > 0) {
     push({ type: 'divider', h: PANEL_UI.dividerH });
     push({ type: 'gems', h: gemBlockH, entries: gemEntries });
@@ -933,18 +950,7 @@ function drawTowerPanel(game) {
   ctx.stroke();
   ctx.restore();
 
-  // 滚动条：把"下面还有内容"画出来（面板右侧那道细条）。
-  //
-  // ⚠️ 这里原来调的是 drawScrollIndicator() —— 一个**全项目不存在**的函数。
-  //    它只在"内容高过屏幕"（scrollable = true）时才被调用，也就是矮屏 + 文字多的塔
-  //    （圆塔 / 正方塔 / 图形塔）上必炸 ReferenceError：
-  //    主循环 try/catch 把异常吞掉 → 面板整块画不出来 → 玩家看到的是"点了塔没反应"。
-  //    这就是「属性面板文本超出显示不全」的病根，别再换回任何自造函数。
-  //    统一用 theme.drawScrollBar（图签 / 天赋 / 选关天梯共用同一支）。
-  if (scrollable) {
-    drawScrollBar(ctx, { x: panelX, y: panelY + 6, w: panelW - 2, h: panelH - 12 },
-      scroll, maxScroll, panelH - 12, contentH);
-  }
+  // （属性面板不再画滚动条，滑动交互由 panelScrollOffset 驱动，保持不变。）
 
   // ---------- ③ 逐块绘制（应用滚动偏移） ----------
   ctx.save();
@@ -1192,10 +1198,12 @@ function drawPanelSkill(ctx, block, panelX, y, panelW) {
 /**
  * 宝石区：该塔型已嵌入的宝石（与固有技能绑定，跨局永久）。
  * 只读展示 —— 嵌入/取出都在图签的槽位上操作，这里给出"这颗塔带了什么珠子"。
+ * 竖排：每颗一颗，图标 + 名字 + 属性效果。
  */
 function drawPanelGems(ctx, block, panelX, y, panelW) {
   const left = panelX + PANEL_UI.padX;
   const right = panelX + panelW - PANEL_UI.padX;
+  const contentW = right - left;
   const entries = block.entries || [];
 
   ctx.textAlign = 'left';
@@ -1204,30 +1212,72 @@ function drawPanelGems(ctx, block, panelX, y, panelW) {
   ctx.fillStyle = THEME.text.secondary;
   ctx.fillText('宝石', left, y + PANEL_UI.sectionTitleH / 2);
 
-  ctx.textAlign = 'right';
-  ctx.font = '10px Arial';
-  ctx.fillStyle = THEME.text.off;
-  ctx.fillText('与固有技能绑定', right, y + PANEL_UI.sectionTitleH / 2);
+    // 珠子逐个竖排，每颗用【圆角卡】框住（左侧图标+槽位 + 右侧名字/描述，同固有技能布局）
+    const gemPad = 6;
+    const iconSize = 14;
+    const iconR = iconSize / 2;
+    const slotSize = iconSize + 8;
+    let cardY = y + PANEL_UI.sectionTitleH;
+    for (const entry of entries) {
+      const def = gems.gemDef(entry.kind);
+      if (!def) continue;
 
-  // 珠子逐个横排：图标 + 名字（带 Lv；挤不下就只留图标）
-  const cy = y + PANEL_UI.sectionTitleH + PANEL_UI.gemRowH / 2;
-  let x = left + 12;
-  for (const entry of entries) {
-    const def = gems.gemDef(entry.kind);
-    if (!def) continue;
-    gems.drawGemIcon(ctx, x, cy, 11, entry.kind, { lv: entry.lv });
-    x += 16;
-    ctx.textAlign = 'left';
-    ctx.font = '11px Arial';
-    ctx.fillStyle = def.color;
-    const label = gems.gemName(entry.kind, entry.lv);
-    if (x + ctx.measureText(label).width < right - 2) {
-      ctx.fillText(label, x, cy);
-      x += ctx.measureText(label).width + 12;
-    } else {
-      x += 4;   // 放不下名称就只留图标，绝不越出面板
+      const cardW = contentW;
+      const cardH = PANEL_UI.gemRowH;
+
+      // 圆角卡背景
+      const grad = ctx.createLinearGradient(left, cardY, left, cardY + cardH);
+      grad.addColorStop(0, 'rgba(179, 136, 255, 0.10)');
+      grad.addColorStop(1, 'rgba(255, 255, 255, 0.03)');
+      ctx.fillStyle = grad;
+      roundRectPath(ctx, left, cardY, cardW, cardH, 8);
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(179, 136, 255, 0.35)';
+      ctx.lineWidth = 1;
+      roundRectPath(ctx, left, cardY, cardW, cardH, 8);
+      ctx.stroke();
+
+      // 图标槽位（与固有技能槽位一致：深色底 + 紫边框 + 圆角）
+      const slotCX = left + gemPad + slotSize / 2; // 槽中心 X
+      const slotCY = cardY + cardH / 2;            // 槽中心 Y（与卡片同高居中）
+      const slotX = slotCX - slotSize / 2;
+      const slotY = slotCY - slotSize / 2;
+      // 槽位用锐角矩形（圆角太小会导致图标被圆角"吃"掉、看起来偏）
+      ctx.beginPath();
+      ctx.rect(slotX, slotY, slotSize, slotSize);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(179,136,255,0.5)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // 宝石图标（槽位正中；钻石切面几何中心偏上 1px，故补 +1 让视觉居中）
+      gems.drawGemIcon(ctx, slotCX, slotCY + 1, iconR, entry.kind, { lv: entry.lv });
+
+      // 右侧：名字（上）+ 描述（下），文字在图标槽位右边
+      const textX = slotCX + slotSize + 10; // 槽位右边缘 + 10px
+
+      // 名字
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 11px Arial';
+      ctx.fillStyle = def.color;
+      const label = gems.gemName(entry.kind, entry.lv);
+      ctx.fillText(label, textX, cardY + 14);
+
+      // 描述
+      const eff = gems.effectTextAt(entry.kind, entry.lv);
+      if (eff) {
+        ctx.font = '10px Arial';
+        ctx.fillStyle = THEME.text.off;
+        ctx.fillText(eff, textX, cardY + 28);
+      }
+
+      // 卡间距交给 gemGap（与区块高度同源）；**不在两卡之间画任何装饰** ——
+      // 曾经那条 inset 的紫色小长条（left+12 / cardW-24 / 6.3px 高）本身有 2.3px
+      // 压在第 2 张卡上，看着就是个说不清来历的流氓元素，玩家会问"这是什么"。
+      // 卡本身有描边，两张卡之间留白就够分隔了。
+      cardY += cardH + PANEL_UI.gemGap;
     }
-  }
 }
 
 /**
@@ -2652,4 +2702,8 @@ module.exports = {
   drawTaperedDivider,
   wrapTextLines,
   getTowerStats,
+  // 面板布局真源 + 宝石区块高度公式（导出给探针用：卡不许溢出区块，
+  // 否则"宝石 → 强化"那条分隔线会压在最后一张卡上）
+  PANEL_UI,
+  gemBlockHeight,
 };

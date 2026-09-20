@@ -43,12 +43,13 @@
 
 ## 代码约定（踩过坑的）
 - 布局只用 `game.W/H`（canvas.width 是物理像素）。「文案→面板高度」必须与绘制共用同一个换行函数；裁剪区贴面板本身；内容超高按"分隔线→页脚→内边距"让位，**按钮和数值绝不让位**。
+- **区块高度必须涵盖卡间距**：面板区块高度一律走真源函数（如 `renderer.gemBlockHeight(n) = sectionTitleH + n×gemRowH + (n−1)×gemGap`），**与绘制步进 `cardY += cardH + PANEL_UI.gemGap` 复用同一常量**。少算这份 gap → 内容探出区块 → 画在"下一区块正中"的分隔线正好压到最后一张卡上（2026-09-20 玩家截图事故：2 颗宝石净距只剩 1.5px、5 颗 −19.5px 直接插进卡里）。抄写范本 = `src/skillSlot.js` 的 `skillSlotsHeight`。⛔ 卡与卡之间**别再画任何 inset 装饰条**（那条 `rgba(179,136,255,0.2)` 紫条比 gap 还厚，2.3px 压在下张卡上，就是玩家口中的"不知道什么元素"）。
 - 主循环 loop() 必须 try/catch，requestAnimationFrame 重排放 try **之外**；dt 取 `game.dt`。
 - 多子路径形状别用 `roundRectPath`（内部 beginPath 会擦掉前面的子路径），用 beginPath+roundRect 逐条追加。
 - 新加塔型五处登记：TOWER_DEFS / TOWER_STATS / **skills.js 的 SKILLS** / TOWER_SHAPES / drawTowerIcon；漏了会静默画成圆或技能只剩空标题。**朝向不用登记** —— aim 默认「跟随朝向」，只有"一转就撞脸"的轮廓才去 `aim.SHAPE_AIM` 写 `FIXED`（现在只有平行塔双横）。
 - `TOWER_DEFS` 只管展示+定价四件套（name/color/cost/rarity）；辅助语义（isSupport / auraPenetration / range=光环半径）登记在 `TOWER_STATS`，且**战斗字段要写全**（缺字段 → `rs.attackSpeedMultiplier + x` = NaN）。
 - 回归 mock 必须**照真平台抛错**（harness 的 addColorStop 按 CSS 颜色校验），别改回空函数（假绿事故）。
-- **面板数值文案只有一个出口：`bonusStats.numText(v)` = `String(round2(v))`**（最多 2 位小数，整数不带小数点）。光环/倍率都是浮点乘算，`25 × 1 × 1.12 = 28.000000000000004`、`25 × 3 × 1.12 = 84.00000000000001`，把裸数字插进模板串就直接印给玩家（"生效效果"历史事故，2026-09-19 修）。⛔ `src/bonusStats.js` 里禁止再出现 `${round2(` 裸插值（SPEC 的 `never` 已锁）；守它的探针 = `probe-aura.js` ⑧ + `probe-panel.js` 末尾「5528 条面板文字无 >2 位小数」那条。
+- **面板数值文案只有一个出口：`bonusStats.numText(v)` = `String(round2(v))`**（最多 2 位小数，整数不带小数点）。光环/倍率都是浮点乘算，`25 × 1 × 1.12 = 28.000000000000004`、`25 × 3 × 1.12 = 84.00000000000001`，把裸数字插进模板串就直接印给玩家（"生效效果"历史事故，2026-09-19 修）。⛔ `src/bonusStats.js` 里禁止再出现 `${round2(` 裸插值（SPEC 的 `never` 已锁）；守它的探针 = `probe-aura.js` ⑧ + `probe-panel.js` 末尾「面板全文无 >2 位小数」那条（文字条数随塔型/分辨率增长，别把数字写进备忘当断言）。
 - 同名函数重复定义会静默覆盖 → 加完函数 `grep -oE "^function \w+" <file> | sort | uniq -d` 查重。
 - 单位渲染态出生即初始化（`enemy._hpGhost=maxHp`）。塔型键 `graphic` 已更名 `parallel`；再改键必须往 meta.js `TYPE_ALIAS` 加行。
 
@@ -58,6 +59,10 @@
 - **`node .workbuddy/tools/run-all.js` = 一键全量回归**（先删旧报告 → spawn 16 套 → 汇总 `tmp/_all.txt`，有红退出码 1）。套件：syntax / probe-panel（7 分辨率×17 塔型「文字⊆clip」）/ probe-codex / probe-gem / probe-gem-stack / probe-skill / probe-aura / probe-stage / **probe-aim** / smoke / probe-talent / probe-audio / probe-graphic / svgcheck / dump-gems / dump-texts。报告落 `tmp/_*.txt` 或 `tools/_*.txt`，**开跑前先删旧的**。
 - 判「叠加还是覆盖」：别读注释、别信面板 —— 造 (无/只A/只B/AB) 四态，用 `bonusStats.collectTowerStats().final` 逐键 diff。
 - 判「某加成有没有真的进战斗」：造多态跑**战斗口径** diff，**不许跳过辅助塔**（旧 probe-gem-stack ⑦ 的 `if (isSupport) continue` 正是菱形塔空转潜伏至今的原因）。
+- **量面板几何前必须先清录制缓冲**：`new Game(...)` 构造函数会同步渲染一帧当前场景（选关界面）→ `rec.rects/ops/clips/texts` 里混进关卡卡（实测一张 `{x:97.15,y:295,w:125.7,h:40}`），出图脚本会误报"3 张宝石卡 / 间距 141px"、净间距跟着量错。四个缓冲**一起清**（只清 `texts` 会得到 −739.5px 的假红）。卡类几何用 `harness.gemCards()`（按几何键去重，因为 `roundRectPath`+fill+stroke 每张卡记两条）、分隔线用 `harness.dividerLines()` —— 探针与出图工具**共用同一份**。
+- 工具：`.workbuddy/tools/canvasraster.js`（纯 Node canvas 2D → PNG 光栅器，支持 fillRect/roundRect+fill/多边形/clip 取交/渐变/fillText 画色块；不支持 arc 与变换）、`dump-panel-raster.js`（面板出图）、`dump-panel-html.js`（SVG 交付图 + 真实坐标标注）、`crop-png.py`（裁剪/最近邻放大/亮度增益 `gain`）、`rowprofile.py`（逐行亮度剖析，数"到底几条线、各多宽"，默认阈值 70 对 `rgba(255,255,255,0.45)` 的分割线够用）。
+- ⛔ **PNG 里没有 ≠ 代码里没有**。光栅器只是近似：曾经 `bounds()` 不认 `q`/`b` 曲线（`drawTaperedDivider` 是纯曲线路径 → 整条线凭空消失）、渐变代表色取"首尾平均"（渐变首尾都透明 → 当成没画）。怀疑渲染缺失时，**先拿探针 ops 对一遍**再改源码；两边不一致就修工具。`rowprofile` 扫不到线先降阈值/查这两条。
+- 判断"净间距/是否重叠"这类断言别用"任意分隔线"：头上那条也会被算成负值 → **每张卡只取它下方最近那条**。也别用 `panelScrollMax>0` 反推"分隔线没被压扁"，判据分两档：常规轮 `clear ≥ 0`（不许重叠），"设计间距"由宽屏不滚动场景单独锁定。
 - 判断红灯是不是自己捅的：`git stash push -m x -- <文件>` → 跑对照 → `stash pop`。
 - ⛔ **同文件禁止并行 Edit**（同一条消息多个 Edit → 后写覆盖先写却全报 success）。改完用 `tmp/_verify-edit.js` 直读磁盘核对 must/never token，别信 success 回执。Edge headless 被沙箱拦、吃不下非 ASCII `file:///` → 别依赖出图。
 

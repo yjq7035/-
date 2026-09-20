@@ -410,11 +410,12 @@ function gemLevels(type) {
  */
 function enhanceTimesOf(tower) {
   if (!tower) return 0;
-  return clampEnhanceTimes((tower.enhanceLevel || 0) + gemLevels(tower.type));
+  // 十字塔「共享资源」的 skillLevels 也计入有效次数（与 bonusFor 口径一致）。
+  return clampEnhanceTimes((tower.enhanceLevel || 0) + gemLevels(tower.type) + auraBuff(tower, 'skillLevels'));
 }
 
 /**
- * 塔实例的【有效技能等级】= Lv.1 + (强化次数 + 宝石等级) —— 1..6。
+ * 塔实例的【有效技能等级】= Lv.1 + (强化次数 + 宝石等级 + 十字塔共享等级) —— 1..6。
  * 面板上的「Lv.x」、强化浮层的「x → x+1」、技能槽全部用它 —— 三处同源才不会各说各话。
  */
 function levelOf(tower) {
@@ -542,11 +543,10 @@ function bonusFor(tower, key) {
     // 该塔当前接收到的共享光环（十字塔「共享资源」把宝石里的
     // 猫眼石/紫晶石也一并转给邻塔）—— 数值由 game_core.syncTowerAuras 每帧快照到
     // tower.auraBuffs，战斗与面板读的是同一份，所以两边不会各说各话。
-    //   技能等级 +N  → 等效于多强化 N 次（叠加在等级额度之上）
+    //   技能等级 +N  → 已由 enhanceTimesOf 计入 effectiveTimes（见 skills.js:411）
     //   技能效果 +N% → 与紫晶宝石同一档：系数相加（不是再乘一次）
-    const auraLv = auraBuff(tower, 'skillLevels');
     const auraPct = auraBuff(tower, 'skillEffectPercent');
-    const times = levelToTimes(levelOf(tower)) + auraLv;
+    const times = levelToTimes(levelOf(tower));
     const mult = effectMultiplier(tower.type) + auraPct / 100;
     return (eff.base + eff.per * times) * mult - eff.base;
   }

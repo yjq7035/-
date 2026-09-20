@@ -10,7 +10,7 @@ let bannerAd = null;
 let _reviveCallback = null;
 let _reviveRemaining = 0;
 
-// 校验广告位 ID：合法格式为 "adunit-" + 16 位以上十六进制字符
+// 校验广告位 ID：合法格式为 "adunit-" + 16 位以上十六进制字符   
 // 占位符（如 'adunit-interstitial'）长度/字符不符合，直接跳过创建，避免 errCode 1002
 function _isValidAdUnitId(id) {
   return typeof id === 'string' && /^adunit-[0-9a-z]{16,}$/i.test(id);

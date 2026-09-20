@@ -948,8 +948,15 @@ function drawSheetAttrs(ctx, L, block, y, left, contentW) {
     ctx.fillStyle = THEME.text.dim;
     ctx.fillText('目标 上下左右', left + colW, row1);
   } else if (isSupport) {
+    // 按"它到底发什么光环"分行，别拿梯塔的字段套所有辅助塔：
+    // 这里以前只印梯塔口径的「光环 +N%」，而菱形塔在 TOWER_STATS 里**没有** supportBuff
+    // （它发的是 auraPenetration，见 config.js），于是图签上恒定显示「光环 +0%」，
+    // 看起来就像"穿透光环效果没了"——其实战斗侧一直是 5 点。口径与面板行一致：
+    // 梯塔 → supportBuff.attackSpeedMultiplier；菱形塔 → auraPenetration。
+    const auraPct = (stats.supportBuff && stats.supportBuff.attackSpeedMultiplier) || 0;
+    const auraPen = stats.auraPenetration || 0;
     ctx.fillStyle = THEME.text.dim;
-    ctx.fillText(`光环 +${(stats.supportBuff && stats.supportBuff.attackSpeedMultiplier) || 0}%`, left, row1);
+    ctx.fillText(auraPen ? `穿透 +${auraPen}` : `光环 +${auraPct}%`, left, row1);
     ctx.fillText(`范围 ${stats.range}`, left + colW, row1);
   } else {
     // 攻击：白字基础值 + 绿字图签加成（与属性面板同一套双色语义）

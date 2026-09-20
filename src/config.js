@@ -495,7 +495,7 @@ const GEM_FAMILIES = [
     names: ['烈焰红宝石', '炽焰红宝石', '熔岩红宝石', '永恒红宝石', '焚天红宝石'] },
   { id: 'sapphire', family: '蓝宝石',    attr: 'attackSpeedMultiplier', label: '攻速',     unit: '',   base: 10, step: 10, hue: 219, sat: 92,
     names: ['疾风蓝宝石', '迅风蓝宝石', '风暴蓝宝石', '飓风蓝宝石', '天岚蓝宝石'] },
-  { id: 'emerald',  family: '翡翠宝石',  attr: 'critChance',            label: '暴击率',   unit: '%',  base: 6,  step: 6,  hue: 152, sat: 88,
+  { id: 'emerald',  family: '翡翠宝石',  attr: 'critChance',            label: '暴击率',   unit: '%',  base: 6,  step: 3,  hue: 152, sat: 88,
     names: ['雷光翡翠宝石', '雷鸣翡翠宝石', '极光翡翠宝石', '星环翡翠宝石', '起源翡翠宝石'] },
   { id: 'topaz',    family: '黄玉宝石',  attr: 'penetration',           label: '穿透',     unit: '',   base: 6,  step: 6,  hue: 45,  sat: 90,
     names: ['破甲黄玉宝石', '裂甲黄玉宝石', '断钢黄玉宝石', '苍穹黄玉宝石', '天陨黄玉宝石'] },
@@ -508,6 +508,16 @@ const GEM_FAMILIES = [
     names: ['裂心翡翠宝石', '碎心翡翠宝石', '灭心翡翠宝石', '渊心翡翠宝石', '绝心翡翠宝石'] },
   { id: 'topaz_break',  family: '黄玉宝石', attr: 'break',             label: '破甲',     unit: '',   base: 3,  step: 3,  hue: 45,  sat: 90,
     names: ['破甲黄玉宝石', '裂甲黄玉宝石', '断钢黄玉宝石', '苍穹黄玉宝石', '天陨黄玉宝石'] },
+  // ---- 功能性宝石家族（不影响战斗，只改"商店刷新出现概率"）----
+  // 这两族的 attr（shopPullUp / shopPullDown）**不**走 bonusForType 的战斗/面板口径，
+  // 只被 gems.shopPullPP / shopWeight 读取（出货池加权抽样用），所以绝不会污染战斗数值。
+  // 设计口径：base=3 / step=0 —— 效果恒为「+3% / -3%」，不随等级放大（需求明确写死 3%，
+  //   等级只影响图标/合成，不放大这个功能性数值；且"同类宝石全塔唯一"保证每塔至多一颗）。
+  // ⚠️ 商店出现概率 = 该塔型的抽取权重；+3 = 权重 100→103（见 src/gems.js 的 SHOP_PULL_BASE）。
+  { id: 'shop_pull_up',   family: '祈愿宝石', attr: 'shopPullUp',   label: '商店出现', unit: '%', base: 3, step: 0, hue: 135, sat: 85,
+    names: ['微光祈愿宝石', '晨曦祈愿宝石', '星辉祈愿宝石', '月华祈愿宝石', '永恒祈愿宝石'] },
+  { id: 'shop_pull_down', family: '镇守宝石', attr: 'shopPullDown', label: '商店出现', unit: '%', base: 3, step: 0, hue: 18,  sat: 92,
+    names: ['微光镇守宝石', '晨曦镇守宝石', '星辉镇守宝石', '月华镇守宝石', '永恒镇守宝石'] },
 ];
 
 /** 等级 → 明度（%）。同族同色相，等级越高越深；最低 52% 保证在深色底上仍然看得清 */

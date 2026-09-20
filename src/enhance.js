@@ -26,7 +26,7 @@ const ENHANCE_UI = {
   padX: 18,
   padTop: 16,
   titleH: 24,
-  infoH: 42,        // 收益 + 花费 两行
+  infoH: 58,        // 收益 + 花费 + 等级明细 三行
   cardPadY: 10,     // 卡片上下内边距
   cardTitleH: 20,   // 卡片里"技能名"一行
   cardLineH: 16,    // 卡片里每条效果一行
@@ -165,6 +165,11 @@ function drawEnhancePicker(game) {
   const affordable = game.gold >= cost;
   const maxed = lv >= maxLv;
 
+  // 已学等级（局内强化次数）与附加等级（宝石）分开显示
+  const learned = tower.enhanceLevel || 0;
+  const bonusLv = skills.gemLevels(tower.type) + (skills.auraBuff(tower, 'skillLevels') || 0);
+  const canAffordNext = affordable && lv < maxLv;
+
   ctx.save();
 
   // 遮罩（把属性面板压到后面，焦点只在这张卡上）
@@ -176,13 +181,13 @@ function drawEnhancePicker(game) {
   grad.addColorStop(0, 'rgba(24, 26, 42, 0.99)');
   grad.addColorStop(1, 'rgba(10, 12, 22, 0.99)');
   ctx.fillStyle = grad;
-  ctx.strokeStyle = (affordable && !maxed) ? 'rgba(129, 199, 132, 0.85)' : THEME.border.strong;
+  ctx.strokeStyle = (canAffordNext) ? 'rgba(129, 199, 132, 0.85)' : THEME.border.strong;
   ctx.lineWidth = 1.5;
   roundRectPath(ctx, L.panel.x, L.panel.y, L.panel.w, L.panel.h, THEME.radius.large);
   ctx.fill();
   ctx.stroke();
 
-  // 标题：固有技能 · 塔名   Lv.x → Lv.y
+  // 标题：固有技能 · 塔名   已学 0/5 + 附加 N = 当前 Lv.x → Lv.y
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.font = 'bold 15px Arial';
@@ -191,14 +196,21 @@ function drawEnhancePicker(game) {
 
   ctx.textAlign = 'right';
   ctx.font = 'bold 13px Arial';
-  ctx.fillStyle = THEME.accent.green;
-  // 标题右侧：技能等级（1 起）→ 下一级；已满级时用 nextLevel 夹住，绝不写出 Lv.7
-  ctx.fillText(maxed ? `Lv.${lv} 已满` : `Lv.${lv} → Lv.${skills.nextLevel(lv)}`, L.panel.x + L.panel.w - ENHANCE_UI.padX, L.titleCY);
+  ctx.fillStyle = maxed ? THEME.text.off : THEME.accent.green;
+  if (maxed) {
+    ctx.fillText(`当前 Lv.${lv} · 已满`, L.panel.x + L.panel.w - ENHANCE_UI.padX, L.titleCY);
+  } else {
+    // 用「已学 + 附加」的方式写标题
+    ctx.fillText(`Lv.${lv} → Lv.${skills.nextLevel(lv)}（已学${learned}/5 + 附加${bonusLv}）`, L.panel.x + L.panel.w - ENHANCE_UI.padX, L.titleCY);
+  }
 
   // 分隔线（标题与正文之间，风格统一）
   drawTaperedDivider(ctx, W / 2, L.titleCY + ENHANCE_UI.titleH / 2 + 8, L.panel.w - ENHANCE_UI.padX * 2);
 
-  // 信息两行：左 = 本次提升哪个技能 / 技能说明；右 = 花费
+  // 信息三行：
+  //   行0：左 = 本次提升哪个技能；右 = 花费
+  //   行1：等级明细：已学等级 0/5（强化进度） / 附加等级 5（猫眼石）
+  //   行2：金币状态 / 技能说明
   ctx.textAlign = 'left';
   ctx.font = 'bold 12px Arial';
   ctx.fillStyle = THEME.accent.green;
@@ -212,14 +224,29 @@ function drawEnhancePicker(game) {
   ctx.fillStyle = maxed ? THEME.text.off : (affordable ? THEME.accent.gold : THEME.accent.danger);
   ctx.fillText(maxed ? '已满级' : `花费 💰${cost}`, L.panel.x + L.panel.w - ENHANCE_UI.padX, L.infoLines[0]);
 
+  // 等级明细行：已学等级（强化进度，绿/暗色）+ 附加等级（宝石，蓝/灰）
+  ctx.textAlign = 'left';
+  ctx.font = '11px Arial';
+  ctx.fillStyle = THEME.text.secondary;
+  const learnedColor = canAffordNext ? THEME.text.primary : THEME.text.dim;
+  const bonusColor = bonusLv > 0 ? THEME.accent.gold : THEME.text.dim;
+  const learnedStr = `已学等级: ${learned}/5`;
+  const bonusStr = bonusLv > 0 ? `附加等级: ${bonusLv}（${skills.gemLevels(tower.type) > 0 ? '猫眼石' : '其他'}）` : `附加等级: 0`;
+  const combinedX = L.panel.x + ENHANCE_UI.padX;
+  const learnedW = ctx.measureText(learnedStr).width;
+  ctx.fillText(learnedStr, combinedX, L.infoLines[1]);
+  const bonusX = combinedX + learnedW + 12;
+  ctx.fillStyle = bonusColor;
+  ctx.fillText(bonusStr, bonusX, L.infoLines[1]);
+
   ctx.textAlign = 'left';
   ctx.font = '11px Arial';
   ctx.fillStyle = THEME.text.secondary;
   let subText;
-  if (maxed) subText = '技能等级已达上限';
+  if (maxed) subText = '技能等级已达上限（含宝石）';
   else if (!affordable) subText = `金币不足（现有 💰${game.gold}）`;
   else subText = sk ? ellipsize(ctx, sk.desc || '', L.panel.w - ENHANCE_UI.padX * 2) : '';
-  ctx.fillText(subText, L.panel.x + ENHANCE_UI.padX, L.infoLines[1]);
+  ctx.fillText(subText, L.panel.x + ENHANCE_UI.padX, L.infoLines[2]);
 
   // 卡片（一个技能一张：确认本次升级）
   for (const card of L.cards) {

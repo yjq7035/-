@@ -29,7 +29,7 @@
 
 const config = require('./config');
 const {
-  GEM, GEM_KINDS, GEM_FAMILIES, GEM_LEVELS, TOWER_DEFS,
+  GEM, GEM_KINDS, GEM_FAMILIES, GEM_LEVELS, TOWER_DEFS, MAX_STAGE,
   clampGemLevel, gemEffectAt, gemDescAt, gemLevelColor, gemLevelName, resolveGem,
 } = config;
 const meta = require('./meta');
@@ -257,6 +257,56 @@ function randomKind() {
   return GEM_ORDER[Math.floor(Math.random() * GEM_ORDER.length)];
 }
 
+// ==================== 商店出现概率加权（功能性宝石专用）====================
+// 这两族宝石（shop_pull_up / shop_pull_down）不改任何战斗/面板数值，
+// 只通过"出货池抽取权重"影响该塔型在商店刷新时出现的几率。
+//   · 基础权重 = 100（每个塔型平等）
+//   · shop_pull_up   嵌了 → 权重 +3（永久，只看是否嵌入，不看星级）
+//   · shop_pull_down 嵌了且达到 3★ → 权重 -3（星级未到 3★ 时完全不生效）
+// 星级判定走 meta.getStage(type)（持久化的最佳星级，与战斗 setStage 同源）。
+// ⚠️ 每塔型各自算自己的权重：遍历"该塔型已嵌入的宝石"——所以加成**只作用嵌入了
+//    该宝石的特定塔型**，其他塔型权重恒为 100，绝不被波及（需求硬要求）。
+const SHOP_PULL_BASE = 100;
+
+/** 夹取星级到 [0, MAX_STAGE]（不依赖 stage 模块，避免 gems 多引一层） */
+function clampShopStage(stage) {
+  const n = Number(stage);
+  if (!isFinite(n) || n <= 0) return 0;
+  return Math.min(MAX_STAGE, Math.floor(n));
+}
+
+/**
+ * 该塔型因嵌入宝石获得的"商店出现概率权重加成"（单位 = 权重点数，+3 / -3）。
+ * 只统计**该塔型**已嵌入的宝石（meta.embeddedEntries(type)），其他塔型一律返回 0。
+ * @param {string} type 塔类型
+ * @param {number} [stage] 该类型当前星级（持久化最佳星级；缺省当 0★）
+ * @returns {number} 权重增量（如 +3 / 0 / -3）
+ */
+function shopPullPP(type, stage) {
+  if (!type || !TOWER_DEFS[type]) return 0;
+  const st = clampShopStage(stage);
+  let pp = 0;
+  for (const entry of meta.embeddedEntries(type)) {
+    const def = gemDef(entry.kind);
+    if (!def) continue;
+    const e = effectAt(entry.kind, entry.lv);
+    if (e.shopPullUp) pp += e.shopPullUp;                       // 祈愿宝石：无条件 +3
+    if (e.shopPullDown && st >= MAX_STAGE) pp -= e.shopPullDown; // 镇守宝石：仅 3★ 时 -3
+  }
+  return pp;
+}
+
+/**
+ * 该塔型在商店出货池里的抽取权重（基础 100 + 宝石加成）。
+ * 出货池加权抽样（src/game_core.js 的 rollShopOffers）直接吃这个权重。
+ * @param {string} type 塔类型
+ * @param {number} [stage] 该类型当前星级
+ * @returns {number} 权重（≥1）
+ */
+function shopWeight(type, stage) {
+  return Math.max(1, SHOP_PULL_BASE + shopPullPP(type, stage));
+}
+
 /** 掉落文案，如「获得宝石 · 熔岩红宝石 Lv.3（攻击力 +24%）」 */
 function dropText(kind, lv) {
   return isGemKind(kind) ? `获得宝石 · ${gemName(kind, lv)}（${effectTextAt(kind, lv)}）` : '获得宝石';
@@ -464,6 +514,9 @@ module.exports = {
   breakTier,
   randomKind,
   dropText,
+  shopPullPP,
+  shopWeight,
+  SHOP_PULL_BASE,
   synthMinCount,
   synthRate,
   canSynth,

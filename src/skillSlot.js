@@ -83,7 +83,8 @@ function buildSkillSlots(ctx, type, tower, contentW) {
   const maxW = descMaxWidth(contentW);
   for (const sk of list) {
     // 等级：有实体塔 → 强化 + 宝石；预览 → 只看宝石（强化是局内的，不跨局）
-    const lv = tower ? skills.levelOf(tower) : skills.previewLevel(type);
+    const lv = tower ? skills.levelOf(tower, sk.id) : skills.previewLevel(type);
+    const learnLv = tower ? (tower.skillLevels[sk.id] || 0) : 0;
     out.push({
       id: sk.id,
       name: sk.name,
@@ -91,6 +92,7 @@ function buildSkillSlots(ctx, type, tower, contentW) {
       icon: skills.iconOf(sk),
       level: lv,
       levelText: `Lv.${lv}`,
+      learnLv,
       // 数值行：一条效果一行（技能名 + 实际生效值 + 每级增量）
       // ⚠️ 实际生效值用 effectiveValueTextOf —— 会把紫晶宝石「技能效果 +N%」的放大
       //    一并算进去，与属性面板 / 战斗（tower.getEnhanceAttr）同口径，不会"槽里显示
@@ -188,10 +190,16 @@ function drawOneSlot(ctx, x, y, w, h, slot, tint) {
   ctx.fillText(theme.ellipsize(ctx, slot.name, Math.max(40, textW - 44)), textX, ty + SKILL_SLOT.nameH / 2);
 
   ctx.textAlign = 'right';
-  ctx.font = 'bold 12px Arial';
-  // 默认就是 Lv.1（不再有 Lv.0）—— 只有"宝石/强化把它顶上去"才变绿，用来强调涨了级
-  ctx.fillStyle = slot.level > skills.LEVEL_BASE ? THEME.accent.green : THEME.text.dim;
-  ctx.fillText(slot.levelText, textX + textW, ty + SKILL_SLOT.nameH / 2);
+  ctx.font = '11px Arial';
+  const learnText = slot.learnLv != null ? `已学 ${slot.learnLv}/5` : '';
+  if (learnText) {
+    ctx.fillStyle = THEME.text.dim;
+    ctx.fillText(learnText, textX + textW - 46, ty + SKILL_SLOT.nameH / 2);
+  } else {
+    ctx.font = 'bold 12px Arial';
+    ctx.fillStyle = slot.level > skills.LEVEL_BASE ? THEME.accent.green : THEME.text.dim;
+    ctx.fillText(slot.levelText, textX + textW, ty + SKILL_SLOT.nameH / 2);
+  }
   ty += SKILL_SLOT.nameH;
 
   // 行 2+：每条效果一行 —— 属性名（暗） + 当前值（绿） + 每级增量（暗，放不下就省略）

@@ -345,12 +345,34 @@ class Game {
    * 从"图签登场池"抽货：这是商店与图签的联动点。
    * 图签里怎么排登场，商店就出什么货；未解锁的塔永远不会出货（解锁由图签界面负责）。
    * 出货池至少 1 个（meta 保证），不足 cardCount 时货架按实际数量出，其余显示为空槽。
+   *
+   * 2026-09-19 改为**加权无放回抽样**：每座塔型的抽取权重 = gems.shopWeight(type, 历史最高★)，
+   *   基础权重 100；嵌了「祈愿宝石」→ +3（永久），嵌了「镇守宝石」且达到 3★ → -3。
+   *   权重只取决于"该塔型自己嵌了什么宝石"，其他塔型权重恒为 100，互不影响。
    */
   rollShopOffers() {
     const pool = meta.getLineup();
-    const shuffled = pool.slice().sort(() => Math.random() - 0.5);
-    const count = Math.min(SHOP.cardCount, shuffled.length);
-    return shuffled.slice(0, count);
+    if (pool.length <= 1) return pool.slice(0, SHOP.cardCount);
+
+    const weightOf = (type) => gems.shopWeight(type, meta.getStage(type));
+    const avail = pool.map((type) => ({ type, w: Math.max(1, weightOf(type)) }));
+    const count = Math.min(SHOP.cardCount, avail.length);
+
+    // 加权无放回抽样：每轮按当前剩余权重随机落子，抽中即移除（权重越大越容易被抽中）
+    const result = [];
+    let total = avail.reduce((a, b) => a + b.w, 0);
+    for (let k = 0; k < count && avail.length; k++) {
+      let r = Math.random() * total;
+      let idx = avail.length - 1;
+      for (let i = 0; i < avail.length; i++) {
+        r -= avail[i].w;
+        if (r <= 0) { idx = i; break; }
+      }
+      result.push(avail[idx].type);
+      total -= avail[idx].w;
+      avail.splice(idx, 1);
+    }
+    return result;
   }
 
   initRefresh() {
@@ -813,9 +835,9 @@ class Game {
    * 规则：
    *   · 宝石只在通关/失败结算时获得，游戏过程不再掉落（grantKillReward / onWaveCleared 的掉落已移除，dropGem 现为死代码）；
    *   · 结算界面有 9 个奖励格子；
-   *   · 结算**必定**发放：本次获得 1 ~ min(关卡号, 9) 颗宝石（"关卡关联数量" = 关卡号）；
-   *     旧版用 victoryChance / defeatChance 概率门控，但 65%+ 的结算会显示"本次未获得"，
-   *     玩家几乎感知不到奖励、以为结算坏掉了，故改为必给（字段保留为可调参数，见 config.GEM）；
+   *   · 通关**必定**发放：本次获得 1 ~ min(关卡号, 9) 颗宝石（"关卡关联数量" = 关卡号）；
+   *   · 失败**概率发放**：波次 <10 不给，11=1.5% → 20=15% 线性推类，20 波满 15%（见下方 defeatChance）；
+   *     旧版 defeatChance 恒为 1 即必给，现已改为波次依赖的概率门控（字段保留为可调参数，见 config.GEM）；
    *   · 这些宝石随机分布到 9 格里（每格最多 1 颗、必为 LV1 基础宝石），其余格子空置；不出现"单格 ×N"；
    *   · 背包已满时仍记 triggered=true 但 total=0，结算界面显示"本次未获得（背包已满）"，绝不"掉了但看不见"。
    *
@@ -827,6 +849,14 @@ class Game {
     const cellCount = GEM.rewardCellCount || 9;                       // 9 格
     // "关卡关联数量" = 关卡号；宝石总数在下方按 1 ~ min(关卡号, 9) 计算（原 maxEach 已弃用）
     const capacity  = Math.max(0, meta.bagSlots() - meta.bagGemCount());        // 背包还能放几颗
+
+    // 失败结算宝石概率门控：波次10以上才给，11=1.5% 12=3% … 20=15%（线性推类）
+    const defeatChance = victory ? GEM.defeatChance
+      : Math.min(15, Math.max(0, (lv - 10) * 1.5)) / 100;           // 失败概率 0~15%
+    if (!victory && Math.random() * 100 >= defeatChance * 100) {
+      this.gemReward = { victory: false, triggered: false, slots: [], total: 0 };
+      return;
+    }
 
     const maxGems = Math.min(cellCount, Math.max(1, Math.floor(lv)));   // 1~min(关卡号,9)
     const gemCount = 1 + Math.floor(Math.random() * maxGems);          // 本次宝石总数

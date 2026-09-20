@@ -7,6 +7,7 @@ const gems = require('./gems');
 const skills = require('./skills');
 const stage = require('./stage');
 const aim = require('./aim');
+const meta = require('./meta');   // 仅在 setStage（唯一进阶写入点）持久化"达到过的最高星级"
 
 function createTower(type, x, y) {
   const stats = TOWER_STATS[type] || TOWER_STATS.triangle;
@@ -143,6 +144,9 @@ function setStage(tower, stars) {
   const s = stage.clampStage(stars);
   tower.stage = s;
   tower.attackPowerBoost = getAttackPowerBoost(s);
+  // 持久化"该塔型达到过的最高星级"：功能性宝石「镇守宝石」的 3★ 判定依赖它。
+  // 这里就是进阶的唯一写入点（input.js 合成成功走它），所以只在此处落盘最稳。
+  if (tower.type) meta.recordStage(tower.type, s);
   return s;
 }
 
@@ -533,6 +537,7 @@ function getAuraOutput(tower, codexMult) {
     const gem = gems.bonusForType(tower.type);
     const ratio = shareBase * stage.multiplier('shareRatio', stars);
     const scaled = (v) => (v || 0) * ratio / 100;
+    const towerSkillLevels = skills.enhanceTimesOf(tower);  // 强化次数 = level - 1
     const map = [
       ['damagePercent', 'damagePercent'],
       ['attackSpeedMultiplier', 'attackSpeedMultiplier'],
@@ -540,13 +545,16 @@ function getAuraOutput(tower, codexMult) {
       ['penetration', 'penetration'],
       ['break', 'break'],
       ['critDamagePercent', 'critDamage'],
-      ['skillLevels', 'skillLevels'],
-      ['skillEffectPercent', 'skillEffectPercent'],
     ];
     for (const [src, dst] of map) {
       const v = scaled(gem[src]);
       if (v) out[dst] = v;
     }
+    // 技能等级：十字塔自身技能等级（强化 + 嵌宝石 + 其他十字塔共享）参与共享
+    //   余数不计（只取整数部分），防止 5 * 30/100 = 1.5 被当成 +1 级
+    if (towerSkillLevels) out.skillLevels = Math.floor(towerSkillLevels * ratio / 100);
+    // 技能效果（紫晶）：仅嵌在十字塔上的紫晶贡献（强化不影响技能效果）
+    if (gem.skillEffectPercent) out.skillEffectPercent = Math.floor(gem.skillEffectPercent * ratio / 100);
   }
   return out;
 }

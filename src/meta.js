@@ -14,7 +14,7 @@
 
 const {
   SHOP_TOWERS, TOWER_ORDER, TOWER_DEFS, CODEX, TALENTS, TALENT_COST, TALENT_EFFECT, LEVELS,
-  GEM, GEM_KINDS, clampGemLevel, resolveGem, gemSynthRate, gemSynthResult,
+  GEM, GEM_KINDS, clampGemLevel, resolveGem, gemSynthRate, gemSynthResult, MAX_STAGE,
 } = require('./config');
 
 const STORAGE_KEY = 'graphic_td_meta_v1';
@@ -86,6 +86,7 @@ function createDefaultMeta() {
     gemSeq: gems.length,                   // uid 自增序号（保证 uid 唯一）
     socketed: {},                          // { [towerType]: [{kind,lv}|null, ...] } 已嵌入的宝石（长度 = GEM.maxSlots）
     bagSlots: GEM.bagSlots,                // 背包已解锁格数（默认 24 = 每行 8 格 × 3 行）
+    stages: {},                            // { [towerType]: number } 该类型达到过的最高星级（0~MAX_STAGE）；功能性宝石"镇守宝石"依赖它判断 3★
   };
 }
 
@@ -233,6 +234,15 @@ function normalize(raw) {
     }
     // 全空就不存这条记录（保持存档干净）
     if (slots.some((k) => !!k)) out.socketed[type] = slots;
+  }
+
+  // 各塔型达到过的最高星级（功能性宝石判定 3★ 用；只保留合法塔型 + 合法星级）
+  out.stages = {};
+  if (raw && raw.stages && typeof raw.stages === 'object') {
+    for (const type of TOWER_ORDER) {
+      const v = Number(raw.stages[type]);
+      if (TOWER_DEFS[type] && isFinite(v) && v > 0) out.stages[type] = Math.min(MAX_STAGE, Math.floor(v));
+    }
   }
 
   return out;
@@ -502,6 +512,32 @@ function embeddedGems(type) {
 /** 已嵌入的宝石条目 [{kind, lv}]（加成按等级缩放，战斗与面板共用） */
 function embeddedEntries(type) {
   return gemSockets(type).filter((s) => !!s.kind).map((s) => ({ kind: s.kind, lv: s.lv || 1 }));
+}
+
+// ==================== 各塔型"达到过的最高星级"（持久化）====================
+// 功能性宝石「镇守宝石」的 3★ 判定依赖它：玩家一旦把某类型塔进阶到 3★（战斗中合成），
+// 之后这个值就永久是 3，即使当前这局没放该塔、即使这局没上场。与战斗 setStage 同一处写入
+// （见 src/tower.js 的 setStage → meta.recordStage），保证"达到过 3★"可追溯。
+/** 该塔型历史最高星级（未记录 = 0） */
+function getStage(type) {
+  const m = get();
+  return (m.stages && m.stages[type]) || 0;
+}
+
+/**
+ * 记录某塔型达到过的星级（只升不降，保留历史最高）。
+ * @param {string} type 塔类型（非法类型直接忽略，绝不写脏数据）
+ * @param {number} stars 本次星级
+ */
+function recordStage(type, stars) {
+  if (!type || !TOWER_DEFS[type]) return;
+  const s = Math.max(0, Math.min(MAX_STAGE, Math.floor(Number(stars) || 0)));
+  const m = get();
+  if (!m.stages) m.stages = {};
+  if (!m.stages[type] || s > m.stages[type]) {
+    m.stages[type] = s;
+    save(true);
+  }
 }
 
 /**
@@ -786,6 +822,9 @@ module.exports = {
   addGem,
   addGemsByKind,
   bagGemCount,
+  // 各塔型历史最高星级（功能性宝石"镇守宝石"判定用）
+  getStage,
+  recordStage,
   findGem,
   socketCount,
   gemSockets,
