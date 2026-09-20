@@ -189,12 +189,19 @@ function getSkillDef(type) {
 /**
  * 该塔强化到 level 级时，某条技能效果的「当前值」= base + per × level。
  * level 是【有效技能等级】（强化 + 宝石），与战斗口径 getEnhanceAttr 完全同源。
- * @param {object} [effect] 指定效果行；缺省取技能的首条效果（单效果塔 = 完全等价）
+ * @param {object|string} [effect] 指定效果行；也可直接给【属性键】（如 'chainCount'）；
+ *                                缺省取技能的首条效果（单效果塔 = 完全等价）
  */
 function getSpecialValue(type, level, effect) {
   const list = skills.getEffects(type);
   if (!list.length) return 0;
-  return skills.valueOf(effect || list[0], level);
+  // ⚠️ 必须容忍"按属性键调用"：game_core.fireBoltChain 传的就是字符串 key，
+  //    而 valueOf 读的是 effect.base / effect.per —— 字符串两个都是 undefined，
+  //    算出来是 NaN → 扫链条件 `距离 <= NaN` 恒 false、`i < NaN - 1` 一次都不进，
+  //    副目标一个都打不到（"雷电链"整条链静默失效，面板却显示得好好的）。
+  const row = typeof effect === 'string' ? skills.findEffect(type, effect) : (effect || list[0]);
+  if (!row) return 0;
+  return skills.valueOf(row, level);
 }
 
 /** 该塔强化到 level 级时的「强化增量」= per × level（写进 enhanceAttrs 的那份） */

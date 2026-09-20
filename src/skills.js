@@ -97,6 +97,13 @@ const EFFECT_KEYS = {
   // 十字塔「共享资源」：把自身宝石属性按该比例共享给上下左右四格的邻塔。
   //   战斗侧唯一消费方 = tower.getAuraOutput（乘进发出的光环数值），见 src/tower.js。
   shareRatio:            { active: true,  name: '共享比例',   unit: '%' },
+  // 闪电塔「雷电链」：命中主目标后把电流传导给附近敌人。
+  //   ⚠️ 这三条**真的参与战斗结算** —— 唯一消费方 = game_core.fireBoltChain
+  //      （chainCount-1 个副目标、chainRange 半径内、副目标伤害 = 主目标 × chainRatio）。
+  //      所以必须 active:true，而不是像 hp 那样登记成"暂不生效"。
+  chainCount:            { active: true,  name: '传导数量',   unit: '' },
+  chainRange:            { active: true,  name: '传导距离',   unit: '' },
+  chainRatio:            { active: true,  name: '传导伤害比例', unit: '%' },
   // ⚠️ 生命（hp）：当前版本图形塔无敌，生命已从战斗结算里移除（TOWER_STATS 也没有 hp 字段）。
   //    五边塔 / 八边塔的技能仍挂着它，属于"登记在案但当前不生效"——UI 上的说明已写明，
   //    等哪天把图形塔做成可被击毁，这里改成 active:true 并在 bonusStats 里接回 ATTR.HP 即可。

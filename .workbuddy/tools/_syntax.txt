@@ -20,6 +20,8 @@
   ok   src\levels.js
   ok   src\meta.js
   ok   src\nav.js
+  ok   src\renderer-core.js
+  ok   src\renderer-ui.js
   ok   src\renderer.js
   ok   src\shop.js
   ok   src\skills.js
@@ -31,4 +33,4 @@
   ok   src\units.js
   ok   src\wave.js
 
-=== 语法体检：32 个文件，失败 0 个 ===
+=== 语法体检：34 个文件，失败 0 个 ===

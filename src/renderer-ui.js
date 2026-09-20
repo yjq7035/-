@@ -1,7 +1,13 @@
-// 渲染层 UI 子模块：所有界面元素绘制（属性面板、波次标题、结算、提示等）。
-// 由 src/renderer.js 薄壳 re-export。
+// 渲染层 · 界面子模块：属性面板 / 波次标题与倒计时 / 顶栏 / 结算 / 提示等界面绘制。
+// 由 src/renderer.js 薄壳 re-export，与 renderer-core.js 合并成原先单文件 src/renderer.js
+// 的完整导出面。
+// 约定：每个绘制函数接收 game 实例，内部用 game.ctx 取画布。
+// ⚠️ 布局尺寸一律用 **game.W / game.H**（逻辑像素，= 触摸坐标空间），
+//    不要读 game.canvas.width/height —— 画布是物理像素（逻辑 × renderScale，
+//    见 game.js 渲染倍率 / game_core.applyViewScale），读它会整体放大且跑出屏幕。
+// drawTowerIcon 为纯函数，直接吃 ctx。
 const config = require('./config');
-const { TOWER_DEFS, LAYOUT } = config;
+const { TOWER_DEFS, LAYOUT, TOWER_STATS, LEVELS, BALANCE, AD } = config;
 const theme = require('./theme');
 const towerMod = require('./tower');
 const bonusStats = require('./bonusStats');
@@ -17,41 +23,59 @@ const meta = require('./meta');
 const gems = require('./gems');
 const skills = require('./skills');
 const stageMod = require('./stage');
+const aim = require('./aim');
 const skillSlot = require('./skillSlot');
-const { anchorPointOf, clamp } = require('./geometry');
+const gemModal = require('./gemModal');
+const { anchorPointOf } = require('./geometry');
 
+// 通用 UI 原子统一来自 theme.js（本项目 UI 风格与坐标工具的唯一真源）
 const {
   THEME, TOAST, shade, teamBandGradient, easeOutCubic, easeOutBack,
-  roundRectPath, drawStar, drawTowerIcon, wrapTextLines, drawPillTitle, drawButton,
-  drawButtonFx, isButtonPressed,
+  roundRectPath, drawStar, drawTowerIcon, wrapTextLines, wrapText,
+  drawTaperedDivider, drawButton, drawButtonFx, isButtonPressed,
+  drawPillTitle, drawChip, ellipsize, drawChevron, drawScrollBar,
 } = theme;
 
+// 塔属性查询（纯配置查找，实体在 tower.js，这里保留同名别名给既有调用点）
+const getTowerStats = towerMod.getTowerStats;
+
+// ⚠️ 与 core 是循环依赖：core 顶层 require 了本模块（drawBattle / render 要用 drawUI 等）。
+// 所以这里**不能**顶层 require('./renderer-core') —— 那样只会拿到半初始化的空对象。
+// drawBossBars（BOSS 血条）只在 drawUI 里用一次，延迟到调用时取（那时 core 已加载完）。
+let _coreMod = null;
+const coreMod = () => (_coreMod || (_coreMod = require('./renderer-core')));
+
+
 // ========== 属性面板布局参数（自适应高度的唯一真源）==========
+// 面板不再写死高度：所有区块高度在这里定义，实际面板高 = 内容高度之和（可被屏幕裁切）。
 const PANEL_UI = {
-  width: 302,
-  screenMarginX: 16,
-  screenMarginY: 18,
-  padX: 20,
+  width: 302,           // 面板基准宽度（屏幕更窄时自动收窄）
+  screenMarginX: 16,    // 距屏幕左右最小边距
+  screenMarginY: 18,    // 距屏幕上下最小边距
+  padX: 20,             // 内容左右内边距
   padTop: 14,
   padBottom: 12,
   radius: 12,
-  headerH: 48,
-  dividerH: 18,
-  dividerThickness: 5,
-  rowH: 26,
-  subH: 16,
-  sectionTitleH: 22,
-  effectH: 18,
-  descLineH: 17,
+  headerH: 48,          // 标题区（图标 + 名称 + 阶段星 + 造价）
+  dividerH: 18,         // "切割"分隔线占位（含上下留白）
+  dividerThickness: 5,  // 分隔线中心最厚处（两端收细到 0）
+  rowH: 26,             // 属性行高
+  subH: 16,             // 属性来源明细子行高
+  sectionTitleH: 22,    // 小节标题行高
+  effectH: 18,          // 生效效果单行高
+  descLineH: 17,        // 攻击介绍行高
   descSize: 12.5,
   skillH: 24,
-  gemRowH: 40,
-  gemGap: 5,
-  enhanceH: 52,
+  gemRowH: 40,          // 宝石条单行高（36 的珠子 + 上下呼吸）
+  gemGap: 5,            // 相邻两张宝石卡之间的间距（**区块高度与绘制共用**，见 gemBlockHeight）
+  enhanceH: 52,         // 强化按钮区（含标签行）
   footerH: 24,
 };
 
-// 属性行标签配色
+// 属性行标签配色（数值本体统一遵守：白=原生 / 绿=增益 / 红=减益）
+
+
+// 属性行标签配色（数值本体统一遵守：白=原生 / 绿=增益 / 红=减益）
 const ROW_LABEL_COLOR = {
   damage: THEME.accent.danger,
   attackSpeedMultiplier: THEME.accent.danger,
@@ -67,14 +91,51 @@ const ROW_LABEL_COLOR = {
   break: THEME.accent.gold,
 };
 
-/** 宝石区块总高（唯一真源） */
+/**
+ * 宝石区块总高（**唯一真源**）：标题 + n 张卡 + 卡间 gap。
+ *
+ * ⚠️ 必须与 drawPanelGems 的 cardY 步进（cardH + gemGap）严格同源 ——
+ *    旧实现只按 n×gemRowH 预留高度、绘制却按 (gemRowH + 5) 步进，两张卡起
+ *    最后一张就会比区块多探出 5×(n−1) px；而区块高度决定"下面那条分隔线画在哪"
+ *    （分隔线画在下一个区块的正中），于是分隔线正好压在最后一张宝石卡的边框上。
+ *    这里与 src/skillSlot.js 的 skillSlotsHeight（槽高 + outerGap）是同一套算法。
+ * @param {number} n 该塔型已嵌入的宝石数量
+ */
+
+
+/**
+ * 宝石区块总高（**唯一真源**）：标题 + n 张卡 + 卡间 gap。
+ *
+ * ⚠️ 必须与 drawPanelGems 的 cardY 步进（cardH + gemGap）严格同源 ——
+ *    旧实现只按 n×gemRowH 预留高度、绘制却按 (gemRowH + 5) 步进，两张卡起
+ *    最后一张就会比区块多探出 5×(n−1) px；而区块高度决定"下面那条分隔线画在哪"
+ *    （分隔线画在下一个区块的正中），于是分隔线正好压在最后一张宝石卡的边框上。
+ *    这里与 src/skillSlot.js 的 skillSlotsHeight（槽高 + outerGap）是同一套算法。
+ * @param {number} n 该塔型已嵌入的宝石数量
+ */
 function gemBlockHeight(n) {
   if (!(n > 0)) return 0;
   return PANEL_UI.sectionTitleH + n * PANEL_UI.gemRowH + (n - 1) * PANEL_UI.gemGap;
 }
 
-// ========== 塔属性面板（高度自适应）==========
+/**
+ * 绘制塔属性面板（高度自适应）
+ * 三步走：
+ *   ① 附加绿字属性系统（bonusStats）算出属性行 / 来源明细 / 生效效果；
+ *   ② 预排版全部文本并累加各区块高度 → 得到面板真实高度（不与屏幕争空间）；
+ *   ③ 按块顺序自上而下绘制，块间用"切割"式分隔线，内容整体裁剪在面板内。
+ * 结果：不会出现文本越界、重叠或"技能槽压在介绍文字上"的情况。
+ */
 
+
+/**
+ * 绘制塔属性面板（高度自适应）
+ * 三步走：
+ *   ① 附加绿字属性系统（bonusStats）算出属性行 / 来源明细 / 生效效果；
+ *   ② 预排版全部文本并累加各区块高度 → 得到面板真实高度（不与屏幕争空间）；
+ *   ③ 按块顺序自上而下绘制，块间用"切割"式分隔线，内容整体裁剪在面板内。
+ * 结果：不会出现文本越界、重叠或"技能槽压在介绍文字上"的情况。
+ */
 function drawTowerPanel(game) {
   const ctx = game.ctx;
   const W = game.W;
@@ -83,31 +144,36 @@ function drawTowerPanel(game) {
   const towerType = game.panelTowerType;
   const towerDef = TOWER_DEFS[towerType];
   if (!towerDef) return;
-  const stats = towerMod.getTowerStats(towerType);
+  const stats = getTowerStats(towerType);
   const tower = game.selectedTower || null;
   game._currentPanelTower = tower;
 
-  // 附加属性系统
+  // ---------- ① 附加属性系统 ----------
   const info = bonusStats.collectTowerStats(game, tower, stats, towerType);
 
-  // 尺寸 + 文本预排版
+  // ---------- ② 尺寸 + 文本预排版 ----------
   const panelW = Math.min(PANEL_UI.width, W - PANEL_UI.screenMarginX * 2);
   const contentW = panelW - PANEL_UI.padX * 2;
   const cx = W / 2;
   const descLines = wrapTextLines(ctx, stats.description || '', contentW, `${PANEL_UI.descSize}px Arial`);
 
-  // 固有技能槽
+  // 固有技能槽：每个技能一个槽（左图标 / 右技能名+Lv+介绍+当前值）。
+  // ⚠️ 高度必须取自 skillSlot.skillSlotsHeight —— 与绘制同一个换行函数，
+  //    "这边算行数、那边画文字"的历史事故（文字捅出面板 116px）不许回来。
   const skillSlots = skillSlot.buildSkillSlots(ctx, towerType, tower, contentW);
   const skillBlockH = skillSlots.length > 0
     ? PANEL_UI.sectionTitleH + skillSlot.skillSlotsHeight(skillSlots, contentW)
     : 0;
 
-  // 宝石槽条
+  // 宝石槽条：展示该塔型已嵌入的宝石（嵌入操作在图签里做，这里负责"看得到"）
+  // 嵌入条目带等级（合成产物 > Lv.1），名字按需求带上 Lv
   const gemEntries = gems.embeddedEntries(towerType);
+  // 高度含卡间距（唯一真源，见 gemBlockHeight）—— 少算一份，下面的分隔线就会压到卡片上
   const gemBlockH = gemBlockHeight(gemEntries.length);
 
-  // 组装区块
+  // 组装区块（累加高度，杜绝重叠）
   const blocks = [];
+  // 上下留白走局部变量：矮屏塞不下时它们也参与"弹性压缩"（见下方自适应第二步）
   let padTop = PANEL_UI.padTop;
   let padBottom = PANEL_UI.padBottom;
   let contentH = padTop;
@@ -132,11 +198,13 @@ function drawTowerPanel(game) {
   push({ type: 'divider', h: PANEL_UI.dividerH });
   push({ type: 'desc', h: PANEL_UI.sectionTitleH + descLines.length * PANEL_UI.descLineH, lines: descLines });
 
+  // 固有技能区块（技能槽：一技能一槽，左图标右文案）
   if (skillSlots.length > 0) {
     push({ type: 'divider', h: PANEL_UI.dividerH });
     push({ type: 'skill', h: skillBlockH, slots: skillSlots, color: towerDef.color });
   }
 
+  // 宝石区块（已嵌入的宝石，与固有技能绑定，向下排列）
   if (gemEntries.length > 0) {
     push({ type: 'divider', h: PANEL_UI.dividerH });
     push({ type: 'gems', h: gemBlockH, entries: gemEntries });
@@ -148,8 +216,15 @@ function drawTowerPanel(game) {
   push({ type: 'footer', h: PANEL_UI.footerH });
   contentH += padBottom;
 
-  // 高度自适应
+  // ---------- 面板外框 ----------
   const availH = H - PANEL_UI.screenMarginY * 2;
+
+  // ---- 高度自适应第二步：实在塞不下时，按"装饰优先级"依次让出高度 ----
+  // ① 先压扁"切割"分隔线（纯装饰，压扁只损失留白，不影响任何一条文字的可读性）
+  //    分隔线画在 y + block.h/2 上，所以直接改 block.h 就能让它自动重新居中；
+  // ② 再压页脚留白（那一块只有一行小字，本身用不满）；
+  // ③ 最后削上下内边距（底线 6px，保证内容不贴边）。
+  // 顺序很重要：被裁掉的绝不能是底部的「强化」按钮 —— 那才是要紧的东西。
   if (contentH > availH) {
     const shrinkBlocks = (type, floorH) => {
       const still = contentH - availH;
@@ -177,15 +252,20 @@ function drawTowerPanel(game) {
   const panelH = Math.min(contentH, availH);
   const panelX = (W - panelW) / 2;
   const panelY = Math.max(PANEL_UI.screenMarginY, (H - panelH) / 2);
+  // 给输入层用（判断触摸是否在面板内、面板大小）
   game._panelRect = { x: panelX, y: panelY, w: panelW, h: panelH };
 
+  // ---------- 滚动支持 ----------
+  // 内容总高 - 面板高 = 可滚动距离
   const scrollable = contentH > availH;
   const maxScroll = scrollable ? (contentH - availH) : 0;
   if (scrollable) {
+    // 打开面板时重置滚动到顶部
     if (game.panelScrollOffset === undefined || game.panelScrollOffset === null) {
       game.panelScrollOffset = 0;
     }
     game.panelScrollMax = maxScroll;
+    // 边界修正（防止面板缩放后 maxScroll 变小）
     if (game.panelScrollOffset > maxScroll) game.panelScrollOffset = maxScroll;
   } else {
     game.panelScrollMax = 0;
@@ -193,7 +273,8 @@ function drawTowerPanel(game) {
   }
   const scroll = game.panelScrollOffset || 0;
 
-  // 背板 + 描边
+  // 背板 + 描边（同时建立裁剪区，超出屏幕的内容自动切掉而非糊出面板）
+  // 透明度取 0.96：再低会让战场上的"第 N 波"横幅、选中塔名称标签从面板中间透出来，很脏。
   ctx.save();
   ctx.beginPath();
   ctx.roundRect(panelX, panelY, panelW, panelH, PANEL_UI.radius);
@@ -210,7 +291,9 @@ function drawTowerPanel(game) {
   ctx.stroke();
   ctx.restore();
 
-  // 逐块绘制（应用滚动偏移）
+  // （属性面板不再画滚动条，滑动交互由 panelScrollOffset 驱动，保持不变。）
+
+  // ---------- ③ 逐块绘制（应用滚动偏移） ----------
   ctx.save();
   ctx.beginPath();
   ctx.roundRect(panelX, panelY, panelW, panelH, PANEL_UI.radius);
@@ -234,7 +317,8 @@ function drawTowerPanel(game) {
   }
   ctx.restore();
 
-  // 滚动提示
+  // 滚动提示（内容可滚动时显示）：到顶/到底就把对应那一侧的提示收掉，
+  // 免得"已经滑到底了还在喊再滑"这种假提示。
   if (scrollable) {
     ctx.save();
     ctx.textAlign = 'center';
@@ -253,9 +337,14 @@ function drawTowerPanel(game) {
     ctx.restore();
   }
 
+  // 「强化」按钮的点击波纹（只画 panel 层的）
   drawButtonFx(game, ctx, 'panel');
 }
 
+/** 标题区：塔图标 + 名称 + 阶段星 + 造价 */
+
+
+/** 标题区：塔图标 + 名称 + 阶段星 + 造价 */
 function drawPanelHeader(ctx, block, panelX, y, panelW, towerDef, towerType, tower) {
   const left = panelX + PANEL_UI.padX;
   const right = panelX + panelW - PANEL_UI.padX;
@@ -264,6 +353,7 @@ function drawPanelHeader(ctx, block, panelX, y, panelW, towerDef, towerType, tow
 
   drawTowerIcon(ctx, iconX, iconY, towerDef.color, towerType);
 
+  // 名称
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = towerDef.color;
@@ -273,6 +363,7 @@ function drawPanelHeader(ctx, block, panelX, y, panelW, towerDef, towerType, tow
   ctx.fillText(towerDef.name, nameX, nameY);
   const nameW = ctx.measureText(towerDef.name).width;
 
+  // 阶段星：紧跟名称右侧（真实星形图案，非 emoji 字符）
   const stage = tower && tower.stage > 0 ? tower.stage : 0;
   if (stage > 0) {
     const outerR = 5;
@@ -286,7 +377,9 @@ function drawPanelHeader(ctx, block, panelX, y, panelW, towerDef, towerType, tow
     ctx.fillText('未进阶', nameX, y + 36);
   }
 
+  // 造价/价值（右上角）
   if (tower && tower._cumulativeGold > 0) {
+    // 已放置的塔：显示"价值"（出售返还 70%），替代原来的"造价"
     ctx.textAlign = 'right';
     ctx.fillStyle = THEME.text.dim;
     ctx.font = '11px Arial';
@@ -296,6 +389,7 @@ function drawPanelHeader(ctx, block, panelX, y, panelW, towerDef, towerType, tow
     const refund = Math.round(tower._cumulativeGold * 0.7);
     ctx.fillText(`${refund}`, right, y + 34);
   } else {
+    // 商店/图签预览：显示"造价"（未放置，无价值）
     ctx.textAlign = 'right';
     ctx.fillStyle = THEME.text.dim;
     ctx.font = '11px Arial';
@@ -306,6 +400,18 @@ function drawPanelHeader(ctx, block, panelX, y, panelW, towerDef, towerType, tow
   }
 }
 
+/**
+ * 属性区：左侧标签，右侧数值。
+ * 数值遵循"基础值+加值"双色规则：基础值白字，加值绿字（增益）/ 红字（负面效果）。
+ * 有来源明细的属性（等级 / 阶段增幅）在下一行用小字列出算式来源。
+ */
+
+
+/**
+ * 属性区：左侧标签，右侧数值。
+ * 数值遵循"基础值+加值"双色规则：基础值白字，加值绿字（增益）/ 红字（负面效果）。
+ * 有来源明细的属性（等级 / 阶段增幅）在下一行用小字列出算式来源。
+ */
 function drawPanelAttrRows(ctx, block, panelX, y, panelW) {
   const left = panelX + PANEL_UI.padX;
   const right = panelX + panelW - PANEL_UI.padX;
@@ -314,17 +420,19 @@ function drawPanelAttrRows(ctx, block, panelX, y, panelW) {
   for (const row of block.rows) {
     const midY = rowY + PANEL_UI.rowH / 2;
 
+    // 标签
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.font = '14px Arial';
     ctx.fillStyle = ROW_LABEL_COLOR[row.key] || THEME.text.secondary;
     ctx.fillText(row.label, left, midY);
 
+    // 数值：先画加值（右对齐），再把基础值顶到加值左边
     const bonusColor = row.sign > 0 ? THEME.accent.green : (row.sign < 0 ? THEME.accent.danger : null);
     const VALUE_FONT = 'bold 15px Arial';
-    const VALUE_GAP = 1.5;
+    const VALUE_GAP = 1.5;   // 基础值与加值之间的呼吸间隙
 
-    ctx.font = VALUE_FONT;
+    ctx.font = VALUE_FONT;   // 必须先定字体再量宽，否则量出的宽度与绘制不一致 → 数值重叠
     const bonusW = row.bonusText ? ctx.measureText(row.bonusText).width : 0;
 
     if (row.bonusText) {
@@ -341,6 +449,7 @@ function drawPanelAttrRows(ctx, block, panelX, y, panelW) {
 
     rowY += PANEL_UI.rowH;
 
+    // 来源明细子行：· 等级 Lv.2 ............ +20%
     for (const part of row.parts) {
       const subY = rowY + PANEL_UI.subH / 2;
       ctx.textAlign = 'left';
@@ -358,6 +467,10 @@ function drawPanelAttrRows(ctx, block, panelX, y, panelW) {
   }
 }
 
+/** 生效效果区：光环增益 / 负面效果逐条列出（来源 + 数值 + 剩余时间） */
+
+
+/** 生效效果区：光环增益 / 负面效果逐条列出（来源 + 数值 + 剩余时间） */
 function drawPanelEffects(ctx, block, panelX, y, panelW) {
   const left = panelX + PANEL_UI.padX;
   const right = panelX + panelW - PANEL_UI.padX;
@@ -373,6 +486,7 @@ function drawPanelEffects(ctx, block, panelX, y, panelW) {
     const midY = itemY + PANEL_UI.effectH / 2;
     const color = item.sign > 0 ? THEME.accent.green : THEME.accent.danger;
 
+    // 状态圆点
     ctx.beginPath();
     ctx.arc(left + 5, midY, 3, 0, Math.PI * 2);
     ctx.fillStyle = color;
@@ -392,6 +506,10 @@ function drawPanelEffects(ctx, block, panelX, y, panelW) {
   }
 }
 
+/** 攻击介绍区：左对齐自动换行（行数已预排版，高度不再瞎猜） */
+
+
+/** 攻击介绍区：左对齐自动换行（行数已预排版，高度不再瞎猜） */
 function drawPanelDescription(ctx, block, panelX, y, panelW, stats) {
   const left = panelX + PANEL_UI.padX;
 
@@ -412,6 +530,22 @@ function drawPanelDescription(ctx, block, panelX, y, panelW, stats) {
   }
 }
 
+/**
+ * 固有技能区：标题 + 一个或多个【技能槽】。
+ *
+ * 槽的形态（需求原话）：左边技能图标，右边技能名 + Lv{等级} 与介绍。
+ * 排版全部交给 src/skillSlot.js —— 那里同时负责算高度，两边不会打架。
+ * @param {object} block { h, slots }
+ */
+
+
+/**
+ * 固有技能区：标题 + 一个或多个【技能槽】。
+ *
+ * 槽的形态（需求原话）：左边技能图标，右边技能名 + Lv{等级} 与介绍。
+ * 排版全部交给 src/skillSlot.js —— 那里同时负责算高度，两边不会打架。
+ * @param {object} block { h, slots }
+ */
 function drawPanelSkill(ctx, block, panelX, y, panelW) {
   const left = panelX + PANEL_UI.padX;
   const contentW = panelW - PANEL_UI.padX * 2;
@@ -427,6 +561,18 @@ function drawPanelSkill(ctx, block, panelX, y, panelW) {
   });
 }
 
+/**
+ * 宝石区：该塔型已嵌入的宝石（与固有技能绑定，跨局永久）。
+ * 只读展示 —— 嵌入/取出都在图签的槽位上操作，这里给出"这颗塔带了什么珠子"。
+ * 竖排：每颗一颗，图标 + 名字 + 属性效果。
+ */
+
+
+/**
+ * 宝石区：该塔型已嵌入的宝石（与固有技能绑定，跨局永久）。
+ * 只读展示 —— 嵌入/取出都在图签的槽位上操作，这里给出"这颗塔带了什么珠子"。
+ * 竖排：每颗一颗，图标 + 名字 + 属性效果。
+ */
 function drawPanelGems(ctx, block, panelX, y, panelW) {
   const left = panelX + PANEL_UI.padX;
   const right = panelX + panelW - PANEL_UI.padX;
@@ -439,62 +585,94 @@ function drawPanelGems(ctx, block, panelX, y, panelW) {
   ctx.fillStyle = THEME.text.secondary;
   ctx.fillText('宝石', left, y + PANEL_UI.sectionTitleH / 2);
 
-  const gemPad = 6;
-  const iconSize = 14;
-  const iconR = iconSize / 2;
-  const slotSize = iconSize + 8;
-  let cardY = y + PANEL_UI.sectionTitleH;
-  for (const entry of entries) {
-    const def = gems.gemDef(entry.kind);
-    if (!def) continue;
+    // 珠子逐个竖排，每颗用【圆角卡】框住（左侧图标+槽位 + 右侧名字/描述，同固有技能布局）
+    const gemPad = 6;
+    const iconSize = 14;
+    const iconR = iconSize / 2;
+    const slotSize = iconSize + 8;
+    let cardY = y + PANEL_UI.sectionTitleH;
+    for (const entry of entries) {
+      const def = gems.gemDef(entry.kind);
+      if (!def) continue;
 
-    const cardW = contentW;
-    const cardH = PANEL_UI.gemRowH;
+      const cardW = contentW;
+      const cardH = PANEL_UI.gemRowH;
 
-    const grad = ctx.createLinearGradient(left, cardY, left, cardY + cardH);
-    grad.addColorStop(0, 'rgba(179, 136, 255, 0.10)');
-    grad.addColorStop(1, 'rgba(255, 255, 255, 0.03)');
-    ctx.fillStyle = grad;
-    roundRectPath(ctx, left, cardY, cardW, cardH, 8);
-    ctx.fill();
+      // 圆角卡背景
+      const grad = ctx.createLinearGradient(left, cardY, left, cardY + cardH);
+      grad.addColorStop(0, 'rgba(179, 136, 255, 0.10)');
+      grad.addColorStop(1, 'rgba(255, 255, 255, 0.03)');
+      ctx.fillStyle = grad;
+      roundRectPath(ctx, left, cardY, cardW, cardH, 8);
+      ctx.fill();
 
-    ctx.strokeStyle = 'rgba(179, 136, 255, 0.35)';
-    ctx.lineWidth = 1;
-    roundRectPath(ctx, left, cardY, cardW, cardH, 8);
-    ctx.stroke();
+      ctx.strokeStyle = 'rgba(179, 136, 255, 0.35)';
+      ctx.lineWidth = 1;
+      roundRectPath(ctx, left, cardY, cardW, cardH, 8);
+      ctx.stroke();
 
-    const slotCX = left + gemPad + slotSize / 2;
-    const slotCY = cardY + cardH / 2;
-    const slotX = slotCX - slotSize / 2;
-    const slotY = slotCY - slotSize / 2;
-    ctx.beginPath();
-    ctx.rect(slotX, slotY, slotSize, slotSize);
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(179,136,255,0.5)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    gems.drawGemIcon(ctx, slotCX, slotCY + 1, iconR, entry.kind, { lv: entry.lv });
+      // 图标槽位（与固有技能槽位一致：深色底 + 紫边框 + 圆角）
+      const slotCX = left + gemPad + slotSize / 2; // 槽中心 X
+      const slotCY = cardY + cardH / 2;            // 槽中心 Y（与卡片同高居中）
+      const slotX = slotCX - slotSize / 2;
+      const slotY = slotCY - slotSize / 2;
+      // 槽位用锐角矩形（圆角太小会导致图标被圆角"吃"掉、看起来偏）
+      ctx.beginPath();
+      ctx.rect(slotX, slotY, slotSize, slotSize);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(179,136,255,0.5)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // 宝石图标（槽位正中；钻石切面几何中心偏上 1px，故补 +1 让视觉居中）
+      gems.drawGemIcon(ctx, slotCX, slotCY + 1, iconR, entry.kind, { lv: entry.lv });
 
-    const textX = slotCX + slotSize + 10;
+      // 右侧：名字（上）+ 描述（下），文字在图标槽位右边
+      const textX = slotCX + slotSize + 10; // 槽位右边缘 + 10px
 
-    ctx.textAlign = 'left';
-    ctx.font = 'bold 11px Arial';
-    ctx.fillStyle = def.color;
-    const label = gems.gemName(entry.kind, entry.lv);
-    ctx.fillText(label, textX, cardY + 14);
+      // 名字
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 11px Arial';
+      ctx.fillStyle = def.color;
+      const label = gems.gemName(entry.kind, entry.lv);
+      ctx.fillText(label, textX, cardY + 14);
 
-    const eff = gems.effectTextAt(entry.kind, entry.lv);
-    if (eff) {
-      ctx.font = '10px Arial';
-      ctx.fillStyle = THEME.text.off;
-      ctx.fillText(eff, textX, cardY + 28);
+      // 描述
+      const eff = gems.effectTextAt(entry.kind, entry.lv);
+      if (eff) {
+        ctx.font = '10px Arial';
+        ctx.fillStyle = THEME.text.off;
+        ctx.fillText(eff, textX, cardY + 28);
+      }
+
+      // 卡间距交给 gemGap（与区块高度同源）；**不在两卡之间画任何装饰** ——
+      // 曾经那条 inset 的紫色小长条（left+12 / cardW-24 / 6.3px 高）本身有 2.3px
+      // 压在第 2 张卡上，看着就是个说不清来历的流氓元素，玩家会问"这是什么"。
+      // 卡本身有描边，两张卡之间留白就够分隔了。
+      cardY += cardH + PANEL_UI.gemGap;
     }
-
-    cardY += cardH + PANEL_UI.gemGap;
-  }
 }
 
+/**
+ * 强化区：花金币提升该塔的【固有技能】等级（局内，不跨局）。
+ * 规则：
+ *   · 只有【进阶到 3★】的图形塔才能强化（橙色提示当前星级）
+ *   · 强化 = 技能等级 +1 = 该技能的全部效果一起涨，**不再发放任何攻击力加成**
+ *     （技能表见 src/skills.js；每条效果的当前取值在下方属性行里看）
+ * 商店预览（没有实体塔）时不可用，提示"放置后可强化"。
+ * 按钮矩形写入 game.panelEnhanceBtn，供输入层命中（渲染每帧刷新，永不失效）。
+ */
+
+
+/**
+ * 强化区：花金币提升该塔的【固有技能】等级（局内，不跨局）。
+ * 规则：
+ *   · 只有【进阶到 3★】的图形塔才能强化（橙色提示当前星级）
+ *   · 强化 = 技能等级 +1 = 该技能的全部效果一起涨，**不再发放任何攻击力加成**
+ *     （技能表见 src/skills.js；每条效果的当前取值在下方属性行里看）
+ * 商店预览（没有实体塔）时不可用，提示"放置后可强化"。
+ * 按钮矩形写入 game.panelEnhanceBtn，供输入层命中（渲染每帧刷新，永不失效）。
+ */
 function drawPanelEnhance(ctx, block, panelX, y, panelW, game) {
   const left = panelX + PANEL_UI.padX;
   const right = panelX + panelW - PANEL_UI.padX;
@@ -510,6 +688,7 @@ function drawPanelEnhance(ctx, block, panelX, y, panelW, game) {
     h: btnH,
   };
 
+  // 没有实体塔（商店预览）→ 强化不可用
   if (!tower) {
     game.panelEnhanceBtn = null;
     ctx.textAlign = 'left';
@@ -523,6 +702,8 @@ function drawPanelEnhance(ctx, block, panelX, y, panelW, game) {
     return;
   }
 
+  // 兜底：该塔类型没有登记固有技能（src/skills.js 漏配）→ 直接说清楚，
+  // 绝不把"需 3★"这种假门槛画出来，更不许把按钮挂上去（点了会白花金币）。
   if (!skills.hasSkill(tower.type)) {
     game.panelEnhanceBtn = null;
     ctx.textAlign = 'left';
@@ -536,40 +717,48 @@ function drawPanelEnhance(ctx, block, panelX, y, panelW, game) {
     return;
   }
 
-  const maxLv = skills.MAX_LEVEL;
-  const lv = towerMod.getEffectiveSkillLevel(tower);
+  // ⚠️ 两套口径别混（2026-09-20 定稿，见 src/skills.js 的「等级口径」段）：
+  //    显示 = 【当前等级/可学等级】（skills.levelText，含宝石 / 十字塔共享）；
+  //    满级判定 + 报价 = 【学习次数】（额外等级不占学习额度）—— 与 enhance.js / tower.canEnhance 同源。
+  const learned = towerMod.getLearnTimes(tower);
+  const learnCap = skills.baseLearnCap(tower.type);
+  const curLv = skills.currentLevel(tower, tower.type);
   const stage = tower.stage || 0;
   const needStage = BALANCE.enhance.minStage;
   const stageReady = towerMod.isStageReady(tower);
-  const maxed = lv >= maxLv;
-  const cost = maxed ? Infinity : towerMod.getEnhanceCost(tower.type, towerMod.getEnhanceTimes(tower));
+  const maxed = learned >= learnCap;
+  const cost = maxed ? Infinity : towerMod.getEnhanceCost(tower.type, learned);
   const affordable = !maxed && game.gold >= cost;
   const usable = stageReady && !maxed;
 
   game.panelEnhanceBtn = btn;
 
+  // 左：当前强化等级 + 门槛/下一级收益
+  // 文案必须按左侧可用宽度裁剪（按钮从 right-btnW 开始，不能让文字压到按钮上）
   const availW = Math.max(40, btn.x - left - 8);
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.font = 'bold 13px Arial';
-  ctx.fillStyle = lv > skills.LEVEL_BASE ? THEME.accent.green : THEME.text.primary;
-  ctx.fillText(`固有技能 Lv.${lv}/${maxLv}`, left, y + 20);
+  ctx.fillStyle = curLv > 0 ? THEME.accent.green : THEME.text.primary;
+  ctx.fillText(`${skills.INNATE_LABEL} ${skills.levelText(tower, tower.type)}`, left, y + 20);
 
   ctx.font = '10px Arial';
   if (!stageReady) {
     ctx.fillStyle = THEME.accent.gold;
     ctx.fillText(ellipsize(ctx, `需进阶到 ★${'★'.repeat(needStage - 1)}（当前 ${stage}★）才能强化`, availW), left, y + 37);
   } else if (maxed) {
-    const gemLv = tower ? skills.gemLevels(tower.type) : 0;
+    // 学习额度（= 玩家花金币学出来的次数）已满。宝石 / 十字塔共享给的那份等级是"地基"，
+    // 不占这个额度（可学等级 = 额外等级 + 5），所以这里必须说清"满的是哪一份"，
+    // 否则玩家会以为"嵌了宝石就再也强化不了"。同口径文案见 src/enhance.js。
     ctx.fillStyle = THEME.text.off;
     ctx.fillText(
-      ellipsize(ctx, gemLv > 0
-        ? `已满级：宝石占 ${gemLv} 级（与强化共用上限）`
-        : '已满级：专属属性已达上限', availW),
+      ellipsize(ctx, `学习已达上限（${learned}/${learnCap}）${
+        skills.gemLevels(tower.type) > 0 ? '；宝石 / 共享的等级另算' : ''}`, availW),
       left, y + 37
     );
   } else {
+    // 每次强化的收益（多效果技能拼成「暴击几率 +5% · 暴击伤害 +10%」，宽了自动省略）
     const gainLabel = skills.skillGainLabel(tower.type);
     ctx.fillStyle = THEME.text.off;
     ctx.fillText(
@@ -578,6 +767,7 @@ function drawPanelEnhance(ctx, block, panelX, y, panelW, game) {
     );
   }
 
+  // 右：强化按钮
   let top, bottom, stroke, label, labelColor;
   if (!stageReady) {
     top = THEME.track.soft; bottom = THEME.track.faint; stroke = THEME.border.subtle;
@@ -604,6 +794,10 @@ function drawPanelEnhance(ctx, block, panelX, y, panelW, game) {
   });
 }
 
+/** 底部提示 */
+
+
+/** 底部提示 */
 function drawPanelFooter(ctx, block, cx, y) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -612,69 +806,31 @@ function drawPanelFooter(ctx, block, cx, y) {
   ctx.fillText('点击任意位置关闭', cx, y + block.h / 2);
 }
 
-// ========== 绘制分隔线 ==========
+/**
+ * 计算拖放落点槽位（手指下的放置槽），返回 slot 或 null
+ */
 
-function drawTaperedDivider(ctx, x, y, width) {
-  ctx.save();
-  ctx.strokeStyle = THEME.border.normal;
-  ctx.lineWidth = PANEL_UI.dividerThickness;
-  ctx.beginPath();
-  ctx.moveTo(x - width / 2, y);
-  ctx.lineTo(x - width * 0.05, y - PANEL_UI.dividerThickness / 2);
-  ctx.lineTo(x + width * 0.05, y - PANEL_UI.dividerThickness / 2);
-  ctx.lineTo(x + width / 2, y);
-  ctx.lineTo(x + width * 0.05, y + PANEL_UI.dividerThickness / 2);
-  ctx.lineTo(x - width * 0.05, y + PANEL_UI.dividerThickness / 2);
-  ctx.closePath();
-  ctx.stroke();
-  ctx.restore();
-}
 
-function drawChevron(ctx, x, y, dir, color) {
-  ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(x - 6 * dir, y - 4);
-  ctx.lineTo(x, y + 3 * dir);
-  ctx.lineTo(x + 6 * dir, y - 4);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawScrollBar(ctx, x, y, w, h, ratio, color) {
-  ctx.save();
-  const thumbH = Math.max(16, h * ratio);
-  const thumbY = h > thumbH ? y + (1 - ratio) * h : y;
-  const thumbX = x + w + 4;
-  ctx.fillStyle = shade(color || THEME.border.normal, 0.4);
-  ctx.beginPath();
-  ctx.roundRect(thumbX, thumbY, 4, thumbH, 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-// ========== 波次标题与倒计时动画 ==========
-
-function getPlayerScoreProgress(game, index) {
-  if (index === 0 && game.maxLives > 0) {
-    return clamp(0, 1, game.lives / game.maxLives);
-  }
-  return 0.5;
-}
-
+/**
+ * 绘制生存条（轨道 + 柔和渐变填充 + 描边）
+ * 语义：玩家剩余生存积分（生命）的进度，归零判负——是"剩余量"而非"得分"。
+ * @param {number} percent 填充比例 0~1
+ * @param {string[]} gradient 渐变色列表（柔和色调，避免刺眼）
+ * @param {boolean} fillFromRight true=从右向左填充（右侧镜像条）
+ */
 function drawLifeBar(ctx, x, y, w, h, percent, gradient, fillFromRight) {
-  percent = clamp(0, 1, percent || 0);
+  percent = Math.max(0, Math.min(1, percent || 0));
   if (w <= 0) return;
 
+  // 轨道
   ctx.fillStyle = THEME.track.bar;
   ctx.beginPath();
   ctx.roundRect(x, y - h / 2, w, h, h / 2);
   ctx.fill();
 
+  // 渐变填充
   if (percent > 0) {
-    const fw = Math.max(h, w * percent);
+    const fw = Math.max(h, w * percent); // 极小填充时保留圆点
     const fx = fillFromRight ? x + w - fw : x;
     const grad = ctx.createLinearGradient(fx, 0, fx + fw, 0);
     gradient.forEach((color, i) => grad.addColorStop(i / (gradient.length - 1), color));
@@ -684,6 +840,7 @@ function drawLifeBar(ctx, x, y, w, h, percent, gradient, fillFromRight) {
     ctx.fill();
   }
 
+  // 描边
   ctx.strokeStyle = THEME.border.normal;
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -691,21 +848,63 @@ function drawLifeBar(ctx, x, y, w, h, percent, gradient, fillFromRight) {
   ctx.stroke();
 }
 
+/**
+ * 获取玩家积分进度（0~1）
+ * 玩家0（本地红色方）= 真实生存积分 lives / maxLives；玩家1（蓝色方，预留联机）暂用占位值
+ */
+
+
+/**
+ * 获取玩家积分进度（0~1）
+ * 玩家0（本地红色方）= 真实生存积分 lives / maxLives；玩家1（蓝色方，预留联机）暂用占位值
+ */
+function getPlayerScoreProgress(game, index) {
+  // 玩家0（本地红色方）：真实生存积分进度
+  if (index === 0 && game.maxLives > 0) {
+    return Math.max(0, Math.min(1, game.lives / game.maxLives));
+  }
+  // 玩家1（蓝色方，预留联机）：暂无对手数据，保留占位演示值
+  return 0.5;
+}
+
+/**
+ * 绘制波次标题：药丸形背景 + 红→蓝柔和渐变，风格与左右生存条统一
+ * @param {object} ctx 画布
+ * @param {number} cx 中心x
+ * @param {number} cy 中心y
+ * @param {number} w 背景宽
+ * @param {number} h 背景高
+ * @param {string} text 标题文字
+ */
+
+
+/**
+ * 绘制波次标题：药丸形背景 + 红→蓝柔和渐变，风格与左右生存条统一
+ * @param {object} ctx 画布
+ * @param {number} cx 中心x
+ * @param {number} cy 中心y
+ * @param {number} w 背景宽
+ * @param {number} h 背景高
+ * @param {string} text 标题文字
+ */
 function drawWaveTitle(ctx, cx, cy, w, h, text) {
   const x = cx - w / 2;
   const y = cy - h / 2;
 
+  // 药丸形背景：红 → 中性 → 蓝 柔和渐变（统一阵营色）
   ctx.fillStyle = teamBandGradient(ctx, x, x + w, 1);
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, h / 2);
   ctx.fill();
 
+  // 描边
   ctx.strokeStyle = THEME.border.strong;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, h / 2);
   ctx.stroke();
 
+  // 标题文字
   ctx.fillStyle = THEME.text.primary;
   ctx.font = 'bold 18px Arial';
   ctx.textAlign = 'center';
@@ -713,19 +912,45 @@ function drawWaveTitle(ctx, cx, cy, w, h, text) {
   ctx.fillText(text, cx, cy);
 }
 
+// ========== 波次标题动态动画（倒计时滚轮 + 进攻开始 + 标题滑入） ==========
+// 缓动函数 easeOutCubic / easeOutBack 统一由 theme.js 提供（见文件头部的解构导入）
+
+/**
+ * 绘制"滚轮数字"（odometer 风格）：数字 5→4→3→2→1 在窗口内连续滚动。
+ * reelIndex 为浮点（0=显示5，4=显示1），随倒计时连续变化即产生滚动感。
+ * @param {object} ctx 画布
+ * @param {number} cx 窗口中心x
+ * @param {number} cy 窗口中心y
+ * @param {number} reelIndex 0..4（浮点）
+ */
+
+
+// ========== 波次标题动态动画（倒计时滚轮 + 进攻开始 + 标题滑入） ==========
+// 缓动函数 easeOutCubic / easeOutBack 统一由 theme.js 提供（见文件头部的解构导入）
+
+/**
+ * 绘制"滚轮数字"（odometer 风格）：数字 5→4→3→2→1 在窗口内连续滚动。
+ * reelIndex 为浮点（0=显示5，4=显示1），随倒计时连续变化即产生滚动感。
+ * @param {object} ctx 画布
+ * @param {number} cx 窗口中心x
+ * @param {number} cy 窗口中心y
+ * @param {number} reelIndex 0..4（浮点）
+ */
 function drawReel(ctx, cx, cy, reelIndex) {
   const digits = ['5', '4', '3', '2', '1'];
-  const H = 56;
-  const winW = 74;
-  const winH = H;
+  const H = 56;            // 每个数字格高
+  const winW = 74;         // 窗口宽
+  const winH = H;          // 窗口高
   const x = cx - winW / 2;
   const yTop = cy - winH / 2;
 
+  // 面板底
   ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
   ctx.beginPath();
   ctx.roundRect(x - 4, yTop - 4, winW + 8, winH + 8, 10);
   ctx.fill();
 
+  // 裁剪到窗口，画滚动数字
   ctx.save();
   ctx.beginPath();
   ctx.rect(x, yTop, winW, winH);
@@ -747,6 +972,7 @@ function drawReel(ctx, cx, cy, reelIndex) {
   ctx.shadowBlur = 0;
   ctx.globalAlpha = 1;
 
+  // 上下渐隐（滚轮纵深）
   const fade = ctx.createLinearGradient(0, yTop, 0, yTop + winH);
   fade.addColorStop(0,    'rgba(26,26,46,0.85)');
   fade.addColorStop(0.3,  'rgba(26,26,46,0)');
@@ -756,6 +982,7 @@ function drawReel(ctx, cx, cy, reelIndex) {
   ctx.fillRect(x, yTop, winW, winH);
   ctx.restore();
 
+  // 窗口描边
   ctx.strokeStyle = THEME.border.strong;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -763,10 +990,37 @@ function drawReel(ctx, cx, cy, reelIndex) {
   ctx.stroke();
 }
 
+/**
+ * 波次倒计时动画舞台（在波次之间播放）：
+ *   第一秒：旧"第 N 波"标题从西面被顶上去并淡出，同时滚轮从 5 开始滚；
+ *   中间：  滚轮 5→4→3→2→1 连续滚动；
+ *   最后一秒："进攻开始"放大冲入。
+ * 完全由 remaining(=waitTimer) 驱动，纯函数，跨重启稳健。
+ * @param {object} game 游戏实例
+ * @param {number} cx 中心x
+ * @param {number} cy 中心y
+ * @param {number} remaining 剩余倒计时（秒）
+ * @param {number} waitDuration 总倒计时（秒）
+ */
+
+
+/**
+ * 波次倒计时动画舞台（在波次之间播放）：
+ *   第一秒：旧"第 N 波"标题从西面被顶上去并淡出，同时滚轮从 5 开始滚；
+ *   中间：  滚轮 5→4→3→2→1 连续滚动；
+ *   最后一秒："进攻开始"放大冲入。
+ * 完全由 remaining(=waitTimer) 驱动，纯函数，跨重启稳健。
+ * @param {object} game 游戏实例
+ * @param {number} cx 中心x
+ * @param {number} cy 中心y
+ * @param {number} remaining 剩余倒计时（秒）
+ * @param {number} waitDuration 总倒计时（秒）
+ */
 function drawWaveCountdown(game, cx, cy, remaining, waitDuration) {
   const ctx = game.ctx;
   ctx.save();
 
+  // ---- 旧波次标题：从西面被往上顶 + 淡出（第一窗口内完成）----
   const introP = (remaining > waitDuration - 1)
     ? Math.min(1, Math.max(0, (waitDuration - remaining) / 1))
     : 1;
@@ -781,6 +1035,7 @@ function drawWaveCountdown(game, cx, cy, remaining, waitDuration) {
   }
 
   if (remaining <= 1) {
+    // ---- 进攻开始：放大冲入 + 金色发光 ----
     const goP = Math.min(1, Math.max(0, (1 - remaining) / 1));
     const scale = 0.55 + 0.45 * easeOutBack(goP);
     const alpha = Math.min(1, goP * 2.5);
@@ -797,13 +1052,24 @@ function drawWaveCountdown(game, cx, cy, remaining, waitDuration) {
     ctx.fillText('进攻开始', 0, 0);
     ctx.restore();
   } else {
-    const reelIndex = clamp(0, 4, waitDuration - remaining);
+    // ---- 滚轮数字：5→4→3→2→1 连续滚动 ----
+    const reelIndex = Math.max(0, Math.min(4, waitDuration - remaining));
     drawReel(ctx, cx, cy, reelIndex);
   }
 
   ctx.restore();
 }
 
+/**
+ * 波次标题（波次进行中显示），带"滑入"动画：波次刚开始时从上方滑落到位。
+ * @param {object} game 游戏实例
+ */
+
+
+/**
+ * 波次标题（波次进行中显示），带"滑入"动画：波次刚开始时从上方滑落到位。
+ * @param {object} game 游戏实例
+ */
 function drawWaveTitleAnimated(game, cx, cy, w, h, text) {
   const ctx = game.ctx;
   const now = Date.now();
@@ -812,7 +1078,7 @@ function drawWaveTitleAnimated(game, cx, cy, w, h, text) {
     drawWaveTitle(ctx, cx, cy, w, h, text);
     return;
   }
-  const p = clamp(0, 1, elapsed / 0.6);
+  const p = Math.max(0, Math.min(1, elapsed / 0.6));
   const eased = easeOutCubic(p);
   ctx.save();
   ctx.globalAlpha = eased;
@@ -820,8 +1086,16 @@ function drawWaveTitleAnimated(game, cx, cy, w, h, text) {
   ctx.restore();
 }
 
-// ========== 顶部状态栏 ==========
+/**
+ * 顶部状态栏：关卡徽标（可点开关卡选择）/ 生存积分 / 金币。
+ * 金币从底栏挪到顶栏——底栏现在归重做后的商店面板用。
+ */
 
+
+/**
+ * 顶部状态栏：关卡徽标（可点开关卡选择）/ 生存积分 / 金币。
+ * 金币从底栏挪到顶栏——底栏现在归重做后的商店面板用。
+ */
 function drawTopBar(game) {
   const ctx = game.ctx;
   const width = game.W;
@@ -830,6 +1104,7 @@ function drawTopBar(game) {
   ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
   ctx.fillRect(0, 0, width, H);
 
+  // 左：关卡徽标（纯展示，不可点击——选关已搬到战前居中面板）
   const badge = levels.getLevelBadgeRect(game);
   game.levelBadgeRect = badge;
   const lvDef = LEVELS.filter((l) => l.id === game.currentLevel)[0];
@@ -841,6 +1116,7 @@ function drawTopBar(game) {
     stroke: 'rgba(229, 115, 115, 0.55)',
   });
 
+  // 右：☰ 游戏菜单按钮 / 🔊 音乐开关（从右往左排，见 gamemenu.js 文件头）
   const menuRect = gamemenu.getMenuButtonRect(game);
   gamemenu.drawMusicButton(game);
   gamemenu.drawMenuButton(game);
@@ -854,30 +1130,35 @@ function drawTopBar(game) {
 
   ctx.restore();
 
+  // ☰ 按钮的点击波纹（只画 topbar 层的，见 theme.drawButtonFx）
   drawButtonFx(game, ctx, 'topbar');
 }
 
-// ========== drawUI（战斗场景 + UI 合成）==========
+
 
 function drawUI(game) {
   const ctx = game.ctx;
   const width = game.W;
   const height = game.H;
 
+  // 顶部状态栏：关卡徽标 / 生存积分 / 金币
   drawTopBar(game);
 
+  // 屏幕中心波次标题 - 向上偏移
   const centerLineY = height / 2 - 40;
   const waveText = `第 ${game.currentWave} 波`;
 
+  // 测量文本宽度，自适应背景（标题与左右积分条同一条水平线）
   ctx.font = 'bold 18px Arial';
   const textWidth = ctx.measureText(waveText).width || 80;
   const bgWidth = textWidth + 60;
   const bgHeight = 40;
   const bgX = width / 2 - bgWidth / 2;
 
-  const barH = 10;
-  const barEdge = 10;
-  const barGap = 10;
+  // 左右生存条：左侧=我方（红，填充 左→右），右侧=对方（蓝，填充 右→左，预留联机）
+  const barH = 10;      // 生存条高度
+  const barEdge = 10;   // 距屏幕边缘
+  const barGap = 10;    // 距标题
   drawLifeBar(
     ctx, barEdge, centerLineY,
     bgX - barGap - barEdge, barH,
@@ -892,14 +1173,30 @@ function drawUI(game) {
     [THEME.team.blue.light, THEME.team.blue.solid], true
   );
 
+  // 标题：药丸形 + 红→蓝柔和渐变，风格与左右生存条统一
   drawWaveTitle(ctx, width / 2, centerLineY, bgWidth, bgHeight, waveText);
-  drawBossBars(game, centerLineY, bgHeight);
 
+  // BOSS 大血条：红方 BOSS 在波次标题下方，蓝方 BOSS 在波次标题上方
+  coreMod().drawBossBars(game, centerLineY, bgHeight);
+
+  // ========== 重做后的商店板块 ==========
+  // 标题栏（商店徽标 + 特殊积分 + 刷新按钮）+ 3 张塔卡；坐标由 shop.getShopLayout 统一提供
   shop.drawShop(game);
+
+  // 注意：结算界面不在这里画——它必须盖住底部导航栏，
+  // 所以由 render() 在导航栏之后统一绘制（见 drawGameOver 的调用点）。
 }
 
-// ========== drawGameOver（结算界面）==========
+/**
+ * 结算界面（失败 / 胜利）：与游戏内 UI 统一风格。
+ * 从原 drawUI 尾部抽出，逻辑不变。
+ */
 
+
+/**
+ * 结算界面（失败 / 胜利）：与游戏内 UI 统一风格。
+ * 从原 drawUI 尾部抽出，逻辑不变。
+ */
 function drawGameOver(game) {
   const ctx = game.ctx;
   const width = game.W;
@@ -908,11 +1205,13 @@ function drawGameOver(game) {
   const showWin = !!game.gameWon;
   const showFail = game.lives <= 0 && !showWin;
   if (!showFail && !showWin) return;
-
+  // 全屏遮罩
   ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
   ctx.fillRect(0, 0, width, height);
 
+  // 居中圆角面板（自适应宽度，风格与塔属性面板一致）
   const panelW = Math.min(360, width - 32);
+  // 有宝石奖励时把面板加高，给 9 格奖励区留位置；没有（理论上 gameOver 时必已结算）保持原高
   const reward = game.gemReward;
   const showReward = !!reward;
   const panelH = showReward ? 388 : 290;
@@ -934,17 +1233,20 @@ function drawGameOver(game) {
 
   const cx = width / 2;
 
+  // 标题药丸（风格与波次标题一致）
   const titleText = showFail ? '游戏结束' : '胜利！';
   const titleTop = showFail ? 'rgba(229, 115, 115, 0.55)' : 'rgba(255, 215, 0, 0.55)';
   const titleBottom = showFail ? 'rgba(255, 68, 68, 0.35)' : 'rgba(255, 170, 0, 0.35)';
   drawPillTitle(ctx, cx, panelY + 56, titleText, titleTop, titleBottom, panelW - 24);
 
+  // 坚持波数
   ctx.fillStyle = THEME.text.secondary;
   ctx.font = '16px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(`坚持波数: ${game.currentWave}`, cx, panelY + 116);
 
+  // 本局收获（金币/积分不跨局，只有积分与天赋点进存档）
   ctx.font = '12px Arial';
   ctx.fillStyle = THEME.text.dim;
   ctx.fillText(
@@ -954,11 +1256,13 @@ function drawGameOver(game) {
     cx, panelY + 142
   );
 
+  // 宝石奖励（9 格）：观看视频复活的倒计时状态下不画，避免和倒计时文字重叠
   if (reward && !game.watchingVideo) {
     drawGemReward(ctx, game, panelX, panelY, panelW);
   }
 
   if (showWin) {
+    // 胜利：单个"返回主页"按钮（主操作 = 增益绿）
     const btnW = Math.min(240, panelW - 48);
     const btnH = 54;
     const btnX = (width - btnW) / 2;
@@ -972,6 +1276,7 @@ function drawGameOver(game) {
       pressed: isButtonPressed(game, 'returnHome'),
     });
   } else if (game.watchingVideo) {
+    // 失败 - 观看视频倒计时
     game.gameOverButtons = {};
     ctx.fillStyle = THEME.accent.gold;
     ctx.font = 'bold 26px Arial';
@@ -980,6 +1285,7 @@ function drawGameOver(game) {
     ctx.font = '14px Arial';
     ctx.fillText('观看广告后可继续游戏', cx, panelY + 226);
   } else {
+    // 失败 - 按钮：AD.enabled 为 false 时，再次挑战按钮变灰不可点
     const btnH = 54;
     const inner = panelW - 40;
     const gap = 16;
@@ -1017,138 +1323,242 @@ function drawGameOver(game) {
     });
   }
 
+  // 结算按钮的点击波纹（只画 gameover 层的）
   drawButtonFx(game, ctx, 'gameover');
 }
 
-// ========== drawToasts（提示）==========
+/**
+ * 结算界面的「宝石奖励」9 格面板。
+ * 数据来自 game.gemReward.slots（9 项，每项 {kind,count} 或 null）—— 由 game_core.grantRewardGems 写入。
+ * 与背包页共用 gems.drawGemIcon，保证"奖励里长什么样、嵌进塔就长什么样"。
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {object} game
+ * @param {number} panelX, panelY, panelW
+ */
 
-function drawToasts(game) {
-  const ctx = game.ctx;
-  const W = game.W;
-  const H = game.H;
 
-  const toasts = TOAST.getToasts(game);
-  if (toasts.length === 0) return;
+/**
+ * 结算界面的「宝石奖励」9 格面板。
+ * 数据来自 game.gemReward.slots（9 项，每项 {kind,count} 或 null）—— 由 game_core.grantRewardGems 写入。
+ * 与背包页共用 gems.drawGemIcon，保证"奖励里长什么样、嵌进塔就长什么样"。
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {object} game
+ * @param {number} panelX, panelY, panelW
+ */
+function drawGemReward(ctx, game, panelX, panelY, panelW) {
+  const reward = game.gemReward;
+  const cx = game.W / 2;
+  const labelY = panelY + 166;
 
-  const toastH = 28;
-  const toastGap = 8;
-  const startX = W / 2;
-  const startY = H - toasts.length * toastH - (toasts.length - 1) * toastGap - 40;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 13px Arial';
+  if (reward.triggered && reward.total > 0) {
+    ctx.fillStyle = THEME.accent.gold;
+    ctx.fillText(`宝石奖励 · 共 ${reward.total} 颗（均为 LV1 基础宝石）`, cx, labelY);
+  } else if (reward.triggered) {
+    ctx.fillStyle = THEME.text.off;
+    ctx.fillText('宝石奖励 · 本次未获得', cx, labelY);
+  } else {
+    ctx.fillStyle = THEME.text.off;
+    ctx.fillText('宝石奖励', cx, labelY);
+  }
 
-  for (let i = 0; i < toasts.length; i++) {
-    const toast = toasts[toasts.length - 1 - i];
-    const ty = startY + i * (toastH + toastGap);
+  // 3×3 格子（9 格固定）
+  const cols = 3, rows = 3;
+  const slot = 30, gap = 8;
+  const gridW = cols * slot + (cols - 1) * gap;
+  const x0 = cx - gridW / 2;
+  const y0 = labelY + 14;
+
+  for (let i = 0; i < cols * rows; i++) {
+    const c = i % cols, r = Math.floor(i / cols);
+    const x = x0 + c * (slot + gap);
+    const y = y0 + r * (slot + gap);
+    const cell = reward.slots && reward.slots[i];
 
     ctx.save();
-    ctx.globalAlpha = Math.min(1, toast.life / 0.5);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-    const tw = ctx.measureText(toast.text).width + 20;
-    ctx.beginPath();
-    ctx.roundRect(startX - tw / 2, ty, tw, toastH, toastH / 2);
+    // 格底
+    ctx.fillStyle = cell ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.028)';
+    if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, slot, slot, 7);
+    else ctx.rect(x, y, slot, slot);
     ctx.fill();
-    ctx.strokeStyle = toast.color || THEME.text.primary;
-    ctx.lineWidth = 1;
-    ctx.stroke();
 
-    ctx.fillStyle = toast.color || THEME.text.primary;
-    ctx.font = 'bold 12px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(toast.text, startX, ty + toastH / 2);
+    // 边框：有宝石=该宝石色描边；空=虚线灰
+    // 结算奖励格永远是 Lv.1 基础宝石（等级靠合成提升）
+    ctx.strokeStyle = cell ? gems.shadeColor(gems.gemColor(cell.kind, 1), -0.1, 0.6) : 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 1;
+    if (typeof ctx.setLineDash === 'function' && !cell) ctx.setLineDash([3, 3]);
+    if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, slot, slot, 7);
+    else ctx.rect(x, y, slot, slot);
+    ctx.stroke();
+    if (typeof ctx.setLineDash === 'function') ctx.setLineDash([]);
+
+    // 宝石本体（每格恰好 1 颗 LV1 基础宝石）+ "Lv1" 标记
+    if (cell && cell.count > 0) {
+      gems.drawGemIcon(ctx, x + slot / 2, y + slot / 2 - 3, 10, cell.kind, { lv: 1 });
+      ctx.font = 'bold 9px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = 'rgba(255,255,255,0.72)';
+      ctx.fillText('Lv1', x + slot / 2, y + slot - 4);
+    }
     ctx.restore();
   }
 }
 
-// ========== 宝石奖励绘制 ==========
+/**
+ * 战斗场景绘制：路径 / 选中范围 / 槽位 / 塔 / 怪物 / 血条 / 弹道 / 特效 / 拖拽预览 / UI。
+ * 从原 render() 抽成独立函数——因为 render() 现在要按"场景"分派（战斗 / 图签 / 天赋）。
+ */
 
-function drawGemReward(ctx, game, panelX, panelY, panelW) {
-  const reward = game.gemReward;
-  if (!reward) return;
 
-  const cx = (game.W) / 2;
-  const top = panelY + 250;
-  const gemW = 40;
-  const gemH = 40;
-  const gems = reward.gems || [];
+/**
+ * 轻提示（操作反馈）：多条同屏、各自独立计时、互相顶位。
+ * 数据由 theme.pushToast 写入 game.toasts = [{ text, color, t0, duration, y }]。
+ *
+ * 动效：
+ *   ① 默认出现在屏幕高度 45% 处，先原地淡入（淡入期间不位移），
+ *      同时带一个「由大到小」的收缩动画（spawnScale → 1.0）；
+ *   ② 淡入完成后开始向上漂浮；
+ *   ③ 后续提示到来时，把前面的整体顶上去（y 逐帧缓动，不瞬移），形成动态层次；
+ *   ④ 每条活满各自的 duration 后淡出并回收。
+ * 视觉：文字上下各一条「中间实、两端渐隐」的分割线；
+ *      背景为横向渐变（中间不透明度高、两侧渐隐为透明），不用旧的圆角药丸 + 描边。
+ */
+function drawToasts(game) {
+  const list = game.toasts;
+  if (!list || !list.length) return;
+
+  const ctx = game.ctx;
+  const W = game.W;
+  const H = game.H;
+  const now = Date.now();
+
+  // 帧间隔：draw 没有 dt，用上一帧时间戳自己算（顶位缓动要用）
+  const dt = Math.min(0.05, Math.max(0.001, (now - (game._toastFrameTs || now)) / 1000));
+  game._toastFrameTs = now;
+
+  const baseY = H * TOAST.baseYRatio;
+  const step = TOAST.lineHeight + TOAST.gap;
+
+  // 回收：活满各自 duration 的移除
+  for (let i = list.length - 1; i >= 0; i--) {
+    if ((now - list[i].t0) / 1000 >= list[i].duration) list.splice(i, 1);
+  }
+  if (!list.length) return;
 
   ctx.save();
-
-  // 标题
-  ctx.fillStyle = THEME.text.primary;
-  ctx.font = 'bold 14px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('宝石奖励', cx, top - 10);
+  ctx.font = `bold ${TOAST.fontSize}px Arial`;
 
-  // 宝石格子
-  const cellSize = 48;
-  const totalW = gems.length * cellSize;
-  const startX = cx - totalW / 2;
+  const maxTextW = W - 48;
 
-  for (let i = 0; i < gems.length; i++) {
-    const gem = gems[i];
-    const gx = startX + i * cellSize;
-    const gy = top + 5;
+  // 由旧到新绘制：最新的压在其它之上
+  for (let i = 0; i < list.length; i++) {
+    const t = list[i];
+    const age = (now - t.t0) / 1000;
 
-    // 格子背景
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-    ctx.beginPath();
-    ctx.roundRect(gx, gy, cellSize, cellSize, 6);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    // 透明度：开头淡入、结尾淡出
+    const aIn = Math.min(1, age / TOAST.fadeIn);
+    const aOut = Math.min(1, Math.max(0, (t.duration - age) / TOAST.fadeOut));
+    const alpha = Math.max(0, Math.min(aIn, aOut));
+    if (alpha <= 0.001) continue;
 
-    // 宝石图标
-    const def = gem.gemDef ? gem.gemDef() : null;
-    const color = def ? def.color : '#aaa';
-    const size = 12;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(gx + cellSize / 2, gy + cellSize / 2, size, 0, Math.PI * 2);
-    ctx.fill();
+    // 淡入完成后开始向上漂浮（越老漂得越高）
+    const riseT = Math.min(1, Math.max(0, (age - TOAST.fadeIn) / Math.max(0.001, t.duration - TOAST.fadeIn)));
+    const rise = TOAST.rise * easeOutCubic(riseT);
 
-    // 数量
-    if (gem.count > 1) {
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 10px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`×${gem.count}`, gx + cellSize / 2, gy + cellSize - 4);
-    }
+    // 被后面的（更新的）提示顶上去：越靠前，目标位越高
+    const stackOffset = (list.length - 1 - i) * step;
+    const targetY = baseY - rise - stackOffset;
+
+    if (t.y === null || t.y === undefined) t.y = targetY;
+    else t.y += (targetY - t.y) * Math.min(1, dt * 14);
+
+    // 淡入附带「由大到小」收缩：起手放大，随淡入完成回到原尺寸
+    const spawnT = Math.min(1, age / TOAST.fadeIn);
+    const scale = 1 + (TOAST.spawnScale - 1) * (1 - easeOutCubic(spawnT));
+
+    const text = ellipsize(ctx, t.text, maxTextW);
+    const tw = ctx.measureText(text).width || 60;
+    const w = Math.min(W - 24, tw + TOAST.padX);
+
+    ctx.save();
+    ctx.translate(W / 2, t.y);
+    ctx.scale(scale, scale);
+    drawToastBand(ctx, 0, 0, w, t.color, alpha, text);
+    ctx.restore();
   }
 
   ctx.restore();
 }
 
-// 导出
+/** 画一条轻提示：横向渐隐背景 + 上下分割线 + 居中文字 */
+
+
+/** 画一条轻提示：横向渐隐背景 + 上下分割线 + 居中文字 */
+function drawToastBand(ctx, cx, cy, w, color, alpha, text) {
+  const x0 = cx - w / 2;
+  const x1 = cx + w / 2;
+  const halfH = TOAST.lineHeight / 2;
+
+  ctx.globalAlpha = alpha;
+
+  // 背景：中间不透明度高，两侧渐隐为透明
+  const bg = ctx.createLinearGradient(x0, 0, x1, 0);
+  bg.addColorStop(0, shade(TOAST.bgColor, 0, 0));
+  bg.addColorStop(0.22, shade(TOAST.bgColor, 0, TOAST.bgAlpha * 0.72));
+  bg.addColorStop(0.5, shade(TOAST.bgColor, 0, TOAST.bgAlpha));
+  bg.addColorStop(0.78, shade(TOAST.bgColor, 0, TOAST.bgAlpha * 0.72));
+  bg.addColorStop(1, shade(TOAST.bgColor, 0, 0));
+  ctx.fillStyle = bg;
+  ctx.fillRect(x0, cy - halfH, w, TOAST.lineHeight);
+
+  // 上下分割线（同款横向渐隐）
+  drawToastLine(ctx, cx, cy - TOAST.dividerOffset, w * 0.92, color);
+  drawToastLine(ctx, cx, cy + TOAST.dividerOffset, w * 0.92, color);
+
+  // 文字
+  ctx.fillStyle = color;
+  ctx.fillText(text, cx, cy);
+  ctx.globalAlpha = 1;
+}
+
+/** 轻提示的上下分割线：中间实、两端渐隐 */
+
+
+/** 轻提示的上下分割线：中间实、两端渐隐 */
+function drawToastLine(ctx, cx, y, w, color) {
+  const x0 = cx - w / 2;
+  const x1 = cx + w / 2;
+  const g = ctx.createLinearGradient(x0, 0, x1, 0);
+  g.addColorStop(0, shade(color, 0, 0));
+  g.addColorStop(0.18, shade(color, 0, 0.55));
+  g.addColorStop(0.5, shade(color, 0, 0.9));
+  g.addColorStop(0.82, shade(color, 0, 0.55));
+  g.addColorStop(1, shade(color, 0, 0));
+  ctx.fillStyle = g;
+  ctx.fillRect(x0, y - 0.5, w, 1);
+}
+
+// 组合一帧的完整绘制（按场景分派）
+
 module.exports = {
-  PANEL_UI,
-  gemBlockHeight,
-  drawTowerPanel,
-  drawPanelHeader,
-  drawPanelAttrRows,
-  drawPanelEffects,
-  drawPanelDescription,
-  drawPanelSkill,
-  drawPanelGems,
-  drawPanelEnhance,
-  drawPanelFooter,
-  drawTaperedDivider,
-  drawChevron,
-  drawScrollBar,
-  drawLifeBar,
-  getPlayerScoreProgress,
-  drawWaveTitle,
-  drawWaveTitleAnimated,
-  drawWaveCountdown,
-  drawReel,
-  drawTopBar,
+
+  // 弹道层：drawProjectiles = 弹道循环 + 特效层；
+  // drawProjectileShape / drawEffects 拆出来是为了能被探针单独调用（无 UI 噪声地断言几何）
   drawUI,
+  drawTopBar,
   drawGameOver,
   drawToasts,
-  drawGemReward,
-  // 辅助（来自 geometry）
-  clamp,
-  anchorPointOf,
+  drawTowerPanel,
+  // 面板布局真源 + 宝石区块高度公式（导出给探针用：卡不许溢出区块，
+  // 否则"宝石 → 强化"那条分隔线会压在最后一张卡上）
+  PANEL_UI,
+  gemBlockHeight,
+
 };

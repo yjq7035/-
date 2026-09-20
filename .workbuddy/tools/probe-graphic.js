@@ -179,7 +179,10 @@ log('\n===== ③ 战斗口径：叠加上限走 getter（不再硬编码 100）=
   const src = fs.readFileSync(path.join(ROOT, 'src', 'game_core.js'), 'utf8');
   ok('game_core 已不再硬编码叠加上限 100', src.indexOf('Math.min(100, tower._innateStack') < 0);
   ok('game_core 已不再记账 _dmgBuf', src.indexOf('_dmgBuf') < 0);
-  const rsrc = fs.readFileSync(path.join(ROOT, 'src', 'renderer.js'), 'utf8');
+  // ⚠️ renderer 已拆成「薄壳 renderer.js + renderer-core.js + renderer-ui.js」，
+  // 只扫 renderer.js（薄壳）会让本断言真空通过 —— 正文都搬进那两个子文件了。
+  const rsrc = ['renderer.js', 'renderer-core.js', 'renderer-ui.js']
+    .map((f) => fs.readFileSync(path.join(ROOT, 'src', f), 'utf8')).join('\n');
   ok('renderer 已不再消费 _dmgBuf', rsrc.indexOf('_dmgBuf') < 0);
 }
 

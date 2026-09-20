@@ -145,11 +145,15 @@ const TOWER_STATS = {
   //   ⚠️ 别只写 description 不写字段 —— 字段缺失时 brk 恒为 0，等于"描述承诺的能力
   //      从未生效、技能面板还显示 0"，2026-09 就是这么漏的。
   arrow:         { damage: 46, range: 240, attackSpeedMultiplier: 100, attackInterval: 1.2, critChance: 0, critMult: 2, penetration: 0, break: 3, isSupport: false, description: '箭形狙击塔，射程远、单发高。攻击命中敌人时会给敌人挂一个碎甲的debuff，破坏目标3点抗性。' },
-  // critChance = 原生「暴击几率 5%」= 固有技能「雷霆暴击」的 base（见 src/skills.js）。
-  //   闪电塔的卖点是"全塔最高暴击倍率（200%）"，所以它必须有起步暴击率 ——
-  //   旧版写"原生暴击几率为 0"，等于技能 Lv.1 空转，已作废。
+  // critChance = 原生「暴击几率 5%」。闪电塔的卖点是"全塔最高暴击倍率（200%）"，
+  //   所以它必须有起步暴击率 —— 旧版写"原生暴击几率为 0"，等于白送一个空转技能，已作废。
+  //   ⚠️ 它现在**不再**是技能效果（固有技能已换成「雷电链」），只是原生属性。
   //   闪电塔的核心机制：攻击主目标时，电流传导到附近的敌人（连锁）。
-  bolt:          { damage: 65, range: 180, attackSpeedMultiplier: 100, attackInterval: 1.5, critChance: 5, critMult: 2.0, penetration: 0, isSupport: false, description: '闪电塔：攻击主目标时，电流传导到附近敌人（连锁）。暴击倍率全塔最高（200%），原生暴击几率 5%。' },
+  // 原生连锁参数（= 固有技能「雷电链」三条效果的 base，见 src/skills.js）：
+  //   ⚠️ 必须写进 TOWER_STATS —— skills.audit() 的「base 与原生值对齐」一项要求
+  //     战斗侧有这个原生字段；只把数字写在技能表里 = 又是"面板承诺、原生表没这回事"。
+  //   · chainCount 传导目标总数（含主目标） / chainRange 传导半径(px) / chainRatio 传导伤害比例(%)
+  bolt:          { damage: 65, range: 180, attackSpeedMultiplier: 100, attackInterval: 1.5, critChance: 5, critMult: 2.0, penetration: 0, isSupport: false, chainCount: 2, chainRange: 75, chainRatio: 75, description: '闪电塔：攻击主目标时，电流传导到附近敌人（连锁）。暴击倍率全塔最高（200%），原生暴击几率 5%。' },
   // ---- 第三批扩展：固有技能「连续射击」平行塔 ----
   // 攻击间隔 0.25s（100% 攻速）；攻击力 35。
   // 固有技能「连续射击」的实现见 game_core.updateTowers 的 parallel 分支：

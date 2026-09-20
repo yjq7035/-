@@ -431,11 +431,10 @@ log('\n===== ⑧ Lv.1 不许空转：每条固有技能都必须有非零初始�
   ok('技能等级驱动战斗：碎甲 3 → 9，伤害进一步抬高',
     Math.abs(d2 - exp2) < 1e-6 && d2 > d0, `Lv.1 ${d0.toFixed(3)} → 满 3 级 ${d2.toFixed(3)}`);
 
-  // 同类坑的另外三座（2026-09-18 定稿：每条固有技能都必须有非零初始值）
+  // 同类坑的另外两座（2026-09-18 定稿：每条固有技能都必须有非零初始值）
   const starters = [
     ['semicircle', 'penetration', 3, (t) => towerMod.getAttackProfile(t).penetration],
     ['star', 'critChance', 5, (t) => towerMod.getAttackProfile(t).critChance],
-    ['bolt', 'critChance', 5, (t) => towerMod.getAttackProfile(t).critChance],
   ];
   const badStart = [];
   for (const [type, key, want, read] of starters) {
@@ -446,8 +445,60 @@ log('\n===== ⑧ Lv.1 不许空转：每条固有技能都必须有非零初始�
       badStart.push(`${type}.${key}: base=${eff && eff.base} 原生=${native} 战斗=${live}（期望 ${want}）`);
     }
   }
-  ok('半圆塔 3 点穿透 / 星形塔 5% 暴击 / 闪电塔 5% 暴击：Lv.1 即生效（技能=原生=战斗）',
-    badStart.length === 0, badStart.join(' ; ') || '3/3 通过');
+  ok('半圆塔 3 点穿透 / 星形塔 5% 暴击：Lv.1 即生效（技能=原生=战斗）',
+    badStart.length === 0, badStart.join(' ; ') || '2/2 通过');
+
+  // 闪电塔：固有技能已从「雷霆暴击」换成「雷电链」（3 条效果：传导数量/距离/伤害比例），
+  // 所以上面那套「技能 base = TOWER_STATS 原生值 = getAttackProfile」不再适用 ——
+  // 它的战斗读取口是 game_core.fireBoltChain → towerMod.getSpecialValue(type, Lv, key)。
+  // 这里按同一条链核对：① 每条效果 base 非零；② Lv.1 时战斗读到的就是 base（不空转）；
+  // ③ 原生值真的落在 config.TOWER_STATS.bolt（不是只写在技能表里）。
+  const boltLv1 = { type: 'bolt', enhanceLevel: 0, enhanceAttrs: {} };
+  const boltLv1n = towerMod.getEffectiveSkillLevel(boltLv1);
+  const boltBad = [];
+  for (const e of skills.getEffects('bolt')) {
+    const live = towerMod.getSpecialValue('bolt', boltLv1n, e.key);
+    const native = config.TOWER_STATS.bolt[e.key];
+    if (!(e.base > 0) || live !== e.base || native !== e.base) {
+      boltBad.push(`${e.key}: base=${e.base} 原生=${native} 战斗=${live}`);
+    }
+  }
+  ok('闪电塔「雷电链」3 条效果 Lv.1 即生效（base 非零 = 原生值 = 战斗读到值）',
+    boltBad.length === 0 && skills.getEffects('bolt').length === 3,
+    boltBad.join(' ; ') || `${skills.getEffects('bolt').length} 条效果`);
+
+  // 端到端：真的打一炮，副目标必须掉血。
+  // 历史事故（2026-09-19）：fireBoltChain 把【属性键】当效果行传给 getSpecialValue
+  // → chainCount / chainRange 都是 NaN → 扫链条件恒 false、副目标一个都打不到，
+  // 而技能槽 / 面板照样显示"传导数量 2 / 传导距离 75"。只有真打一炮才抓得住。
+  {
+    const enemyMod = require(path.join(ROOT, 'src', 'enemy'));
+    const PATH = [{ x: 0, y: 100 }, { x: 400, y: 100 }];
+    const gB = mkGame(390, 844);
+    const boltTower = towerMod.createTower('bolt', 100, 100);
+    boltTower.attackTimer = 0;
+    gB.towers.push(boltTower);
+    const main = enemyMod.spawnEnemy('normal', PATH, 1);
+    main.x = 160; main.y = 100; main.hp = 1e9; main.maxHp = 1e9;
+    const side = enemyMod.spawnEnemy('normal', PATH, 1);
+    side.x = 175; side.y = 105; side.hp = 1e9; side.maxHp = 1e9;   // 距主目标 ≈ 15px < 传导距离 75
+    const far = enemyMod.spawnEnemy('normal', PATH, 1);
+    far.x = 320; far.y = 100; far.hp = 1e9; far.maxHp = 1e9;       // 距主目标 160px > 75 → 不该被传导
+    gB.enemies.push(main, side, far);
+    gB.enemiesToSpawn = [];
+    gB.waveInProgress = true;
+    gB.currentWave = 1;
+    const beforeSide = side.hp;
+    const beforeFar = far.hp;
+    let beatErr = null;
+    try { for (let f = 0; f < 120; f++) gB.updateTowers(1 / 60); } catch (e) { beatErr = e; }
+    const drewSide = beforeSide - side.hp;
+    const drewFar = beforeFar - far.hp;
+    ok('战斗端到端：传导距离内的副目标真的吃到伤害、范围外的不吃',
+      !beatErr && drewSide > 0 && drewFar === 0,
+      beatErr ? `${beatErr.constructor.name}: ${beatErr.message}`
+        : `副目标 -${drewSide.toFixed(1)} / 范围外 -${drewFar.toFixed(1)}`);
+  }
 
   // 规则钉死（用户 2026-09-18：修改技能设定都要有初始值）——**不存在 base=0 的生效技能**
   const dormant = [];

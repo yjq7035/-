@@ -54,6 +54,9 @@ const ATTR = {
   SECTOR_ANGLE: 'sectorAngle',         // 扇塔：扇形半张角(°)
   STACK_MAX: 'stackMax',               // 长方塔：堆叠上限(层)
   INNATE_STACK_CAP: 'innateStackCap',  // 平行塔：固有技能「连续射击」的攻速叠加上限(%)
+  CHAIN_COUNT: 'chainCount',           // 闪电塔：连锁传导的目标总数（含主目标）
+  CHAIN_RANGE: 'chainRange',           // 闪电塔：连锁传导半径(px)
+  CHAIN_RATIO: 'chainRatio',           // 闪电塔：副目标伤害 = 主目标 × 该比例(%)
 };
 
 // ---------- 来源分类（决定颜色语义与明细前缀）----------
@@ -103,6 +106,9 @@ const BUFF_LABELS = {
   sectorAngle:           { name: '扇面张角', unit: '°' },
   stackMax:              { name: '堆叠上限', unit: '层' },
   innateStackCap:        { name: '叠加上限', unit: '%' },
+  chainCount:            { name: '传导数量', unit: '' },
+  chainRange:            { name: '传导距离', unit: '' },
+  chainRatio:            { name: '传导伤害比例', unit: '%' },
 };
 
 // 技能属性 key → ATTR key（两者同名；这里显式列出，新增技能效果别漏登记）
@@ -126,6 +132,9 @@ const ENHANCE_ATTR_MAP = {
   sectorAngle: ATTR.SECTOR_ANGLE,
   stackMax: ATTR.STACK_MAX,
   innateStackCap: ATTR.INNATE_STACK_CAP,
+  chainCount: ATTR.CHAIN_COUNT,
+  chainRange: ATTR.CHAIN_RANGE,
+  chainRatio: ATTR.CHAIN_RATIO,
 };
 
 function buffMeta(key) {
@@ -481,6 +490,11 @@ function collectTowerStats(game, tower, stats, towerType) {
     sectorAngle: st.sectorHalfAngle || 0,
     stackMax: st.stackMax || 0,
     innateStackCap: st.innateStackCap || 0,
+    // 闪电塔连锁（固有技能「雷电链」的原生值，见 config.TOWER_STATS.bolt）。
+    // 其余塔型无此字段 → 0，pushSpecialRow 会因"基础值 0 且无加值"整行跳过，不会多出空行。
+    chainCount: st.chainCount || 0,
+    chainRange: st.chainRange || 0,
+    chainRatio: st.chainRatio || 0,
   };
 
   // ================= 3. 最终值 =================
@@ -524,6 +538,10 @@ function collectTowerStats(game, tower, stats, towerType) {
   const finalSectorAngle = Math.max(0, base.sectorAngle + pointsSum(sources, ATTR.SECTOR_ANGLE));
   const finalStackMax = Math.max(0, base.stackMax + pointsSum(sources, ATTR.STACK_MAX));
   const finalStackCap = Math.max(0, base.innateStackCap + pointsSum(sources, ATTR.INNATE_STACK_CAP));
+  // 闪电塔连锁三项（「雷电链」的三条效果）：同样是点值相加
+  const finalChainCount = Math.max(0, base.chainCount + pointsSum(sources, ATTR.CHAIN_COUNT));
+  const finalChainRange = Math.max(0, base.chainRange + pointsSum(sources, ATTR.CHAIN_RANGE));
+  const finalChainRatio = Math.max(0, base.chainRatio + pointsSum(sources, ATTR.CHAIN_RATIO));
 
   const final = {
     damage: finalDamage,
@@ -553,6 +571,9 @@ function collectTowerStats(game, tower, stats, towerType) {
     sectorAngle: finalSectorAngle,
     stackMax: finalStackMax,
     innateStackCap: finalStackCap,
+    chainCount: finalChainCount,
+    chainRange: finalChainRange,
+    chainRatio: finalChainRatio,
   };
 
   // ================= 4. 附加值（绿字/红字的那一半）=================
@@ -576,6 +597,9 @@ function collectTowerStats(game, tower, stats, towerType) {
     sectorAngle: final.sectorAngle - base.sectorAngle,
     stackMax: final.stackMax - base.stackMax,
     innateStackCap: final.innateStackCap - base.innateStackCap,
+    chainCount: final.chainCount - base.chainCount,
+    chainRange: final.chainRange - base.chainRange,
+    chainRatio: final.chainRatio - base.chainRatio,
   };
 
   // ================= 5. 面板行（渲染就绪，渲染层不再算数）=================
@@ -790,6 +814,10 @@ function buildRows(ctx) {
   pushSpecialRow(rows, sources, { key: ATTR.SECTOR_ANGLE, label: '扇面张角', unit: '°', base: base.sectorAngle, bonus: bonus.sectorAngle });
   pushSpecialRow(rows, sources, { key: ATTR.STACK_MAX, label: '堆叠上限', unit: '层', base: base.stackMax, bonus: bonus.stackMax });
   pushSpecialRow(rows, sources, { key: ATTR.INNATE_STACK_CAP, label: '叠加上限', unit: '%', base: base.innateStackCap, bonus: bonus.innateStackCap });
+  // 闪电塔「雷电链」三条效果各一行 —— 与技能槽逐条对应，强化后能在这里看到数字变化
+  pushSpecialRow(rows, sources, { key: ATTR.CHAIN_COUNT, label: '传导数量', unit: '', base: base.chainCount, bonus: bonus.chainCount });
+  pushSpecialRow(rows, sources, { key: ATTR.CHAIN_RANGE, label: '传导距离', unit: '', base: base.chainRange, bonus: bonus.chainRange });
+  pushSpecialRow(rows, sources, { key: ATTR.CHAIN_RATIO, label: '传导伤害比例', unit: '%', base: base.chainRatio, bonus: bonus.chainRatio });
 
   return rows;
 }
