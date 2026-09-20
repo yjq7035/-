@@ -8,11 +8,16 @@
 // 的数值行数随效果条数变化。三角塔的固有技能「致命一击」就是这样一张卡：
 //
 //   ┌──────────────────────────────────────────┐
-//   │ ┌────┐  致命一击                  Lv.2    │
+//   │ ┌────┐  致命一击        已学 1/5   Lv.2    │
 //   │ │icon│  暴击几率 15%（+5%/级）             │
 //   │ └────┘  暴击伤害 20%（+10%/级）            │
 //   │         命中时…（说明换行）                 │
 //   └──────────────────────────────────────────┘
+//
+// 第一行右侧两段是两个不同口径，别混：
+//   ·「已学 n/5」= 局内花金币强化了几次 —— 真源 **tower.enhanceLevel**（0..5，预览态不显示）
+//   ·「Lv.N」   = 有效技能等级 = Lv.1 + 已学 + 宝石等级 + 十字塔共享等级（skills.levelOf）
+//   两者都由 skills 现算，本文件不存任何等级副本。
 //
 // ⚠️ 两条铁律（踩过坑）：
 //   ① 面板高度与绘制**必须共用本模块**：codex.getCodexLayout 与 renderer.drawTowerPanel
@@ -75,7 +80,8 @@ function getSkills(type) {
  * @param {string} type 塔类型
  * @param {object|null} tower 实体塔（预览时传 null）
  * @param {number} contentW 槽内可用内容宽
- * @returns {Array<{id,name,innate,icon,level,levelText,effects,descLines}>}
+ * @returns {Array<{id,name,innate,icon,level,levelText,learnLv,effects,descLines}>}
+ *          learnLv = 局内已强化次数（0..5）；预览态为 null（没有局内强化这回事）
  */
 function buildSkillSlots(ctx, type, tower, contentW) {
   const list = getSkills(type);
@@ -83,8 +89,14 @@ function buildSkillSlots(ctx, type, tower, contentW) {
   const maxW = descMaxWidth(contentW);
   for (const sk of list) {
     // 等级：有实体塔 → 强化 + 宝石；预览 → 只看宝石（强化是局内的，不跨局）
-    const lv = tower ? skills.levelOf(tower, sk.id) : skills.previewLevel(type);
-    const learnLv = tower ? (tower.skillLevels[sk.id] || 0) : 0;
+    const lv = tower ? skills.levelOf(tower) : skills.previewLevel(type);
+    // 「已学」= 局内花金币强化出来的次数（唯一真源 = tower.enhanceLevel，0..5）。
+    // ⚠️ 这里曾经错写成 `tower.skillLevels[sk.id]` —— 那个字段全项目**只有读、没有写**
+    //    （真实存在的是 gems.skillLevels(type)，是宝石等级，不是塔上的字段）。
+    //    后果：只要面板带着"选中的实体塔"渲染，第一座塔就会在这里抛 TypeError，
+    //    被主循环 try/catch 吞掉 → 玩家看到的是"点了塔，面板压根不出现"。
+    //    预览（商店 / 图签，无实体塔）传 null：局内强化不跨局，槽里只显示 Lv。
+    const learnLv = tower ? skills.clampEnhanceTimes(tower.enhanceLevel || 0) : null;
     out.push({
       id: sk.id,
       name: sk.name,
@@ -182,24 +194,41 @@ function drawOneSlot(ctx, x, y, w, h, slot, tint) {
   const textW = x + w - SKILL_SLOT.padX - textX;
   let ty = y + SKILL_SLOT.padY;
 
-  // 行 1：技能名（左） + Lv.N（右）
+  // 行 1：技能名（左） + 「已学 n/5」（暗，可选） + Lv.N（右，加粗）
+  // ⚠️ 右侧两段的宽度必须**先量再决定画不画**：窄屏上宁可不画"已学"，
+  //    也绝不许文字捅出槽外（历史事故：面板文字越界 116px）。
+  //    技能名截断用的就是同一个 rightW —— 算宽与画字不许各写一份。
   ctx.textBaseline = 'middle';
+  ctx.textAlign = 'right';
+  ctx.font = 'bold 12px Arial';
+  const lvStr = slot.levelText;
+  const lvW = ctx.measureText(lvStr).width;
+  const nameGap = 8;          // 技能名与右侧两段之间的最小呼吸
+  let learnStr = '';          // 空串 = 不画（放不下，或本来就是预览态）
+  let learnW = 0;
+  if (slot.learnLv != null) {
+    ctx.font = '11px Arial';
+    const s = `已学 ${slot.learnLv}/${skills.MAX_ENHANCE_TIMES}`;
+    const w = ctx.measureText(s).width;
+    // 名字至少留 44px 才给"已学"腾位 —— 名字比次数重要
+    if (textW - lvW - nameGap - w - 44 >= 0) { learnStr = s; learnW = w + nameGap; }
+  }
+
   ctx.textAlign = 'left';
   ctx.font = SKILL_SLOT.nameFont;
   ctx.fillStyle = THEME.text.primary;
-  ctx.fillText(theme.ellipsize(ctx, slot.name, Math.max(40, textW - 44)), textX, ty + SKILL_SLOT.nameH / 2);
+  ctx.fillText(theme.ellipsize(ctx, slot.name, Math.max(28, textW - lvW - learnW - 6)), textX, ty + SKILL_SLOT.nameH / 2);
 
   ctx.textAlign = 'right';
-  ctx.font = '11px Arial';
-  const learnText = slot.learnLv != null ? `已学 ${slot.learnLv}/5` : '';
-  if (learnText) {
+  if (learnStr) {
+    ctx.font = '11px Arial';
     ctx.fillStyle = THEME.text.dim;
-    ctx.fillText(learnText, textX + textW - 46, ty + SKILL_SLOT.nameH / 2);
-  } else {
-    ctx.font = 'bold 12px Arial';
-    ctx.fillStyle = slot.level > skills.LEVEL_BASE ? THEME.accent.green : THEME.text.dim;
-    ctx.fillText(slot.levelText, textX + textW, ty + SKILL_SLOT.nameH / 2);
+    ctx.fillText(learnStr, textX + textW - lvW - nameGap, ty + SKILL_SLOT.nameH / 2);
   }
+  // Lv 永远画：它含宝石 / 共享光环的等级，是这一槽最要紧的一句话
+  ctx.font = 'bold 12px Arial';
+  ctx.fillStyle = slot.level > skills.LEVEL_BASE ? THEME.accent.green : THEME.text.dim;
+  ctx.fillText(lvStr, textX + textW, ty + SKILL_SLOT.nameH / 2);
   ty += SKILL_SLOT.nameH;
 
   // 行 2+：每条效果一行 —— 属性名（暗） + 当前值（绿） + 每级增量（暗，放不下就省略）

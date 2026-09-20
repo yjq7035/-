@@ -725,27 +725,22 @@ const AD = {
 // ============================================================================
 // 背景音乐配置
 // ============================================================================
-// 曲目：audio/rainfall.mp3 —— 原创氛围曲《Rainfall (Original)》
-//   · 80.0 秒无缝循环（24 小节 @72BPM），mono / 32kHz / 80kbps，约 801KB。
-//   · 风格：梅雨午后 —— 持续细雨铺底 + 稀疏雨滴点缀 + 中段钢琴旋律。
-//   · 生成脚本：.workbuddy/tools/make-rainfall.py（可复现，改参数重跑即可）；
+// 曲目：audio/snowfall.mp3 —— 原创氛围曲《Snowfall (Original)》
+//   · 26.67 秒无缝循环（8 小节 @72BPM），mono / 32kHz / 80kbps，约 261KB。
+//   · 生成脚本：.workbuddy/tools/make-snowfall.py（可复现，改参数重跑即可）；
 //     无缝性由 .workbuddy/tools/audit-bgm.py 审计（审的是解码后的 mp3）。
 //
-// 上一版《Snowfall (Original)》31.3s / 92BPM 已存档于
-// .workbuddy/tmp/_snowfall_v3_backup/，作为 A/B 试听页的对照版。
-//
-// ⚠️ 想换成自己手上那首《rainfall》？只要把文件放到 audio/ 下、改这里的 src 即可，
+// ⚠️ 想换成自己手上那首《snowfall》？只要把文件放到 audio/ 下、改这里的 src 即可，
 //    别的代码一行都不用动。但请注意：流传最广的那版（Øneheart × reidenshi）是
 //    有版权的商业录音，放进了自己的包体再上传发布 = 侵权，请务必先拿到授权。
 const MUSIC = {
   enabled: true,                 // 全局总开关（false 时音频模块完全不创建实例；保持 true 才能让游戏内开关能重新打开）
   defaultEnabled: false,         // 用户默认偏好：首次进入、且无存档时的初始开关状态。false = 默认静音/影音关闭
-  src: 'audio/rainfall.mp3',     // 代码包内相对路径（微信支持直接播包内本地文件）
+  src: 'audio/snowfall.mp3',     // 代码包内相对路径（微信支持直接播包内本地文件）
   // BGM 音量 0~1。塔防要留耳朵给音效，别开满。
-  // 音频文件本身母带定在 RMS -18dBFS（比常见商用曲目低 ~6dB，比上版 snowfall 再低 1.5dB，
-  // 雨声铺底需要更多"留白"），所以这里给 0.60 —— 实际听感大约 -22dBFS,
-  // 属于"在背景里、但听得清"，久听不累。
-  volume: 0.60,
+  // 音频文件本身母带定在 RMS -16dBFS（比常见商用曲目低 ~4dB，久听不累），
+  // 所以这里给 0.55 —— 实际听感大约 -21dBFS，属于"在背景里、但听得清"。
+  volume: 0.55,
   loop: true,                    // 循环播放
   autoplay: true,                // 启动即播；失败时由 audio.js 在首次触摸时兜底重试
   // iOS 静音键：false = 静音键打开时照样出声（游戏常见做法，保证"一进来就有声音"）；

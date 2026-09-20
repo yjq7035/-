@@ -43,6 +43,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # 读音频
 # ============================================================================
 def find_ffmpeg():
+    """优先 imageio-ffmpeg（pip 装好的，无需系统安装）→ PATH → WinGet 链接"""
+    try:
+        import imageio_ffmpeg  # noqa
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        if exe and os.path.exists(exe):
+            return exe
+    except Exception:
+        pass
     for exe in ('ffmpeg', 'ffmpeg.exe'):
         try:
             subprocess.run([exe, '-version'], stdout=subprocess.DEVNULL,

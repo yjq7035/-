@@ -1,6 +1,6 @@
 ===== A. 音频状态机（假 wx）=====
   ok   init() 报告可用  → available=true
-  ok   配置正确落到实例上  → src=audio/snowfall.mp3 loop=true volume=0.55
+  ok   配置正确落到实例上  → src=audio/rainfall.mp3 loop=true volume=0.6
   ok   设置了音频会话选项（静音键/混音）  → {"obeyMuteSwitch":false,"mixWithOther":false}
   ok   启动即自动播放（play 调了 1 次）  → play=1
   ok   isPlaying() 反映真实播放态  → paused=false

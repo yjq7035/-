@@ -1,0 +1,118 @@
+===== 0. 十字塔单独（蓝宝石 Lv.1，图签 Lv.5）=====
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":1}],"damagePercent":0,"attackSpeedMultiplier":10,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  getAuraOutput(cross) = {"attackSpeedMultiplier":2.5}
+  目标塔 ← {"buffs":{"attackSpeedMultiplier":2.5},"n":1,"srcs":"十字塔★0{\"attackSpeedMultiplier\":2.5}","speed":102.5,"pen":0}
+
+===== 1. 十字塔(蓝宝石Lv5 share) × 梯塔（同一属性键 attackSpeedMultiplier）=====
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★0(发出{"attackSpeedMultiplier":12.5}) + 梯塔★0 → 攻速光环=37.5  来源=十字塔★0{"attackSpeedMultiplier":12.5} + 梯塔★0{"attackSpeedMultiplier":25}
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★0(发出{"attackSpeedMultiplier":12.5}) + 梯塔★1 → 攻速光环=62.5  来源=十字塔★0{"attackSpeedMultiplier":12.5} + 梯塔★1{"attackSpeedMultiplier":50}
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★0(发出{"attackSpeedMultiplier":12.5}) + 梯塔★2 → 攻速光环=87.5  来源=十字塔★0{"attackSpeedMultiplier":12.5} + 梯塔★2{"attackSpeedMultiplier":75}
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★0(发出{"attackSpeedMultiplier":12.5}) + 梯塔★3 → 攻速光环=112.5  来源=十字塔★0{"attackSpeedMultiplier":12.5} + 梯塔★3{"attackSpeedMultiplier":100}
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★1(发出{"attackSpeedMultiplier":25}) + 梯塔★0 → 攻速光环=50  来源=十字塔★1{"attackSpeedMultiplier":25} + 梯塔★0{"attackSpeedMultiplier":25}
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★1(发出{"attackSpeedMultiplier":25}) + 梯塔★1 → 攻速光环=75  来源=十字塔★1{"attackSpeedMultiplier":25} + 梯塔★1{"attackSpeedMultiplier":50}
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★1(发出{"attackSpeedMultiplier":25}) + 梯塔★2 → 攻速光环=100  来源=十字塔★1{"attackSpeedMultiplier":25} + 梯塔★2{"attackSpeedMultiplier":75}
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★1(发出{"attackSpeedMultiplier":25}) + 梯塔★3 → 攻速光环=125  来源=十字塔★1{"attackSpeedMultiplier":25} + 梯塔★3{"attackSpeedMultiplier":100}
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★2(发出{"attackSpeedMultiplier":37.5}) + 梯塔★0 → 攻速光环=62.5  来源=十字塔★2{"attackSpeedMultiplier":37.5} + 梯塔★0{"attackSpeedMultiplier":25}
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★2(发出{"attackSpeedMultiplier":37.5}) + 梯塔★1 → 攻速光环=87.5  来源=十字塔★2{"attackSpeedMultiplier":37.5} + 梯塔★1{"attackSpeedMultiplier":50}
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★2(发出{"attackSpeedMultiplier":37.5}) + 梯塔★2 → 攻速光环=112.5  来源=十字塔★2{"attackSpeedMultiplier":37.5} + 梯塔★2{"attackSpeedMultiplier":75}
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★2(发出{"attackSpeedMultiplier":37.5}) + 梯塔★3 → 攻速光环=137.5  来源=十字塔★2{"attackSpeedMultiplier":37.5} + 梯塔★3{"attackSpeedMultiplier":100}
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★3(发出{"attackSpeedMultiplier":50}) + 梯塔★0 → 攻速光环=75  来源=十字塔★3{"attackSpeedMultiplier":50} + 梯塔★0{"attackSpeedMultiplier":25}
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★3(发出{"attackSpeedMultiplier":50}) + 梯塔★1 → 攻速光环=100  来源=十字塔★3{"attackSpeedMultiplier":50} + 梯塔★1{"attackSpeedMultiplier":50}
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★3(发出{"attackSpeedMultiplier":50}) + 梯塔★2 → 攻速光环=125  来源=十字塔★3{"attackSpeedMultiplier":50} + 梯塔★2{"attackSpeedMultiplier":75}
+    cross 槽位 = ["sapphire",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["sapphire"],"entries":[{"kind":"sapphire","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":0,"penetration":0,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★3(发出{"attackSpeedMultiplier":50}) + 梯塔★3 → 攻速光环=150  来源=十字塔★3{"attackSpeedMultiplier":50} + 梯塔★3{"attackSpeedMultiplier":100}
+
+===== 2. 十字塔(黄玉Lv5 share) × 菱形塔（同一属性键 penetration）=====
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★0(发出{"penetration":7.5}) + 菱形★0 → 穿透光环=12.5  来源=十字塔★0{"penetration":7.5} + 菱形塔★0{"penetration":5}
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★0(发出{"penetration":7.5}) + 菱形★1 → 穿透光环=17.5  来源=十字塔★0{"penetration":7.5} + 菱形塔★1{"penetration":10}
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★0(发出{"penetration":7.5}) + 菱形★2 → 穿透光环=22.5  来源=十字塔★0{"penetration":7.5} + 菱形塔★2{"penetration":15}
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★0(发出{"penetration":7.5}) + 菱形★3 → 穿透光环=27.5  来源=十字塔★0{"penetration":7.5} + 菱形塔★3{"penetration":20}
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★1(发出{"penetration":15}) + 菱形★0 → 穿透光环=20  来源=十字塔★1{"penetration":15} + 菱形塔★0{"penetration":5}
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★1(发出{"penetration":15}) + 菱形★1 → 穿透光环=25  来源=十字塔★1{"penetration":15} + 菱形塔★1{"penetration":10}
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★1(发出{"penetration":15}) + 菱形★2 → 穿透光环=30  来源=十字塔★1{"penetration":15} + 菱形塔★2{"penetration":15}
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★1(发出{"penetration":15}) + 菱形★3 → 穿透光环=35  来源=十字塔★1{"penetration":15} + 菱形塔★3{"penetration":20}
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★2(发出{"penetration":22.5}) + 菱形★0 → 穿透光环=27.5  来源=十字塔★2{"penetration":22.5} + 菱形塔★0{"penetration":5}
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★2(发出{"penetration":22.5}) + 菱形★1 → 穿透光环=32.5  来源=十字塔★2{"penetration":22.5} + 菱形塔★1{"penetration":10}
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★2(发出{"penetration":22.5}) + 菱形★2 → 穿透光环=37.5  来源=十字塔★2{"penetration":22.5} + 菱形塔★2{"penetration":15}
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★2(发出{"penetration":22.5}) + 菱形★3 → 穿透光环=42.5  来源=十字塔★2{"penetration":22.5} + 菱形塔★3{"penetration":20}
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★3(发出{"penetration":30}) + 菱形★0 → 穿透光环=35  来源=十字塔★3{"penetration":30} + 菱形塔★0{"penetration":5}
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★3(发出{"penetration":30}) + 菱形★1 → 穿透光环=40  来源=十字塔★3{"penetration":30} + 菱形塔★1{"penetration":10}
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★3(发出{"penetration":30}) + 菱形★2 → 穿透光环=45  来源=十字塔★3{"penetration":30} + 菱形塔★2{"penetration":15}
+    cross 槽位 = ["topaz",null,null,null,null]
+    gems.bonusForType('cross') = {"count":1,"kinds":["topaz"],"entries":[{"kind":"topaz","lv":5}],"damagePercent":0,"attackSpeedMultiplier":0,"critChance":0,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":0,"break":0}
+  十字★3(发出{"penetration":30}) + 菱形★3 → 穿透光环=50  来源=十字塔★3{"penetration":30} + 菱形塔★3{"penetration":20}
+
+===== 3. 十字塔 5 家族全嵌 ★3 × 梯塔★0 × 菱形塔★0 =====
+    cross 槽位 = ["sapphire","topaz","emerald","ruby_crit","topaz_break"]
+    gems.bonusForType('cross') = {"count":5,"kinds":["sapphire","topaz","emerald","ruby_crit","topaz_break"],"entries":[{"kind":"sapphire","lv":5},{"kind":"topaz","lv":5},{"kind":"emerald","lv":5},{"kind":"ruby_crit","lv":5},{"kind":"topaz_break","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":18,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":50,"break":15}
+  cross 发出 = {"attackSpeedMultiplier":50,"critChance":18,"penetration":30,"break":15,"critDamage":50}
+  目标塔 ← {"buffs":{"attackSpeedMultiplier":75,"critChance":18,"penetration":35,"break":15,"critDamage":50},"n":3,"srcs":"十字塔★3{\"attackSpeedMultiplier\":50,\"critChance\":18,\"penetration\":30,\"break\":15,\"critDamage\":50} + 梯塔★0{\"attackSpeedMultiplier\":25} + 菱形塔★0{\"penetration\":5}","speed":175,"pen":35}
+  期望：攻速 = 梯塔100 + 共享(50*100%)=50 → 若只 100 说明共享被顶掉
+
+===== 4. 十字塔单独（5 家族全嵌 ★0）—— 没有其他辅助塔时共享是否生效 =====
+    cross 槽位 = ["sapphire","topaz","emerald","ruby_crit","topaz_break"]
+    gems.bonusForType('cross') = {"count":5,"kinds":["sapphire","topaz","emerald","ruby_crit","topaz_break"],"entries":[{"kind":"sapphire","lv":5},{"kind":"topaz","lv":5},{"kind":"emerald","lv":5},{"kind":"ruby_crit","lv":5},{"kind":"topaz_break","lv":5}],"damagePercent":0,"attackSpeedMultiplier":50,"critChance":18,"penetration":30,"range":0,"skillLevels":0,"skillEffectPercent":0,"critDamagePercent":50,"break":15}
+  cross 发出 = {"attackSpeedMultiplier":12.5,"critChance":4.5,"penetration":7.5,"break":3.75,"critDamage":12.5}
+  目标塔 ← {"buffs":{"attackSpeedMultiplier":12.5,"critChance":4.5,"penetration":7.5,"break":3.75,"critDamage":12.5},"n":1,"srcs":"十字塔★0{\"attackSpeedMultiplier\":12.5,\"critChance\":4.5,\"penetration\":7.5,\"break\":3.75,\"critDamage\":12.5}","speed":112.5,"pen":7.5}

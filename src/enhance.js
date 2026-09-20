@@ -89,7 +89,11 @@ function getEnhanceLayout(game) {
   return {
     panel: { x: panelX, y: panelY, w: panelW, h: panelH },
     titleCY: titleCY,
-    infoLines: [infoTop, infoTop + 18],
+    // ⚠️ 三行都要给出 y —— drawEnhancePicker 的 行0 / 行1 / 行2 直接取 infoLines[0/1/2]。
+    //    只给两条会让行2 拿到 undefined：fillText(text, x, undefined) 在真机上是无效调用，
+    //    于是技能说明 /「金币不足」/「已满级」全部画不出来 —— 玩家只看到按钮变灰，
+    //    却不知道原因（"按钮点了没反应"这类投诉的典型来源）。
+    infoLines: [infoTop, infoTop + 18, infoTop + 36],
     cards: cards,
     hintY: panelY + panelH - ENHANCE_UI.padBottom - ENHANCE_UI.hintH / 2,
     tower: tower,
@@ -165,8 +169,10 @@ function drawEnhancePicker(game) {
   const affordable = game.gold >= cost;
   const maxed = lv >= maxLv;
 
-  // 已学等级（局内强化次数）与附加等级（宝石）分开显示
-  const learned = tower.enhanceLevel || 0;
+  // 已学等级（局内强化次数）与附加等级（宝石/共享）分开显示 —— 两者口径不同，别相加着写。
+  // ⚠️ 真源是 tower.enhanceLevel（0..5）；用 clampEnhanceTimes 夹一下，
+  //    与技能槽（skillSlot）读的是同一个值，两处不会各说各话。
+  const learned = skills.clampEnhanceTimes(tower.enhanceLevel || 0);
   const bonusLv = skills.gemLevels(tower.type) + (skills.auraBuff(tower, 'skillLevels') || 0);
   const canAffordNext = affordable && lv < maxLv;
 
@@ -200,8 +206,10 @@ function drawEnhancePicker(game) {
   if (maxed) {
     ctx.fillText(`当前 Lv.${lv} · 已满`, L.panel.x + L.panel.w - ENHANCE_UI.padX, L.titleCY);
   } else {
-    // 用「已学 + 附加」的方式写标题
-    ctx.fillText(`Lv.${lv} → Lv.${skills.nextLevel(lv)}（已学${learned}/5 + 附加${bonusLv}）`, L.panel.x + L.panel.w - ENHANCE_UI.padX, L.titleCY);
+    // 标题只放"等级迁移"。等级明细（已学 / 附加）在下面的【等级明细行】里，
+    // ⛔ 别再往标题里塞括号明细：13px 下那串有 206.7px，加上左边"固有技能 · 塔名"的
+    //    129.8px = 336.5px，而浮层内宽只有 252~270px —— 实测每种屏宽都重叠 66~85px。
+    ctx.fillText(`Lv.${lv} → Lv.${skills.nextLevel(lv)}`, L.panel.x + L.panel.w - ENHANCE_UI.padX, L.titleCY);
   }
 
   // 分隔线（标题与正文之间，风格统一）
@@ -228,9 +236,8 @@ function drawEnhancePicker(game) {
   ctx.textAlign = 'left';
   ctx.font = '11px Arial';
   ctx.fillStyle = THEME.text.secondary;
-  const learnedColor = canAffordNext ? THEME.text.primary : THEME.text.dim;
   const bonusColor = bonusLv > 0 ? THEME.accent.gold : THEME.text.dim;
-  const learnedStr = `已学等级: ${learned}/5`;
+  const learnedStr = `已学等级: ${learned}/${skills.MAX_ENHANCE_TIMES}`;
   const bonusStr = bonusLv > 0 ? `附加等级: ${bonusLv}（${skills.gemLevels(tower.type) > 0 ? '猫眼石' : '其他'}）` : `附加等级: 0`;
   const combinedX = L.panel.x + ENHANCE_UI.padX;
   const learnedW = ctx.measureText(learnedStr).width;

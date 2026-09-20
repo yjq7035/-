@@ -1,0 +1,25 @@
+cross 发出 = {"attackSpeedMultiplier":50,"critChance":18,"penetration":30,"break":15,"critDamage":50}
+auraBuffs  = {"attackSpeedMultiplier":75,"critChance":18,"penetration":35,"break":15,"critDamage":50}
+auras      = [{"sourceId":1,"sourceName":"十字塔","sourceStage":3,"channel":"share","buffs":{"attackSpeedMultiplier":50,"critChance":18,"penetration":30,"break":15,"critDamage":50},"remaining":3,"maxExpiry":3},{"sourceId":3,"sourceName":"梯塔","sourceStage":0,"channel":"aura","buffs":{"attackSpeedMultiplier":25},"remaining":3,"maxExpiry":3},{"sourceId":4,"sourceName":"菱形塔","sourceStage":0,"channel":"aura","buffs":{"penetration":5},"remaining":3,"maxExpiry":3}]
+final      = {"damage":21.200000000000003,"attackSpeedMultiplier":175,"attackInterval":0.2857142857142857,"range":200,"auraPower":0,"auraPenetration":0,"shareRatio":0,"critChance":23,"critMult":2.7,"break":15,"penetration":35,"explosionDamage":0,"explosionRadius":0,"eliteMult":0,"projectileScale":0,"sectorAngle":0,"stackMax":0,"innateStackCap":0}
+生效效果:
+   十字塔 ★★★ | 攻速+50%
+   十字塔 ★★★ | 暴击率+18%
+   十字塔 ★★★ | 穿透+30
+   十字塔 ★★★ | 破解+15
+   十字塔 ★★★ | 暴击伤害+50%
+   梯塔 | 攻速+25%
+   菱形塔 | 穿透+5
+属性行:
+   damage: base=20 bonus=+1.20 parts=+6%
+   attackSpeedMultiplier: base=100% bonus=+75% parts=
+   attackInterval: base=每0.29秒 bonus= parts=
+   critChance: base=5% bonus=+18% parts=+18%
+   critMult: base=220% bonus=+50% parts=+50%
+   penetration: base=0 bonus=+35 parts=+30 / +5
+   range: base=200 bonus= parts=
+   break: base=0 bonus=+15 parts=+15
+战斗: 攻速=175 穿透=35
+攻击画像: {"critChance":23,"critMult":2.7,"penetration":0,"break":15}
+战斗伤害: 21.200000000000003
+对照（无任何光环）: {"speed":100,"pen":0,"prof":{"critChance":5,"critMult":2.2,"penetration":0,"break":0}}

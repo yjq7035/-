@@ -28,12 +28,19 @@
 - **每条固有技能必须 base≠0**（0 = Lv.1 完全空转）；base 取**真原生值**，原生表没有就补 `TOWER_STATS` 字段（别写 0 糊弄）。`ZERO_BASE_ALLOWED` 为空，`audit()` 第⑤项报红。字段名对不上走 `NATIVE_GETTERS` 显式映射。
 - ⚠️ 排查「技能显示 0」先看**塔的 description 有没有承诺过这能力**（箭形塔写明"破坏 3 点抗性"却漏 `break` 字段 = 白送空转技能）。⚠️ `audit()` 抓不出"原生值本身写错"。
 - 战斗侧别写死塔型（`applyDamage` 的 brk 已改成读 `getAttackProfile().break`）。依赖单向：skills → config/gems；**gems 不许反向 require skills**。
+- **技能槽（`src/skillSlot.js`）第一行是两段并列**：`已学 n/5`（暗色小字，真源 = **`tower.enhanceLevel`**，预览态不画）+ `Lv.N`（粗体，= 1 + 强化 + 宝石 + 十字塔共享 = `skills.levelOf`）。⛔ 别再写成二选一（历史 bug：`learnLv` 恒非 null → **Lv 永远画不出来**）。⛔ 塔实例上**没有** `skillLevels` 字段（同名的是 `gems.skillLevels(type)` 与光环键）；读它 = 选中实体塔必崩。
+- **技能等级是十字塔共享属性里唯一取整的一条**（`tower.getAuraOutput` 里 `Math.floor`）：因为它会被写成 `Lv.N`（`renderer.js` 的「固有技能 Lv.N/6」），小数会印出 "Lv.1.3"。其余共享属性（攻速/暴击/暴击伤害）保留小数。1 颗猫眼石 0★ 共享 30% → 0（不足 1 级不共享）。
+- 强化浮层信息区是**三行**，`getEnhanceLayout().infoLines` 必须给 3 个 y；标题行只放 `Lv.x → Lv.y`（括号里塞"已学/附加"会与左侧塔名重叠 66~85px，实测每种屏宽都撞）。
 
-## 光环系统（2026-09-19 二次重构：一属性一槽）
-- 存储 **`Map<targetId, Map<buffKey, entry>>`**。⛔ 别退回"每目标单槽"（一塔同时被菱形塔穿透+梯塔攻速罩住会整条互斥，放置顺序决定结果）。
-- 不同属性键可同时生效；同一属性键多源竞争**取最强**（阶段高者胜 → 同阶 |值| 大者胜 → 打平先到先得），不多源累加。
+## 光环系统（2026-09-20 三次修订：加了「通道」）
+- 存储 **`Map<targetId, Map<buffKey, Map<channel, entry>>>`**（三层；最后一层才是通道）。⛔ 别退回"每目标单槽"（一塔同时被菱形塔穿透+梯塔攻速罩住会整条互斥，放置顺序决定结果）。
+- **通道 `config.AURA_CHANNEL`**：`aura`（辅助塔固有光环）/ `share`（十字塔「共享资源」）。竞争**只在同通道内**发生；**跨通道读值时相加**（`getAuraValue` 求和、`getAura().buffs` 同键相加）。登记处 = `TOWER_STATS[type].auraChannel`（缺省 aura），写入处 = `game_core.applyTrapezoidAuras` 的 `meta.channel`。
+- ⛔ 为什么必须有通道（2026-09-20 玩家报的 bug）：共享资源与光环发出去的键**完全同名**（攻速/穿透/暴击率/破解/暴击伤害），分通道前在同一把键上抢唯一名额 → 谁阶段高谁留、**输的那个整条光环凭空消失**。玩家症状原话：「只有等级 lv 压住资源共享时才能正常效果，否则光环无法赋予」。修前实测：十字★3 能把梯塔★0 和菱形塔★0 的光环**同时**顶掉。
+- 不同属性键可同时生效；同一通道同一属性键多源竞争**取最强**（阶段高者胜 → 同阶 |值| 大者胜 → 打平先到先得），不多源累加。两座十字塔也只取最强的一份共享。
 - ⛔ 低阶来源不许给高阶光环续命。⛔ 禁止 `stats.supportBuff || {attackSpeedMultiplier:25}` 兜底（菱形塔会凭空多发 +25 攻速并抢梯塔的键）。
 - 穿透光环必须走 `game_core.getEffectivePenetration`；攻速走 `getBuffedValue`。新加光环类属性务必同时接上战斗侧入口。
+- `getChannelValue(id,key,channel)` = 只看某一条通道（探针/明细用它区分"这加成是光环发的还是共享发的"）；通道名非法/拼错一律回落 `aura`。**新加"发共享"的塔型必须在 TOWER_STATS 写 `auraChannel: AURA_CHANNEL.SHARE`**（probe-aura ⑨ 按 `shareRatio !== undefined` 反查，漏写报红）。
+- 回归 = `probe-aura.js` 第 ⑨ 组：4×4 星级矩阵（十字★c × 梯塔/菱形塔★s）逐格核对「实得 = 共享值 + 光环值」，期望值独立取自 config.GEM_FAMILIES / TOWER_STATS / STAGE_TABLES（不用 getAuraOutput 验 getAuraOutput）。反向验证做过：把 `channel` 撤成单一通道 → 4 条红。
 
 ## 宝石系统
 - 宝石带 lv（效果 ×N）；槽位 = `{kind,lv}` 对象，断言读 `.kind` 别比字符串。
@@ -51,6 +58,12 @@
 - 回归 mock 必须**照真平台抛错**（harness 的 addColorStop 按 CSS 颜色校验），别改回空函数（假绿事故）。
 - **面板数值文案只有一个出口：`bonusStats.numText(v)` = `String(round2(v))`**（最多 2 位小数，整数不带小数点）。光环/倍率都是浮点乘算，`25 × 1 × 1.12 = 28.000000000000004`、`25 × 3 × 1.12 = 84.00000000000001`，把裸数字插进模板串就直接印给玩家（"生效效果"历史事故，2026-09-19 修）。⛔ `src/bonusStats.js` 里禁止再出现 `${round2(` 裸插值（SPEC 的 `never` 已锁）；守它的探针 = `probe-aura.js` ⑧ + `probe-panel.js` 末尾「面板全文无 >2 位小数」那条（文字条数随塔型/分辨率增长，别把数字写进备忘当断言）。
 - 同名函数重复定义会静默覆盖 → 加完函数 `grep -oE "^function \w+" <file> | sort | uniq -d` 查重。
+- ⛔ **改完必须跑全量回归再提交**。2026-09-20 事故：编辑完直接提交，`_all.txt` 里那句"失败 0 条"的判据戳比提交早 1.5 小时 —— 于是"探针全绿"和"真机崩溃"同时存在于同一个提交里。判断报告新不新：**看报告里的判据戳时间**，别只看红绿。
+- **同一个界面往往有多条入口路径，只测一条 = 没测**。`probe-panel` 前三轮全走 `selectedTower = null`（预览/图签口径），于是"只有实体塔才会走到"的分支（`buildSkillSlots(tower)`）从来没执行过 → 16 套全绿、玩家一选塔就崩。第四轮补了"选中实体塔"（`tower.createTower` + `enhanceLevel=2`）。**加探针时先问：这条分支在别的入口会不会走另一条路？**
+- **新写/改写的探针必须做反向验证**：把被修的源码退回修复前版本（`git checkout HEAD -- <文件>`，先备份到 `tmp/`），确认探针**真的会红**，再还原。本次退回后 154 条 FAIL、含玩家那条 `reading 'tri_crit'`。不做这步就分不清"探针守住了"和"探针根本没跑到"。
+- **"只读不写"的字段是隐形雷**（`tower.X` 读取但全项目没有 `tower.X =`）：启动不报错，只在走到那一刻抛 TypeError，被主循环 try/catch 吞掉。排查法：扫 `tower\.(\w+)` 的读 − 写集合。假阳性来源：方法名（后面紧跟 `(`）、`units.createUnit` 对象字面量里的 `uniqueId/x/y`、以及注释。
+- ⛔ **行尾是混的**（`src/` 里 14 个 CRLF + 16 个 LF，取决于最后一次是谁写的；`git diff` 会对含 LF 的文件发 "LF will be replaced by CRLF" 警告）。所以"扫源码"类探针**别写依赖行尾的正则**：`line.replace(/\/\/.*$/, '')` 在 CRLF 文件里因为 `$` 不匹配 `\r` 前面而**完全不生效**（注释没被剥掉 → 注释里出现的字段名会被当成真实读取）。一律用 `/\/\/.*/`（不带 `$`）。
+- 宝石文案的唯一出口 `config.gemDescAt`：符号由家族的 `neg: true` 决定，**别假定所有宝石都是增益**（镇守宝石实际是 -3%，曾印成「+3%」）。
 - 单位渲染态出生即初始化（`enemy._hpGhost=maxHp`）。塔型键 `graphic` 已更名 `parallel`；再改键必须往 meta.js `TYPE_ALIAS` 加行。
 
 ## 环境 / 工具链
@@ -67,7 +80,11 @@
 - ⛔ **同文件禁止并行 Edit**（同一条消息多个 Edit → 后写覆盖先写却全报 success）。改完用 `tmp/_verify-edit.js` 直读磁盘核对 must/never token，别信 success 回执。Edge headless 被沙箱拦、吃不下非 ASCII `file:///` → 别依赖出图。
 
 ## 天赋 / 音频
-- 学习花费唯一真源 `meta.talentCost(id, level)`（= N × 基础花费）；旧 `TALENTS[].costs` 静态表已删，probe-talent ① 守"不复辟"。改底栏文案必跑 probe-talent ⑤（量宽度，曾 350.6px 在 320 宽溢出）。
-- `src/audio.js` 唯一碰 wx 音频；四条硬约束：非微信安全降级 / 异常不冒泡 / enabled(意愿)≠wantPlay(此刻该不该响) / 自动播放被静默拦截靠一次性触摸解锁。顶栏按钮从右往左码；音乐开关要提到选关分支**之前**。假 wx 的事件表用**数组**。
-- BGM `audio/snowfall.mp3` 为原创合成（make-snowfall.py），**别用 Øneheart×reidenshi 那版录音**（版权）。"刺耳/难听"先查乐谱再查频谱。
-- ⚠️ 写"源码禁止出现某字符串"的探针时，别把那个字面量写进正文注释（注释也会被扫到）。
+- 学习花费唯一真源 `meta.talentCost(id, level)`（= N × 基础花费）；旧 `TALENTS[].costs` 静态表已删,probe-talent ① 守"不复辟"。改底栏文案必跑 probe-talent ⑤(量宽度,曾 350.6px 在 320 宽溢出)。
+- `src/audio.js` 唯一碰 wx 音频;四条硬约束:非微信安全降级 / 异常不冒泡 / enabled(意愿)≠wantPlay(此刻该不该响) / 自动播放被静默拦截靠一次性触摸解锁。顶栏按钮从右往左码;音乐开关要提到选关分支**之前**。假 wx 的事件表用**数组**。
+- **BGM 现役:`audio/rainfall.mp3`(2026-09-20 上线 v4)—— 80 秒无缝循环、梅雨午后氛围**。生成脚本 `.workbuddy/tools/make-rainfall.py`。上一版 `audio/snowfall.mp3`(31.3s v3)保留作 A/B 试听页对照,完整三件套备份在 `.workbuddy/tmp/_snowfall_v3_backup/`。
+- **雨声不参与门控 = 接缝天然连续**(核心设计):v4 把雨声铺底层 `make_rain()` 设为恒定电平 0.025 不进入 PAD_GATE/FIG_GATE/MEL_GATE,整圈电平相同 → 不靠"两端 gate 值精确相等"也能保证无缝。这是 rainfall 比 snowfall 抗接缝爆音的根本原因。
+- **"刺耳/难听"先查乐谱再查频谱**(v3 → v4 治"拉音/不好听"全套思路):① 旋律必须落在和弦音 / 安全延伸音上(强拍断言=0);② 音长 < 音距(tau=0.55~0.65s,音距 ≥ 0.833s);③ 整数谐波+快速滚降;④ 密度 1.4~3 音/秒;⑤ 母带 ≤ -16dBFS。先改乐谱再调 EQ。
+- ⚠️ 接缝 audit 的 `PASS_edge_not_silent` 判据:别再用 `head/tail > body*0.15`(v4 末段刻意渐弱会判 FAIL)。**现行真源**:`tail > body*0.05` + `|head_db - tail_db| < 12dB` —— 反映真实意图(防编码器延迟导致循环点静音 + 防首尾电平不对称),不要求两端都接近 body 响。
+- ⚠️ 这台机器 ffmpeg 不在 PATH、WinGet 链接也没了 → 跑 audit/compare/make-*.py 都靠 `imageio_ffmpeg` pip 包的 exe(`.workbuddy/tools/audit-bgm.py` / `compare-bgm.py` / `make-rainfall.py` 的 `find_ffmpeg()` 都优先 `imageio_ffmpeg.get_ffmpeg_exe()`)。
+- ⚠️ 写"源码禁止出现某字符串"的探针时,别把那个字面量写进正文注释(注释也会被扫到)。

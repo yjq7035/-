@@ -550,8 +550,13 @@ function getAuraOutput(tower, codexMult) {
       const v = scaled(gem[src]);
       if (v) out[dst] = v;
     }
-    // 技能等级：十字塔自身技能等级（强化 + 嵌宝石 + 其他十字塔共享）参与共享
-    //   余数不计（只取整数部分），防止 5 * 30/100 = 1.5 被当成 +1 级
+    // 技能等级：十字塔自身技能等级（强化 + 嵌宝石 + 其他十字塔共享）参与共享。
+    //   ⚠️ 必须**取整**，这是全套共享属性里唯一取整的一条 —— 理由是显示口径：
+    //      技能等级在面板 / 技能槽里会写成 `Lv.N`（renderer:1357「固有技能 Lv.N/6」），
+    //      允许小数就会印出 "Lv.1.3" 这种不存在的等级。
+    //      取整后：1 颗猫眼石（+1 级）在 0★ 只共享 30% = 0.3 → 0（不足 1 级不共享），
+    //      3★（120%）才共享满 1 级。其余属性（攻速/暴击/暴击伤害…）保留小数，
+    //      它们本身不是"等级"，没有这个约束。
     if (towerSkillLevels) out.skillLevels = Math.floor(towerSkillLevels * ratio / 100);
     // 技能效果（紫晶）：仅嵌在十字塔上的紫晶贡献（强化不影响技能效果）
     if (gem.skillEffectPercent) out.skillEffectPercent = Math.floor(gem.skillEffectPercent * ratio / 100);

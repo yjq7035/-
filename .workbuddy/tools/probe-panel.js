@@ -13,9 +13,13 @@
 //     主循环 try/catch 吞掉 → 面板整块画不出来，表现成"点了塔没反应"。
 //   · arrow 的固有技能说明右超 116px（没换行）。
 //
-// 两轮：
-//   第一轮 = 素面板（无宝石）
+// 四轮：
+//   第一轮 = 素面板（无宝石，预览态）
 //   第二轮 = 嵌满 5 颗宝石（含猫眼石 → 技能槽 Lv 应 > 0）+ 新增的「宝石」区块
+//   第三轮 = 玩家截图场景（梯塔 / 2 颗宝石 / 宽屏）专门锁"设计间距"
+//   第四轮 = **选中实体塔**（已强化 2 次）+ 强化浮层 —— 2026-09-20 补：
+//            前三轮全是 `selectedTower = null` 的预览态，于是"只有实体塔才会走到"的
+//            代码路径（如 skillSlot 读 tower 上的字段）根本没被覆盖，探针全绿但真机崩。
 // ============================================================================
 const path = require('path');
 const fs = require('fs');
@@ -32,7 +36,7 @@ const log = (s) => out.push(s);
 const rec = makeRec();
 const ctx = makeCtx(rec);
 
-let Game, renderer, config, meta, gems, towerMod;
+let Game, renderer, config, meta, gems, towerMod, enhanceMod;
 try {
   Game = require(path.join(ROOT, 'src', 'game_core'));
   renderer = require(path.join(ROOT, 'src', 'renderer'));
@@ -40,6 +44,7 @@ try {
   meta = require(path.join(ROOT, 'src', 'meta'));
   gems = require(path.join(ROOT, 'src', 'gems'));
   towerMod = require(path.join(ROOT, 'src', 'tower'));
+  enhanceMod = require(path.join(ROOT, 'src', 'enhance'));
 } catch (e) {
   fs.writeFileSync(path.join(__dirname, '_panel_error.txt'), (e && e.stack) || String(e), 'utf8');
   process.exit(1);
@@ -56,6 +61,8 @@ let fails = 0;
 let totalTexts = 0;
 // 收集"小数位 > 2"的文本（浮点乘算的尾巴，如 84.00000000000001）—— 最后统一断言
 const longDecimals = [];
+// 收集"小数技能等级"（如 Lv.1.3）—— 等级只有 Lv.1~Lv.6，出现小数说明某处共享值没取整
+const fracLevels = [];
 const ok = (name, cond, detail) => {
   if (!cond) fails++;
   log(`${cond ? '  ok  ' : ' FAIL '} ${name}${detail ? '  → ' + detail : ''}`);
@@ -99,11 +106,12 @@ function prepTwoGems(type) {
 /**
  * 画一次面板并做全套断言。
  * @param {string} tag 出现在断言名里的场景标签
+ * @param {object} [tower] 实体塔（选中态）；缺省 = 预览态（图签/商店口径）
  */
-function checkPanel(g, type, tag) {
+function checkPanel(g, type, tag, tower) {
   g.panelTowerType = type;
   g.showPanel = true;
-  g.selectedTower = null;
+  g.selectedTower = tower || null;
   g.gold = 9999;
   g.panelScrollOffset = 0;
 
@@ -124,6 +132,8 @@ function checkPanel(g, type, tag) {
   //（浮点乘算的尾巴，如 25×1×1.12 = 28.000000000000004，历史事故见 bonusStats.numText）
   for (const t of rec.texts) {
     if (/\.\d{3,}/.test(t.text)) longDecimals.push(`${tag}${type}: ${t.text}`);
+    // 技能等级只有 Lv.1~Lv.6 这 6 个取值，写成 Lv.1.3 就是"共享值没取整"漏到显示层了
+    if (/Lv\.\d+\.\d/.test(t.text)) fracLevels.push(`${tag}${type}: ${t.text}`);
   }
 
   // 面板自己的裁剪层 = 完全落在面板内的最大裁剪矩形
@@ -288,10 +298,87 @@ for (const [W, H] of [[390, 844], [414, 896], [428, 926]]) {
     + `  面板 ${g._panelRect.w}x${g._panelRect.h} 滚动 ${g.panelScrollMax}`);
 }
 
+// ============================================================================
+// 第四轮：**带实体塔**（真正选中一座塔）—— 2026-09-20 漏掉的那一半
+// ----------------------------------------------------------------------------
+// 前三轮全部走 `selectedTower = null` 的**预览**路径（图签 / 商店口径），于是
+// skillSlot 里那句 `tower.skillLevels[sk.id]`（该字段全项目只有读、没有写）从来没被
+// 执行到：探针 16 套全绿，玩家一选中塔就 TypeError → 主循环 try/catch 吞掉 →
+// 面板整块不出现。教训：**预览态和实体态是两条路径，只测一条等于没测**。
+//
+// 这一轮建真塔（tower.createTower）并强化 2 次（→ 已学 2/5、Lv.3），断言：
+//   ① 画出不抛异常，且文字不越界（复用 checkPanel 的全套几何断言）；
+//   ② 技能槽第一行同时有「Lv.N」与「已学 n/5」两个口径（少一个就等于丢信息）；
+//   ③ 每条文字的 x/y 都是**有限数** —— `fillText(text, x, undefined)` 在真机上是
+//      静默不画，不抛错，只能在这里守（强化浮层的 infoLines 就是这么少了一行）。
+// ============================================================================
+for (const [W, H] of RES) {
+  let g;
+  try {
+    g = mkGame(W, H);
+  } catch (e) {
+    log(`[BUILD FAIL] ${W}x${H}: ${e.message}`);
+    continue;
+  }
+  log(`\n===== 第四轮 ${W}x${H}（选中实体塔 · 已强化 2 次） =====`);
+  let missLv = 0, missLearn = 0, badCoord = 0, sample = '';
+  for (const type of TYPES) {
+    const t = towerMod.createTower(type, 100, 100);
+    t.enhanceLevel = 2;              // 已学 2/5 → Lv.3（同时锁两个口径）
+    checkPanel(g, type, '实体塔·', t);
+
+    const texts = rec.texts.map((x) => x.text);
+    if (!texts.some((s) => /^Lv\.\d/.test(s))) { missLv++; if (!sample) sample = texts.slice(-4).join('/'); }
+    if (!texts.some((s) => /^已学 \d\/\d/.test(s))) missLearn++;
+    for (const x of rec.texts) if (!isFinite(x.x) || !isFinite(x.y)) badCoord++;
+  }
+  ok(`${W}x${H} 实体塔态：技能槽给出 Lv.N`, missLv === 0,
+    missLv ? `${missLv}/${TYPES.length} 型没有 Lv 文本（末尾文字：${sample}）` : `${TYPES.length} 型都有`);
+  ok(`${W}x${H} 实体塔态：技能槽给出「已学 n/5」`, missLearn === 0,
+    missLearn ? `${missLearn}/${TYPES.length} 型没有已学文本` : `${TYPES.length} 型都有`);
+  ok(`${W}x${H} 实体塔态：全部文字坐标有限`, badCoord === 0,
+    badCoord ? `${badCoord} 条文字的 x/y 不是有限数` : '无 undefined / NaN 坐标');
+}
+
+// ---- 强化浮层（塔面板「强化」按钮的目标界面）----
+// 守"坐标必须有限"：浮层改成三行后 infoLines 只给了两条 y，行2（技能说明 /
+//「金币不足」/「已满级」）拿到 undefined → 真机上静默不画，
+// 表现为"按钮灰着，但看不到任何原因"。
+for (const [W, H] of RES) {
+  const g = mkGame(W, H);
+  const t = towerMod.createTower('triangle', 100, 100);
+  t.enhanceLevel = 2;
+  g.selectedTower = t;
+  g.gold = 9999;
+  g.enhancePicker = { tower: t };
+
+  rec.texts.length = 0; rec.rects.length = 0; rec.clips.length = 0; rec.ops.length = 0;
+  let err = null;
+  try { enhanceMod.drawEnhancePicker(g); } catch (e) { err = e; }
+  const texts = rec.texts.map((x) => x.text);
+  const bad = rec.texts.filter((x) => !isFinite(x.x) || !isFinite(x.y));
+  ok(`${W}x${H} 强化浮层画得出来且文字坐标有限`, !err && bad.length === 0,
+    err ? `${err.constructor.name}: ${err.message}`
+      : (bad.length ? `${bad.length} 条坐标非法：${bad.slice(0, 2).map((b) => `「${b.text}」y=${b.y}`).join(' ; ')}` : `${texts.length} 条文字`));
+
+  // 行0/行1/行2 各自都要有文字落在布局真源给的那条 y 上 —— 只判"文字里有这几句"
+  // 会被行0 蒙混过关（行2 整行消失时仍然绿），必须按坐标锁。
+  const infoLines = enhanceMod.getEnhanceLayout(g).infoLines;
+  const onLine = (i) => rec.texts.filter((x) => Math.abs(x.y - infoLines[i]) < 0.5).length;
+  ok(`${W}x${H} 强化浮层三行都在（本次提升 / 等级明细 / 说明或花费状态）`,
+    infoLines.length >= 3 && isFinite(infoLines[2]) && onLine(0) > 0 && onLine(1) >= 2 && onLine(2) > 0,
+    `infoLines=${JSON.stringify(infoLines)} 每行文字数=${[0, 1, 2].map(onLine).join('/')}`
+    + ` ｜ 行2 内容：${rec.texts.filter((x) => Math.abs(x.y - infoLines[2]) < 0.5).map((x) => x.text).join(' ')}`);
+}
+
 log('');
 ok('面板全文：没有任何数值超过 2 位小数', longDecimals.length === 0,
   longDecimals.length ? `${longDecimals.length} 条：` + longDecimals.slice(0, 5).join(' ; ')
     : '全部数值最多 2 位小数');
+// 技能等级取整的显示侧守门：十字塔「共享资源」传出去的是**取整后**的等级，
+// 若哪天有人把 floor 去掉（或让共享值以小数进入 levelOf），这里立刻红。
+ok('面板全文：没有小数技能等级（Lv.N 只允许 Lv.1~Lv.6）', fracLevels.length === 0,
+  fracLevels.length ? `${fracLevels.length} 条：` + fracLevels.slice(0, 5).join(' ; ') : '无小数等级');
 log(`=== 属性面板汇总：${RES.length} 分辨率 × ${TYPES.length} 塔型 + 宝石态，文字 ${totalTexts} 条，失败 ${fails} 条 ===`);
 log(`=== 判据戳：TOWER_ORDER=${TYPES.length} 型 / ${new Date().toISOString()} ===`);
 

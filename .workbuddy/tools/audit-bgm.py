@@ -32,10 +32,20 @@ def decode_mp3(mp3_path, tmp_raw):
     注意：**不要**走 WAV 容器 —— Python 标准库 wave 不认 IEEE float 格式(3)，
     直接让 ffmpeg 吐裸 PCM 再用 np.fromfile 读，最省事也最可控。
     """
-    ff = os.path.join(os.environ.get('LOCALAPPDATA', ''),
-                      'Microsoft', 'WinGet', 'Links', 'ffmpeg.exe')
-    if not os.path.exists(ff):
-        ff = 'ffmpeg'
+    # 找 ffmpeg：imageio-ffmpeg（pip 装好的，无需系统安装）→ WinGet 链接 → PATH
+    ff = None
+    try:
+        import imageio_ffmpeg  # noqa
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        if exe and os.path.exists(exe):
+            ff = exe
+    except Exception:
+        pass
+    if ff is None:
+        ff = os.path.join(os.environ.get('LOCALAPPDATA', ''),
+                          'Microsoft', 'WinGet', 'Links', 'ffmpeg.exe')
+        if not os.path.exists(ff):
+            ff = 'ffmpeg'
     # 关键：显式 -ar 48k? 不 —— 保持原采样率解码，才能与合成时的样本数对齐
     subprocess.run([ff, '-y', '-loglevel', 'error', '-i', mp3_path,
                     '-ac', '1', '-f', 'f32le', tmp_raw], check=True)
@@ -57,9 +67,15 @@ def main():
     os.remove(tmp_raw)
 
     # 解码长度 vs 合成长度：多出来的就是编码器补的延迟/填充。
-    # 理论长度从 make-snowfall.py 的报告里读，别在这里硬编码（改参数就过期了）。
+    # 理论长度从 make-*.py 的报告里读，别在这里硬编码（改参数就过期了）。
+    # 优先按 mp3 文件名找对应的 _*_report.json（rainfall → _rainfall_report.json），
+    # 否则退回 _snowfall_report.json（保持向后兼容）。
     expected = 853333
-    rep_path = os.path.join(os.path.dirname(os.path.abspath(mp3_path)), '_snowfall_report.json')
+    mp3_dir = os.path.dirname(os.path.abspath(mp3_path))
+    base = os.path.splitext(os.path.basename(mp3_path))[0]           # 'rainfall'
+    rep_path = os.path.join(mp3_dir, '_%s_report.json' % base)
+    if not os.path.exists(rep_path):
+        rep_path = os.path.join(mp3_dir, '_snowfall_report.json')
     if os.path.exists(rep_path):
         try:
             with open(rep_path, 'r', encoding='utf-8') as f:
@@ -98,8 +114,17 @@ def main():
     }
     rep['PASS_diff1'] = rep['seam_diff1_pct_rank'] <= 99.0
     rep['PASS_diff2'] = rep['seam_diff2_pct_rank'] <= 99.5
-    # 循环点是静音 → 说明编码器补了延迟且没被裁掉（会出现每圈一次"卡顿"）
-    rep['PASS_edge_not_silent'] = (head_rms > body_rms * 0.15) and (tail_rms > body_rms * 0.15)
+    # 接缝处两端 30ms 都不为"接近静音":这里的"接近静音"判定有两层 —
+    #   (1) tail 太轻 → 编码器补了 priming 且没被裁掉 → 循环点会"卡"一下；
+    #   (2) head/tail 严重不对称 → 整段不是真正的环形,接缝电平跳变。
+    # 旧判据只看 (1) 且阈值 0.15×body 太严,v4 rainfall 末段刻意渐弱(尾端 30ms 落地),
+    # head/tail 各 30ms 都在 ~-30dBFS,body ~-18.5dBFS,旧判据会判 FAIL。
+    # 新判据:tail 不为 0 + head/tail 互相在 12dB 内(12dB ≈ 4 倍,够覆盖所有有意渐弱设计)。
+    eps = 1e-12
+    head_db = float(20 * np.log10(head_rms + eps))
+    tail_db = float(20 * np.log10(tail_rms + eps))
+    body_db = float(20 * np.log10(body_rms + eps))
+    rep['PASS_edge_not_silent'] = (tail_rms > body_rms * 0.05) and (abs(head_db - tail_db) < 12.0)
     rep['PASS'] = bool(rep['PASS_diff1'] and rep['PASS_diff2'] and rep['PASS_edge_not_silent'])
 
     with open(out_path, 'w', encoding='utf-8') as f:

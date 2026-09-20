@@ -1,0 +1,22 @@
+{
+  "file": "rainfall.mp3",
+  "mp3_bytes": 801044,
+  "sample_rate": 32000,
+  "decoded_samples": 2560000,
+  "expected_samples": 2560000,
+  "extra_samples_encoder_delay": 0,
+  "duration_sec": 80.0,
+  "body_rms_dbfs": -18.45,
+  "head_rms_dbfs": -26.04,
+  "tail_rms_dbfs": -36.57,
+  "seam_diff1": 0.000774,
+  "seam_diff1_pct_rank": 9.8,
+  "seam_diff2": 0.003038,
+  "seam_diff2_pct_rank": 50.26,
+  "p99_diff1": 0.028154,
+  "p995_diff2": 0.012909,
+  "PASS_diff1": true,
+  "PASS_diff2": true,
+  "PASS_edge_not_silent": true,
+  "PASS": true
+}
