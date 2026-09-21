@@ -117,7 +117,6 @@ function towerCost(game, type) {
 
 /** 刷新按钮上显示的费用 */
 function refreshCost(game) {
-  if (game && typeof game.getRefreshCost === 'function') return game.getRefreshCost();
   return game.refreshCost;
 }
 

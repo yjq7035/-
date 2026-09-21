@@ -5,10 +5,8 @@ const core = require('./renderer-core');
 const ui   = require('./renderer-ui');
 
 // 从子模块合并导出，保持与原先 renderer.js module.exports 完全一致
+// （PANEL_UI / gemBlockHeight 已含在 ...ui 里，无需重复列出）
 module.exports = {
   ...core,
   ...ui,
-  // UI 模块特有的常量
-  PANEL_UI: ui.PANEL_UI,
-  gemBlockHeight: ui.gemBlockHeight,
 };

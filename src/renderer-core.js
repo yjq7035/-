@@ -411,37 +411,29 @@ function drawEnemyHpBar(game, enemy) {
   const barX = enemy.x - barW / 2;
   const barY = enemy.y - half - (enemy.tier >= 4 ? 16 : 10);
 
-  // 轨道
+  // 轨道（方形：直角）
   ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-  ctx.beginPath();
-  ctx.roundRect(barX, barY, barW, barH, barH / 2);
-  ctx.fill();
+  ctx.fillRect(barX, barY, barW, barH);
 
-  // 白色缓冲条（残留旧血量）
+  // 白色缓冲条（残留旧血量，方形）
   if (ghostPct > pct + 1e-4) {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-    ctx.beginPath();
-    ctx.roundRect(barX, barY, Math.max(barH, barW * ghostPct), barH, barH / 2);
-    ctx.fill();
+    ctx.fillRect(barX, barY, Math.max(barH, barW * ghostPct), barH);
   }
 
-  // 填充（绿→黄→红，按剩余比例）
+  // 填充（绿→黄→红，按剩余比例，方形）
   let hpColor;
   if (pct > 0.5) hpColor = '#6EE86E';
   else if (pct > 0.25) hpColor = THEME.accent.gold;
   else hpColor = THEME.accent.danger;
   if (pct > 0) {
     ctx.fillStyle = hpColor;
-    ctx.beginPath();
-    ctx.roundRect(barX, barY, Math.max(barH, barW * pct), barH, barH / 2);
-    ctx.fill();
+    ctx.fillRect(barX, barY, Math.max(barH, barW * pct), barH);
   }
-  // 描边
+  // 描边（方形）
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
   ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.roundRect(barX, barY, barW, barH, barH / 2);
-  ctx.stroke();
+  ctx.strokeRect(barX, barY, barW, barH);
 
   // 血条与血量数字现已分离：血条保留；血量数值文本已移除（BOSS 大血条 + 怪物小血条已足够表达血量）。
   ctx.restore();
@@ -701,57 +693,43 @@ function drawBossHealthBar(ctx, boss, cx, cy, team, maxW) {
 
   ctx.save();
 
-  // 静态垫底（替代原来的呼吸光晕）：一圈固定暗边，保证亮地图上血条不糊
+  // 静态垫底（替代原来的呼吸光晕）：一圈固定暗边，保证亮地图上血条不糊（方形）
   ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-  ctx.beginPath();
-  ctx.roundRect(x - 3, y - 3, w + 6, h + 6, (h + 6) / 2);
-  ctx.fill();
+  ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
 
-  // 轨道
+  // 轨道（方形）
   ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, h / 2);
-  ctx.fill();
+  ctx.fillRect(x, y, w, h);
 
-  // 白条：残留的旧血量（画在实条下面，只露在实条右边那一截）
+  // 白条：残留的旧血量（画在实条下面，只露在实条右边那一截，方形）
   if (ghostPct > pct + 1e-4) {
     const gw = Math.max(h, w * ghostPct);
     ctx.fillStyle = 'rgba(255, 255, 255, 0.82)';
-    ctx.beginPath();
-    ctx.roundRect(x, y, gw, h, h / 2);
-    ctx.fill();
-    // 鬼影前锋的一道亮边：让"正在往下扣"这件事看得见
+    ctx.fillRect(x, y, gw, h);
+    // 鬼影前锋的一道亮边：让"正在往下扣"这件事看得见（方形）
     const edgeW = 2;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-    ctx.beginPath();
-    ctx.roundRect(x + gw - edgeW - 1, y + 1, edgeW, h - 2, edgeW / 2);
-    ctx.fill();
+    ctx.fillRect(x + gw - edgeW - 1, y + 1, edgeW, h - 2);
   }
 
-  // 实条：真实血量，按剩余比例（阵营色渐变）
+  // 实条：真实血量，按剩余比例（阵营色渐变，方形）
   if (pct > 0) {
     const fw = Math.max(h, w * pct);
     const grad = ctx.createLinearGradient(x, 0, x + fw, 0);
     grad.addColorStop(0, light);
     grad.addColorStop(1, main);
     ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.roundRect(x, y, fw, h, h / 2);
-    ctx.fill();
+    ctx.fillRect(x, y, fw, h);
   }
 
-  // 顶部内高光（静态，立体感靠它，不靠动画）
+  // 顶部内高光（静态，立体感靠它，不靠动画，方形）
   ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
-  ctx.beginPath();
-  ctx.roundRect(x + h * 0.35, y + 2, Math.max(0, w - h * 0.7), 2.5, 1.25);
-  ctx.fill();
+  ctx.fillRect(x + h * 0.35, y + 2, Math.max(0, w - h * 0.7), 2.5);
 
-  // 描边
+  // 描边（方形）
   ctx.strokeStyle = THEME.border.strong;
   ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, h / 2);
-  ctx.stroke();
+  ctx.strokeRect(x, y, w, h);
 
   // 数值文本（BOSS 大血条保留数值，便于精确读血）
   ctx.fillStyle = THEME.text.primary;

@@ -120,7 +120,6 @@ class Game {
     this.enhancePicker = null;    // 强化「多选一」浮层：null=关闭，否则 { tower }
     this.toasts = [];             // 操作轻提示队列 [{ text, color, t0, duration, y }]
     // 涓流金库（每秒金币天赋）：小数累计，避免每帧取整丢钱
-    this._goldTick = 0;
     this._goldFraction = 0;
 
     // 当前关卡（默认取存档里选中的关卡，初始 = 关卡 1）
@@ -800,10 +799,6 @@ class Game {
       meta.grantTalentPoints(TALENT_POINTS.perWaveGroup.amount);
     }
     // 宝石改为通关/失败结算奖励（见 grantRewardGems），战斗过程不再掉落
-    // const gemEvery = GEM.dropEveryWaves || 0;
-    // if (gemEvery > 0 && this.currentWave % gemEvery === 0) {
-    //   this.dropGem(`第 ${this.currentWave} 波`);
-    // }
   }
 
   /** 通关关卡：首通额外奖励 + 天赋点；自动把预选关卡推进到下一关（若已实现） */
@@ -1565,7 +1560,7 @@ class Game {
    * 2026-09 改为「直接命中」：不再发射飞行弹道，闪电链在开火瞬间完成——
    *   0. 塔转向主目标，立刻结算主目标伤害，同时画一道「塔 → 主目标」闪电弧；
    *   1. 以主目标为圆心扫 chainRange 半径，取 chainCount-1 个最近活敌人；
-   *   2. 对每个副目标立即结算链伤害（= 主目标伤害 × chainRatio，不暴击），
+    *   2. 对每个副目标立即结算链伤害（= 主目标伤害 × chainRatio × 0.95^i，不暴击），
    *      并画一道「主目标 → 副目标」闪电弧（每条链依次更短一点，形成传导感）。
    *
    * 流程与旧版（发 `type:'bolt'` 飞行弹道 + `type:'chain_bolt'` 隐形弹道）
@@ -1603,10 +1598,11 @@ class Game {
     candidates.sort((a, b) => Math.hypot(a.x - mainTarget.x, a.y - mainTarget.y)
                              - Math.hypot(b.x - mainTarget.x, b.y - mainTarget.y));
 
-    // 2. 逐条传导链：立即结算链伤害，画「主目标 → 副目标」闪电弧，后一条稍短一点
+    // 2. 逐条传导链：立即结算链伤害（= 主目标伤害 × chainRatio × 0.95^i，不暴击），
+      // 画「主目标 → 副目标」闪电弧，后一条稍短一点
     for (let i = 0; i < chainCount - 1 && i < candidates.length; i++) {
       const hit = candidates[i];
-      const chainDmg = Math.max(1, Math.round(mainDmg * chainRatio));
+      const chainDmg = Math.max(1, Math.round(mainDmg * chainRatio * Math.pow(0.95, i)));
       // 链伤害不暴击（闪电传导本身已算高伤害）
       this.applyDamage(tower, hit, chainDmg, {
         allowCrit: false,
