@@ -1380,14 +1380,13 @@ class Game {
         }
         
         // 闪电塔：闪电连锁（主目标→副目标传导）
+        // fireBoltChain 直接命中：开火瞬间结算主目标 + 各副目标，没有飞行弹道。
+        // ⚠️ 别再加一次 fireProjectile —— 主目标会被第二发重复结算（双倍伤害）。
         if (tower.type === 'bolt') {
           const towerStats = towerMod.getTowerRuntimeStats(tower);
           const effectiveInterval = towerStats.attackInterval / (effectiveAttackSpeed / 100);
           tower.attackTimer = effectiveInterval;
-          // 先弹主目标（画出主弹道闪电 + 打满主目标伤害）
-          this.fireProjectile(tower, nearestTarget);
-          // 再扫链：chainRange 内未死亡、非主目标的副目标
-          this.fireBoltChain(tower, nearestTarget, towerStats.chainRange || 75);
+          this.fireBoltChain(tower, nearestTarget);
           continue;
         }
 
@@ -1563,10 +1562,15 @@ class Game {
   /**
    * 闪电塔：闪电连锁——攻击主目标时，电流传导到附近敌人。
    *
-   * 流程：
-   *   1. 先打主目标（与 fireProjectile 一致）
-   *   2. 以主目标为圆心扫 chainRange 半径，取 chainCount-1 个最近活敌人
-   *   3. 对每个副目标弹链（链伤害 = 主目标伤害 × chainRatio，不暴击）
+   * 2026-09 改为「直接命中」：不再发射飞行弹道，闪电链在开火瞬间完成——
+   *   0. 塔转向主目标，立刻结算主目标伤害，同时画一道「塔 → 主目标」闪电弧；
+   *   1. 以主目标为圆心扫 chainRange 半径，取 chainCount-1 个最近活敌人；
+   *   2. 对每个副目标立即结算链伤害（= 主目标伤害 × chainRatio，不暴击），
+   *      并画一道「主目标 → 副目标」闪电弧（每条链依次更短一点，形成传导感）。
+   *
+   * 流程与旧版（发 `type:'bolt'` 飞行弹道 + `type:'chain_bolt'` 隐形弹道）
+   * 的差别：伤害全部即时结算，不再依赖弹道飞行/落地。视觉 = 纯特效层
+   * drawEffects 里的 bolt_chain 锯齿折线，任何一帧都不会出现"子弹隐身"。
    */
   fireBoltChain(tower, mainTarget) {
     const towerDef = TOWER_DEFS[tower.type];
@@ -1576,18 +1580,21 @@ class Game {
     const chainRange = towerMod.getSpecialValue(tower.type, towerMod.getEffectiveSkillLevel(tower), 'chainRange');
     const chainRatio = towerMod.getSpecialValue(tower.type, towerMod.getEffectiveSkillLevel(tower), 'chainRatio') / 100;
 
-    // 1. 主目标弹道（带闪电折线视觉）
-    this.projectiles.push({
-      x: tower.x, y: tower.y,
-      targetX: mainTarget.x, targetY: mainTarget.y,
-      targetType: mainTarget, sourceTower: tower,
-      speed: 400, color: towerDef.color,
-      type: 'bolt', damage: mainDmg, alive: true, angle: aim.aimAtTarget(tower, mainTarget),
+    // 0. 塔转向主目标（朝向唯一入口见 src/aim.js），主目标直接命中：立即结算伤害
+    aim.aimAtTarget(tower, mainTarget);
+    this.applyDamage(tower, mainTarget, mainDmg, { source: { type: 'bolt' } });
+    // 塔 → 主目标的闪电弧（世界坐标，随 life 淡出）
+    this.effects.push({
+      type: 'bolt_chain',
+      x1: tower.x, y1: tower.y,
+      x2: mainTarget.x, y2: mainTarget.y,
+      color: towerDef.color,
+      seed: Math.random() * Math.PI * 2,
+      life: 0.35,
+      maxLife: 0.35,
     });
-    // 链判定弹道（纯视觉，伤害已在下方同步结算）
-    let hits = 0;
 
-    // 2. 扫链：取 chainCount-1 个最近活敌人（不含主目标）
+    // 1. 扫链：取 chainCount-1 个最近活敌人（不含主目标）
     const candidates = this.enemies.filter(e => {
       if (!e.alive) return false;
       if (e === mainTarget) return false;
@@ -1596,24 +1603,25 @@ class Game {
     candidates.sort((a, b) => Math.hypot(a.x - mainTarget.x, a.y - mainTarget.y)
                              - Math.hypot(b.x - mainTarget.x, b.y - mainTarget.y));
 
+    // 2. 逐条传导链：立即结算链伤害，画「主目标 → 副目标」闪电弧，后一条稍短一点
     for (let i = 0; i < chainCount - 1 && i < candidates.length; i++) {
       const hit = candidates[i];
       const chainDmg = Math.max(1, Math.round(mainDmg * chainRatio));
       // 链伤害不暴击（闪电传导本身已算高伤害）
-      const result = this.applyDamage(tower, hit, chainDmg, {
+      this.applyDamage(tower, hit, chainDmg, {
         allowCrit: false,
         source: { type: 'chain_bolt', mainTarget },
       });
-      // 链弹道视觉：从主目标到副目标
-      this.projectiles.push({
-        x: mainTarget.x, y: mainTarget.y,
-        targetX: hit.x, targetY: hit.y,
-        sourceTower: tower,
-        speed: 500, color: '#FFA500',
-        type: 'chain_bolt', damage: 0,
-        alive: true, angle: 0,
+      const chainLife = Math.max(0.15, 0.3 - i * 0.03);
+      this.effects.push({
+        type: 'bolt_chain',
+        x1: mainTarget.x, y1: mainTarget.y,
+        x2: hit.x, y2: hit.y,
+        color: towerDef.color,
+        seed: Math.random() * Math.PI * 2,
+        life: chainLife,
+        maxLife: chainLife,
       });
-      hits++;
     }
   }
 

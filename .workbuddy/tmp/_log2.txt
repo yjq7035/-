@@ -1,2 +1,0 @@
-err Command failed: git -C F:/图形塔防 log -2 --format=%h %ad %s --date=iso -- src/config.js
-fatal: bad revision '%ad'

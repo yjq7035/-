@@ -1,9 +1,0 @@
-﻿dump-svg.js
-harness.js
-probe-codex.js
-probe-panel.js
-smoke.js
-svgcheck.js
-svgctx.js
-syntax.js
-_tools_ls.txt

@@ -1482,6 +1482,46 @@ function drawEffects(game) {
       ctx.restore();
     }
 
+    // 绘制闪电链弧（闪电塔「雷电链」：主目标 → 副目标 的锯齿折线）
+    if (effect.type === 'bolt_chain') {
+      const alpha = effect.life / effect.maxLife;
+      const segs = 5;
+      const dx = effect.x2 - effect.x1;
+      const dy = effect.y2 - effect.y1;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      const pts = [];
+      for (let i = 1; i < segs; i++) {
+        const jitter = i === segs - 1 ? 0 : Math.sin((effect.seed || 0) + i * 7.13) * 5;
+        pts.push([effect.x1 + dx * (i / segs) + nx * jitter,
+                  effect.y1 + dy * (i / segs) + ny * jitter]);
+      }
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.lineCap = 'round';
+      // 外层粗线 + 电光：亮黄色闪电折线带发光
+      ctx.strokeStyle = effect.color;
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = effect.color;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.moveTo(effect.x1, effect.y1);
+      for (const p of pts) ctx.lineTo(p[0], p[1]);
+      ctx.lineTo(effect.x2, effect.y2);
+      ctx.stroke();
+      // 中心白线高亮，更有"电光"感
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = alpha * 0.9;
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(effect.x1, effect.y1);
+      for (const p of pts) ctx.lineTo(p[0], p[1]);
+      ctx.lineTo(effect.x2, effect.y2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // 绘制扇形效果（扇塔）
     if (effect.type === 'sector') {
       const alpha = effect.life / effect.maxLife;

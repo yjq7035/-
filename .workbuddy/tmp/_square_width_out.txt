@@ -1,3 +1,0 @@
-Lv0: scale=2.00  drawW=16.0  hitW=12.0  rangeMult=2.00
-Lv1: scale=2.20  drawW=17.6  hitW=13.2  rangeMult=2.20
-Lv3: scale=2.60  drawW=20.8  hitW=15.6  rangeMult=2.60
