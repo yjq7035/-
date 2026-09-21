@@ -1103,7 +1103,7 @@ class Game {
       this.spawnTimer -= deltaTime;
       if (this.spawnTimer <= 0 && this.enemiesToSpawn.length > 0) {
         const type = this.enemiesToSpawn.shift();
-        const enemy = enemyMod.spawnEnemy(type, this.pathPoints, this.currentWave);
+        const enemy = enemyMod.spawnEnemy(type, this.pathPoints, this.currentWave, this.currentLevel);
         // 动态抗性：关卡1全程0，关卡N(N≥2)每波抗性 = (关卡-1) × 波次
         // 直接覆盖 ENEMY_TYPES 里的固定 armor（关卡1时 level-1=0 → 0*wave=0 符合"全程0"）
         enemy.armor = Math.max(0, (this.currentLevel - 1) * this.currentWave);

@@ -568,7 +568,6 @@ function getAuraOutput(tower, codexMult) {
     const gem = gems.bonusForType(tower.type);
     const ratio = shareBase * stage.multiplier('shareRatio', stars);
     const scaled = (v) => (v || 0) * ratio / 100;
-    const towerSkillLevels = skills.effectiveTimesOf(tower);  // 生效次数 = 学习 + 额外
     const map = [
       ['damagePercent', 'damagePercent'],
       ['attackSpeedMultiplier', 'attackSpeedMultiplier'],
@@ -581,14 +580,11 @@ function getAuraOutput(tower, codexMult) {
       const v = scaled(gem[src]);
       if (v) out[dst] = v;
     }
-    // 技能等级：十字塔自身技能等级（学习 + 嵌宝石 + 其他十字塔共享）参与共享。
-    //   ⚠️ 必须**取整**，这是全套共享属性里唯一取整的一条 —— 理由是显示口径：
-    //      技能等级在面板 / 技能槽里会写成 "当前/可学"（skills.levelText），
-    //      允许小数就会印出 "1.3/6" 这种不存在的等级。
-    //      取整后：1 颗猫眼石（+1 级）在 0★ 只共享 30% = 0.3 → 0（不足 1 级不共享），
-    //      3★（120%）才共享满 1 级。其余属性（攻速/暴击/暴击伤害…）保留小数，
-    //      它们本身不是"等级"，没有这个约束。
-    if (towerSkillLevels) out.skillLevels = Math.floor(towerSkillLevels * ratio / 100);
+    // 技能等级：只共享宝石贡献的固有等级（不含强化等级、不含其他十字塔共享等级），
+    //   不乘 ratio —— 技能等级是整数层数（+1/+2…），不是百分比属性，
+    //   乘 ratio 会导致强化等级越高、共享越多（正反馈 → 你看到的 +5、+15、+1861）。
+    const gemSkillLevels = gem.skillLevels || 0;
+    if (gemSkillLevels) out.skillLevels = gemSkillLevels;
     // 技能效果（紫晶）：仅嵌在十字塔上的紫晶贡献（强化不影响技能效果）
     if (gem.skillEffectPercent) out.skillEffectPercent = Math.floor(gem.skillEffectPercent * ratio / 100);
   }

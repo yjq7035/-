@@ -5,7 +5,7 @@ const { getWaveHPMultiplier } = require('./wave');
 const { createUnit } = require('./units');
 
 // 在路径起点创建一只敌人
-function spawnEnemy(type, pathPoints, waveNumber) {
+function spawnEnemy(type, pathPoints, waveNumber, currentLevel) {
   const config = ENEMY_TYPES[type] || ENEMY_TYPES.normal;
   const pos = getPathPosition(pathPoints, 0);
   
@@ -16,18 +16,24 @@ function spawnEnemy(type, pathPoints, waveNumber) {
   const isBossPhase = waveNumber && waveNumber >= 11;
   let hpBonus = isBossPhase ? 2 : 1;
   let speedBonus = isBossPhase ? 1.15 : 1;
-  
+
+  // 关卡 11-20 额外生命增长：波 1-10 每波额外增加 (当前关卡-10)*1%，波 11+ 锁死
+  let extraGrowth = 0;
+  if (currentLevel >= 11 && waveNumber) {
+    extraGrowth = (currentLevel - 10) * 0.01 * Math.min(waveNumber, 10);
+  }
+
   // 精英/Boss/最终Boss 使用独立的生命值计算
   // elite = 普通*15, boss = 普通*50, finalBoss = boss*5 = 普通*250
   let scaledHp;
   if (type === 'elite') {
-    scaledHp = Math.floor(100 * 15 * hpMultiplier * hpBonus);
+    scaledHp = Math.floor(100 * 15 * hpMultiplier * hpBonus * (1 + extraGrowth));
   } else if (type === 'boss') {
-    scaledHp = Math.floor(100 * 50 * hpMultiplier * hpBonus);
+    scaledHp = Math.floor(100 * 50 * hpMultiplier * hpBonus * (1 + extraGrowth));
   } else if (type === 'finalBoss') {
-    scaledHp = Math.floor(100 * 50 * hpMultiplier * hpBonus);
+    scaledHp = Math.floor(100 * 50 * hpMultiplier * hpBonus * (1 + extraGrowth));
   } else {
-    scaledHp = Math.floor(config.hp * hpMultiplier * hpBonus);
+    scaledHp = Math.floor(config.hp * hpMultiplier * hpBonus * (1 + extraGrowth));
   }
 
   // 使用 createUnit 创建敌人（所属玩家ID=2，单位ID=类型名）
