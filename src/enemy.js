@@ -17,7 +17,7 @@ function spawnEnemy(type, pathPoints, waveNumber, currentLevel) {
   let hpBonus = isBossPhase ? 2 : 1;
   let speedBonus = isBossPhase ? 1.15 : 1;
 
-  // 关卡 11-20 额外生命增长：波 1-10 每波额外增加 (当前关卡-10)*1%，波 11+ 锁死
+  // 关卡 11-20 额外生命增长：波 1-10 每波额外增加 (当前关卡-10)*1%（线性增长），波 11+ 锁死
   let extraGrowth = 0;
   if (currentLevel >= 11 && waveNumber) {
     extraGrowth = (currentLevel - 10) * 0.01 * Math.min(waveNumber, 10);
