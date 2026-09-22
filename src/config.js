@@ -188,11 +188,11 @@ const TOWER_ORDER = Object.keys(TOWER_DEFS);
 // armor: 抗性值 —— 有效抗性 = max(0, armor - 塔的穿透)，减伤 = 有效抗性/(有效抗性+BALANCE.armorK)
 const ENEMY_TYPES = {
   normal:    { hp: 100,      speed: 6.0,  color: '#808080', tier: 0, reward: 10,   rewardPerWave: 1, size: 16, armor: 0 },
-  fast:      { hp: 100,      speed: 20.0, color: '#FF8C00', tier: 1, reward: 15,   rewardPerWave: 1, size: 14, armor: 0 },
+  fast:      { hp: 100,      speed: 13.0, color: '#FF8C00', tier: 1, reward: 15,   rewardPerWave: 1, size: 14, armor: 0 },
   heavy:     { hp: 500,      speed: 3.0,  color: '#555555', tier: 2, reward: 50,   rewardPerWave: 3, size: 20, armor: 67 },
   elite:     { hp: 1500,     speed: 6.0,  color: '#FFD700', tier: 3, reward: 500,  size: 22, armor: 90 },
   boss:      { hp: 5000,     speed: 5.0,  color: '#FF0000', tier: 4, reward: 1000, size: 28, armor: 150 },
-  finalBoss: { hp: 25000,    speed: 6.0,  color: '#9900FF', tier: 5, reward: 5000, size: 36, armor: 240 },
+  finalBoss: { hp: 25000,    speed: 4,  color: '#9900FF', tier: 5, reward: 5000, size: 36, armor: 240 },
 };
 
 // 布局参数
@@ -281,11 +281,11 @@ const POINTS = {
 const CODEX = {
   maxLevel: 5,            // 图签最高等级（解锁即为 Lv.1）
   bonusPerLevel: 6,       // 每级 +6% 攻击力（Lv.1 = +6%，Lv.5 = +30%）
-  upgradeCostRate: 0.6,   // 升级花费 = 解锁价 × 0.6 × 目标等级
+  upgradeCostRate: 1.2,   // 升级花费 = 解锁价 × 1.2 × 目标等级（解锁价已半价，此处×2补偿保持升级价不变）
   lineupMin: 4,           // 登场池容量下限（战斗内不可低于 4 个）
   lineupMax: 8,           // 登场池容量上限
-  // 解锁价（按稀有度）
-  unlockCost: { 1: 120, 2: 220, 3: 360 },
+  // 解锁价（按稀有度）— 2026-09-22 半价
+  unlockCost: { 1: 60, 2: 110, 3: 180 },
 };
 
 // ============================================================================
@@ -784,25 +784,37 @@ const AD = {
 // ============================================================================
 // 背景音乐配置
 // ============================================================================
-// 曲目：audio/rainfall.mp3 —— 原创氛围曲《Rainfall (Original)》
-//   · 80.0 秒无缝循环（24 小节 @72BPM），mono / 32kHz / 80kbps，约 801KB。
-//   · 风格：梅雨午后 —— 持续细雨铺底 + 稀疏雨滴点缀 + 中段钢琴旋律。
-//   · 生成脚本：.workbuddy/tools/make-rainfall.py（可复现，改参数重跑即可）；
+// 曲目：audio/rainfall.mp3 —— 原创氛围曲《Clean Afternoon (Original)》
+//   · 80.0 秒无缝循环（24 小节 @72BPM），mono / 32kHz / 96kbps，约 939KB。
+//   · 风格：清亮午后 —— 和声铺底 + 拨弦琶音 + 钢琴旋律，三层叠加。
+//   · **已移除原版"雨声铺底 + 雨滴点缀"两层**（v4 → v5）。原因：用户反馈
+//     "雨水音根本就是杂音"。新版的 2-6kHz 能量从 0.27% 降到 0.07%，时序方
+//     差从 0.75-1.0 的"持续噪声"变成 0.0-0.19 的"旋律瞬态谐波"。
+//   · 生成脚本：.workbuddy/tools/make-bgm.py（可复现，改参数重跑即可）；
 //     无缝性由 .workbuddy/tools/audit-bgm.py 审计（审的是解码后的 mp3）。
 //
-// 上一版《Snowfall (Original)》31.3s / 92BPM 已存档于
-// .workbuddy/tmp/_snowfall_v3_backup/，作为 A/B 试听页的对照版。
+// 早期版本存档：
+//   · v3 《Snowfall (Original)》31.3s / 92BPM → 已被 v4 覆盖（git 历史里可取回）
+//   · v4 《Rainfall (Original)》80.0s / 含雨声 → 已替换
 //
-// ⚠️ 想换成自己手上那首《rainfall》？只要把文件放到 audio/ 下、改这里的 src 即可，
-//    别的代码一行都不用动。但请注意：流传最广的那版（Øneheart × reidenshi）是
-//    有版权的商业录音，放进了自己的包体再上传发布 = 侵权，请务必先拿到授权。
+// 备用曲目：audio/snowfall.mp3 —— 原创氛围曲《Snowfall, Comfort Mix》(v4)
+//   · 120.0 秒无缝循环（46 小节 @92BPM），mono / 32kHz / 64kbps，约 938KB。
+//   · 相对 v3 的三处改动（用户反馈"高音时候太高了"）：旋律音区 E4–D5 →
+//     C4–A4；走句改成以级进为主（80.8% 相邻音 ≤2 半音）；全局低通 3500 → 3000Hz。
+//     频谱重心 629Hz → 227Hz，300–650Hz 占比 39% → 22%。
+//   · 生成脚本：.workbuddy/tools/make-snowfall.js；审计：.workbuddy/tools/audit-snowfall.js。
+//
+// ⚠️ 想换成自己手上拿过授权的那首《rainfall》？只要把文件放到 audio/ 下、
+//    改这里的 src 即可，别的代码一行都不用动。但请注意：流传最广的那版
+//    （Øneheart × reidenshi）是有版权的商业录音，放进自己的包体再上传
+//    发布 = 侵权，请务必先拿到授权。
 const MUSIC = {
   enabled: true,                 // 全局总开关（false 时音频模块完全不创建实例；保持 true 才能让游戏内开关能重新打开）
   defaultEnabled: false,         // 用户默认偏好：首次进入、且无存档时的初始开关状态。false = 默认静音/影音关闭
   src: 'audio/rainfall.mp3',     // 代码包内相对路径（微信支持直接播包内本地文件）
   // BGM 音量 0~1。塔防要留耳朵给音效，别开满。
-  // 音频文件本身母带定在 RMS -18dBFS（比常见商用曲目低 ~6dB，比上版 snowfall 再低 1.5dB，
-  // 雨声铺底需要更多"留白"），所以这里给 0.60 —— 实际听感大约 -22dBFS,
+  // 音频文件本身母带定在 RMS -19dBFS（比常见商用曲目低 ~7dB，比上版 snowfall 再低 ~3dB，
+  // 移除雨声铺底后整体更"干"、更聚焦于旋律），所以这里给 0.60 —— 实际听感大约 -23dBFS,
   // 属于"在背景里、但听得清"，久听不累。
   volume: 0.60,
   loop: true,                    // 循环播放
