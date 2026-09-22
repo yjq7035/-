@@ -51,8 +51,8 @@ const ui = require('./renderer-ui');
 // （elite 金色 #FFD700 属"精英"tier 3，不算 BOSS，不画大血条。）
 // 用于把场上 BOSS 归类到红/蓝两方，分别画对应的大血条。
 const BOSS_TEAM_COLORS = {
-  red:  new Set(['#FF0000']),
-  blue: new Set(['#9900FF']),
+  red:  new Set(['#FF0000', '#9900FF']),
+  blue: new Set(['#00BFFF']),
 };
 
 // 小怪血条的追赶速度：鬼影从满管缩到空管所需秒数（经典口径 = 白条记着"上一次的血量"）。
@@ -428,7 +428,7 @@ function drawEnemyHpBar(game, enemy) {
   else hpColor = THEME.accent.danger;
   if (pct > 0) {
     ctx.fillStyle = hpColor;
-    ctx.fillRect(barX, barY, Math.max(barH, barW * pct), barH);
+    ctx.fillRect(barX, barY, barW * pct, barH);
   }
   // 描边（方形）
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
@@ -714,7 +714,7 @@ function drawBossHealthBar(ctx, boss, cx, cy, team, maxW) {
 
   // 实条：真实血量，按剩余比例（阵营色渐变，方形）
   if (pct > 0) {
-    const fw = Math.max(h, w * pct);
+    const fw = w * pct;
     const grad = ctx.createLinearGradient(x, 0, x + fw, 0);
     grad.addColorStop(0, light);
     grad.addColorStop(1, main);
