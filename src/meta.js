@@ -2,7 +2,7 @@
 // 元进度 / 存档 —— src/meta.js
 // ----------------------------------------------------------------------------
 // 战斗内是"局内"状态（金币、波次、场上的塔），本文件管的是"局外"永久进度：
-//   · 特殊积分（图签唯一货币）
+//   · 藏珍点（图签唯一货币）
 //   · 图签：哪些图形塔已解锁、各自的图签等级（决定 +攻击力 与 能否登场）
 //   · 登场池 lineup：战斗商店的出货池（只出登场池里的已解锁塔）
 //   · 天赋点 + 天赋等级
@@ -75,7 +75,7 @@ function createDefaultMeta() {
   }
   return {
     version: 1,
-    points: 0,                             // 特殊积分
+    points: 0,                             // 藏珍点
     talentPoints: 0,                       // 天赋点
     codex,                                 // { [towerType]: level }，level>=1 即已解锁
     lineup: SHOP_TOWERS.slice(),           // 登场池（有序）
@@ -319,7 +319,9 @@ function codexCost(type, targetLevel) {
   const def = TOWER_DEFS[type];
   if (!def) return Infinity;
   const base = CODEX.unlockCost[def.rarity] || 200;
-  const raw = (targetLevel <= 1) ? base : Math.round(base * CODEX.upgradeCostRate * targetLevel);
+  // 2026-09-22 工单：图签升级所需全部翻倍（全塔、全等级统一 x2，含 Lv.1 解锁价）。
+  //   乘在 raw 上（折扣之前），天赋「图鉴学」折扣口径不变。
+  const raw = ((targetLevel <= 1) ? base : Math.round(base * CODEX.upgradeCostRate * targetLevel)) * 2;
   const discount = talentValue('codex_ease') / 100;
   return Math.max(1, Math.round(raw * (1 - discount)));
 }
@@ -672,7 +674,7 @@ function talentLevel(id) {
  * @param {string} id 天赋 id
  * @param {string} [key] 取哪一档数值，默认 'perLevel'。
  *        双向天赋（如 high_stakes）用 'goldPerLevel' 取"增益侧"数值，
- *        'perLevel' 取"负向侧"数值（特殊积分）。
+ *        'perLevel' 取"负向侧"数值（藏珍点）。
  */
 function talentValue(id, key) {
   const def = TALENTS.filter((t) => t.id === id)[0];

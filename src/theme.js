@@ -24,7 +24,7 @@ const THEME = {
     pink:     '#FF69B4',  // 阶段星
     green:    '#4CAF50',  // 增益（攻击增幅 / 路径起点 / 确认按钮）
     danger:   '#FF4444',  // 危险 / 金币不足
-    violet:   '#B388FF',  // 特殊积分 / 图签（第三种货币，区别于金币与天赋点）
+    violet:   '#B388FF',  // 藏珍点 / 图签（第三种货币，区别于金币与天赋点）
     cyan:     '#4DD0E1',  // 天赋点
     highlight: 'rgba(229, 115, 115, 0.45)',  // 我方交互高亮（选中范围圈 / 槽位高亮）
   },
@@ -307,14 +307,14 @@ function applyTowerStyle(ctx, x, y, color, approxR) {
   ctx.stroke();
 }
 
-// ========== 图形塔图标（17 种轮廓，全项目统一绘制入口）==========
+// ========== 图形塔图标（15 种轮廓，全项目统一绘制入口）==========
 // 方向语义（全项目统一）：**轮廓一律画成"朝右"（正右方 = 0 度）**，
 // 攻击朝向的旋转由 src/aim.js 施加（applyIconTransform / applyProjectileTransform），
 // 本文件不再判断"哪种塔该不该转" —— 那份政策只有一处定义，在 aim.SHAPE_AIM。
 const TOWER_SHAPES = [
   'triangle', 'circle', 'hexagon', 'square', 'trapezoid', 'semicircle',
-  'sector', 'long_rectangle', 'diamond', 'pentagon', 'oval', 'star',
-  'octagon', 'cross', 'arrow', 'bolt', 'parallel',
+  'sector', 'long_rectangle', 'diamond', 'oval', 'star',
+  'cross', 'arrow', 'bolt', 'parallel',
 ];
 
 /**
@@ -443,22 +443,6 @@ function drawTowerIcon(ctx, x, y, color, type, scale) {
       break;
     }
 
-    case 'pentagon': {
-      // 五边塔 - 正五边形（顶点朝上）
-      const pr = 12;
-      approxR = pr;
-      ctx.beginPath();
-      for (let i = 0; i < 5; i++) {
-        const angle = (Math.PI * 2 / 5) * i - Math.PI / 2;
-        const px = x + pr * Math.cos(angle);
-        const py = y + pr * Math.sin(angle);
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.closePath();
-      break;
-    }
-
     case 'oval': {
       // 椭圆塔 - 横向椭圆
       approxR = 12;
@@ -479,22 +463,6 @@ function drawTowerIcon(ctx, x, y, color, type, scale) {
         const sy = y + radius * Math.sin(angle);
         if (i === 0) ctx.moveTo(sx, sy);
         else ctx.lineTo(sx, sy);
-      }
-      ctx.closePath();
-      break;
-    }
-
-    case 'octagon': {
-      // 八边塔 - 正八边形
-      const or_ = 12;
-      approxR = or_;
-      ctx.beginPath();
-      for (let i = 0; i < 8; i++) {
-        const angle = (Math.PI / 4) * i - Math.PI / 8;
-        const px = x + or_ * Math.cos(angle);
-        const py = y + or_ * Math.sin(angle);
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
       }
       ctx.closePath();
       break;
@@ -925,7 +893,10 @@ const SKILL_GLYPH = {
   break: 'pierce',
   auraPower: 'aura',
   auraPenetration: 'aura',
+  auraCritChance: 'aura',
+  auraCritDamage: 'aura',
   range: 'aura',
+  stunChance: 'burst',
   sectorAngle: 'sector',
   stackMax: 'stack',
   innateStackCap: 'stack',

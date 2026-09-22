@@ -27,7 +27,7 @@ const RARITY = {
   3: { key: 3, name: '史诗', color: '#FFB74D' },
 };
 
-// ========== 全部塔定义（16 种）==========
+// ========== 全部塔定义（15 种）==========
 // color = 战场身份色；cost = 基础造价；rarity = 稀有度(1~3)
 const TOWER_DEFS = {
   triangle:      { name: '三角塔', color: '#FF4444', cost: 100, rarity: 1 },
@@ -42,11 +42,9 @@ const TOWER_DEFS = {
   // 本表只保留"展示 + 图签价"这四个字段 —— 缺 color 会让 drawTowerIcon → addColorStop
   // 收到 undefined 而每帧抛 SyntaxError（图签一解锁就炸），缺 name 会画出"undefined"。
   diamond:       { name: '菱形塔', color: '#00E5FF', cost: 220, rarity: 1 },
-  pentagon:      { name: '五边塔', color: '#7CFF6B', cost: 320, rarity: 2 },
   oval:          { name: '椭圆塔', color: '#B0BEC5', cost: 260, rarity: 1 },
   star:          { name: '星形塔', color: '#FF7BAC', cost: 420, rarity: 3 },
-  // ---- 第二批扩展图形（图签容量提升到 16 格）----
-  octagon:       { name: '八边塔', color: '#00BFA5', cost: 240, rarity: 2 },
+  // ---- 第二批扩展图形 ----
   cross:         { name: '十字塔', color: '#F50057', cost: 210, rarity: 1 },
   arrow:         { name: '箭形塔', color: '#FFA000', cost: 280, rarity: 2 },
   bolt:          { name: '闪电塔', color: '#FFD700', cost: 380, rarity: 3 },
@@ -58,7 +56,7 @@ const TOWER_DEFS = {
 };
 
 // 塔的详细属性（含攻击间隔秒数）
-// 注：本批新增的 4 种塔（diamond / pentagon / oval / star）走 game_core 的"普通塔单体攻击"
+// 注：本批新增的 3 种塔（diamond / oval / star）走 game_core 的"普通塔单体攻击"
 //     通用分支，因此必须提供 attackInterval，否则 attackTimer 会变成 NaN → 每帧开火。
 //
 // 战斗三属性口径（2026-09 三次修订，务必别改错）：
@@ -123,12 +121,11 @@ const TOWER_STATS = {
   //   它的进阶焦点是 auraPenetration（见 src/stage.js 的 STAGE_FOCUS）——
   //   别给它写 damage，辅助塔放大攻击力等于什么都没做。
   diamond:       { damage: 0, range: 150, attackSpeedMultiplier: 0, critChance: 0, critMult: 1, penetration: 0, isSupport: true, auraPenetration: 5, description: '辅助塔，不提供攻击。给周围我方图形塔增加 5 点穿透光环；自身每进阶一星穿透光环强度 +100%，高阶光环覆盖低阶光环。' },
-  pentagon:      { damage: 62, range: 200, attackSpeedMultiplier: 100, attackInterval: 1.4, critChance: 0, critMult: 2, penetration: 0, isSupport: false, description: '稳重的重击塔，血厚攻高，节奏偏慢。适合站在前排槽位承担主力输出。' },
-  oval:          { damage: 12, range: 260, attackSpeedMultiplier: 100, attackInterval: 0.4, critChance: 0,  critMult: 2, penetration: 0,  isSupport: false, description: '超远射程的快射塔，单发伤害低但覆盖全图大部分路径。适合补刀漏网之鱼。' },
-  // critChance = 原生「暴击几率 5%」= 固有技能「星芒暴击」的 base（见 src/skills.js）。
-  //   星形塔是"换成暴击倍率"的塔：原生倍率 2.0，先白送 5% 暴击起步，再靠技能等级堆上去。
-  star:          { damage: 96, range: 240, attackSpeedMultiplier: 100, attackInterval: 2.0, critChance: 5, critMult: 2.0, penetration: 0, isSupport: false, description: '六芒重炮，全塔最高单发伤害，换弹极慢。原生暴击几率 5%、暴击倍率 200%，堆起来收益惊人。' },
-  octagon:       { damage: 44, range: 205, attackSpeedMultiplier: 100, attackInterval: 1.1, critChance: 0,  critMult: 2, penetration: 0, isSupport: false, description: '八面均衡的中坚塔，攻防兼顾没有短板。适合填满中段槽位。' },
+  oval:          { damage: 12, range: 260, attackSpeedMultiplier: 100, attackInterval: 0.4, critChance: 0,  critMult: 2, penetration: 0,  isSupport: false, stunChance: 5, description: '超远射程的快射塔，单发伤害低但覆盖全图大部分路径。命中时有概率使目标眩晕1秒（不能移动/攻击）。适合补刀漏网之鱼。' },
+  // 星形塔 2026-09 改为辅助塔：不再是"六芒重炮"，而是发出暴击/暴伤光环。
+  //   auraCritChance / auraCritDamage = 两条光环的原生值 = 固有技能「星环祝福」
+  //   两条效果的 base（见 src/skills.js），战斗侧由 tower.getAuraOutput 发出。
+  star:          { damage: 0, range: 150, attackSpeedMultiplier: 0, critChance: 0, critMult: 1, penetration: 0, isSupport: true, auraCritChance: 2, auraCritDamage: 5, description: '辅助塔，不提供攻击。给周围我方图形塔增加 2% 暴击几率与 5% 暴击伤害光环；自身每进阶一星光环强度 +100%，高阶光环覆盖低阶光环。' },
   // 十字塔 2026-09 改为辅助塔：本身**没有任何属性**（伤害/攻速/射程全为 0），
   //   只把自身吃到的属性（= 嵌入的宝石）按 shareRatio% 共享给**上下左右四格**的相邻塔。
   //   · shareRatio 是"共享比例"原生值 = 固有技能「共享资源」的 base（见 src/skills.js）
@@ -178,7 +175,7 @@ const TOWER_STATS = {
 // 本文件只保留"塔是什么"（TOWER_DEFS / TOWER_STATS）与全局数值（BALANCE 等）。
 // ============================================================================
 
-// 默认已解锁 + 默认登场池的 5 种塔（玩家开局的起点阵容）// 图签里其余 7 种需要消耗"特殊积分"解锁后才能进入登场池。
+// 默认已解锁 + 默认登场池的 5 种塔（玩家开局的起点阵容）// 图签里其余 7 种需要消耗"藏珍点"解锁后才能进入登场池。
 const SHOP_TOWERS = ['triangle', 'circle', 'hexagon', 'square', 'semicircle'];
 
 // 全部塔类型顺序（图签网格 / 商店抽池 都按此稳定顺序，避免随机排序导致 UI 跳动）
@@ -264,7 +261,7 @@ const MAX_STAGE = 3;
 const AURA_DURATION = 3.0;
 
 // ============================================================================
-// 特殊积分产出（图签的唯一货币）
+// 藏珍点产出（图签的唯一货币）
 // ----------------------------------------------------------------------------
 // 积分"当场入账"到存档：每波清空 / 击杀精英及以上 / 通关关卡都给，不打折。
 const POINTS = {
@@ -279,13 +276,13 @@ const POINTS = {
 // ============================================================================
 // 图签（Codex）
 // ----------------------------------------------------------------------------
-// 玩法：花"特殊积分"解锁图形塔 → 解锁后才可"登场"（进入战斗商店的出货池）
+// 玩法：花"藏珍点"解锁图形塔 → 解锁后才可"登场"（进入战斗商店的出货池）
 //       解锁后可继续花积分升级图签等级，每级给该类型塔 +6% 攻击力（战斗中直接生效）
 const CODEX = {
   maxLevel: 5,            // 图签最高等级（解锁即为 Lv.1）
   bonusPerLevel: 6,       // 每级 +6% 攻击力（Lv.1 = +6%，Lv.5 = +30%）
   upgradeCostRate: 0.6,   // 升级花费 = 解锁价 × 0.6 × 目标等级
-  lineupMin: 6,           // 登场池容量下限（战斗内不可低于 6 个）
+  lineupMin: 4,           // 登场池容量下限（战斗内不可低于 4 个）
   lineupMax: 8,           // 登场池容量上限
   // 解锁价（按稀有度）
   unlockCost: { 1: 120, 2: 220, 3: 360 },
@@ -326,7 +323,7 @@ const TALENTS = [
   { id: 'boss_bounty', name: 'BOSS悬赏', desc: '精英/BOSS 击杀金币 +1% / 级',   max: 10, cost: 1 },
   { id: 'gold_per_sec',name: '涓流金库', desc: '每秒自动获得金币 +0.25 / 级',     max: 10, cost: 2 },
   { id: 'wave_bonus',  name: '波次结余', desc: '每清空一波额外金币 +6 / 级',      max: 10, cost: 2 },
-  { id: 'points_gain', name: '洞察先机', desc: '特殊积分获取 +2% / 级',          max: 10, cost: 1 },
+  { id: 'points_gain', name: '洞察先机', desc: '藏珍点获取 +2% / 级',          max: 10, cost: 1 },
   { id: 'build_cost',  name: '精打细算', desc: '图形塔造价 -1% / 级',            max: 10, cost: 1 },
   { id: 'codex_ease',  name: '图鉴学',   desc: '图签解锁/升级花费 -1% / 级',      max: 10, cost: 1 },
   { id: 'high_stakes', name: '暴利风险', desc: '生存积分 -1%/级，击杀金币 +2%/级', max: 10, cost: 1 },
@@ -558,13 +555,13 @@ const GEM_FAMILIES = [
   // ---- 功能性宝石家族（不影响战斗，只改"商店刷新出现概率"）----
   // 这两族的 attr（shopPullUp / shopPullDown）**不**走 bonusForType 的战斗/面板口径，
   // 只被 gems.shopPullPP / shopWeight 读取（出货池加权抽样用），所以绝不会污染战斗数值。
-  // 设计口径：base=3 / step=0 —— 效果恒为「+3% / -3%」，不随等级放大（需求明确写死 3%，
-  //   等级只影响图标/合成，不放大这个功能性数值；且"同类宝石全塔唯一"保证每塔至多一颗）。
+  // 设计口径：base=3 / step=3 —— 效果 = 3×等级（Lv1=3 … Lv5=15），
+  //   与红宝石8×等级同链路（gemEffectAt=base+step×(lv-1)）；消费侧见gems.shopPullPP/shopWeight。
   // ⛔ 镇守宝石效果说明（2026-09-21 明确）：
-  //    效果 = 将该塔型在商店出货池中的抽取权重从 100 降至 97（即 -3% 概率）。
+  //    效果 = 该塔型抽取权重 100 - 3×等级（Lv1=97，即-3%；Lv5=85，即-15%）。
   //    触发条件：该塔型当前星级 ≥ 3★（3★ 及以上才生效，2★ 及以下不生效）。
   //    范围限定：仅影响该塔型自己的出货权重，其他塔型不受波及。
-  //    同塔型同时镶嵌祈愿+镇守：权重 = 100 + 3 - 3 = 100（相互抵消）。
+  //    同塔型同时镶嵌祈愿+镇守（同级）：权重 = 100 + 3×lv - 3×lv = 100（相互抵消）。
   // ⚠️ 该族效果是"减益"（降低权重），文案必须写「-3%」而非「+3%」；
   //    neg:true 标记即为此意——gemDescAt 默认写 '+'，缺了它镇守宝石在背包/面板里会印成
   //    「商店出现 +3%」，与实际行为（降权）完全相反，属误导文案。
@@ -573,9 +570,9 @@ const GEM_FAMILIES = [
   //    gemDescAt 默认恒写 '+'，它只认标签不认语义 —— 少了这个标记，
   //    镇守宝石在背包/图签/面板里会印成「商店出现 +3%」，与它实际把权重
   //    从 100 压到 97 的行为完全相反（玩家按文案理解 = 被骗）。
-  { id: 'shop_pull_up',   family: '祈愿宝石', attr: 'shopPullUp',   label: '商店出现', unit: '%', base: 3, step: 0, hue: 135, sat: 85,
+  { id: 'shop_pull_up',   family: '祈愿宝石', attr: 'shopPullUp',   label: '商店出现', unit: '%', base: 3, step: 3, hue: 135, sat: 85,
     names: ['微光祈愿宝石', '晨曦祈愿宝石', '星辉祈愿宝石', '月华祈愿宝石', '永恒祈愿宝石'] },
-  { id: 'shop_pull_down', family: '镇守宝石', attr: 'shopPullDown', label: '商店出现', neg: true, unit: '%', base: 3, step: 0, hue: 18,  sat: 92,
+  { id: 'shop_pull_down', family: '镇守宝石', attr: 'shopPullDown', label: '商店出现', neg: true, unit: '%', base: 3, step: 3, hue: 18,  sat: 92,
     names: ['微光镇守宝石', '晨曦镇守宝石', '星辉镇守宝石', '月华镇守宝石', '永恒镇守宝石'] },
 ];
 
@@ -626,12 +623,40 @@ function gemEffectAt(familyId, lv) {
  * 某家族某等级的效果文案，如 ruby Lv.3 → '攻击力 +24%'。
  * ⚠️ 符号由家族的 neg 标记决定，不靠调用方拼 —— 减益宝石（镇守宝石）
  *    写成 '+' 会与它的实际行为正好相反，而文案只有这一个出口（gemDescAt）。
+ * ⚠️ 镇守宝石（shop_pull_down）额外后缀「（需3★生效）」—— 该族仅 3★ 才生效，
+ *    短描述若只写「商店出现 -3%」会让 0~2★ 玩家误以为已生效（2026-09-22 工单补写）。
  */
 function gemDescAt(familyId, lv) {
   const fam = GEM_FAMILY_BY_ID[familyId];
   if (!fam) return '';
   const v = fam.base + fam.step * (clampGemLevel(lv) - 1);
-  return `${fam.label} ${fam.neg ? '-' : '+'}${v}${fam.unit}`;
+  const base = `${fam.label} ${fam.neg ? '-' : '+'}${v}${fam.unit}`;
+  if (fam.id === 'shop_pull_down') return `${base}（需3★生效）`;
+  return base;
+}
+
+/**
+ * 某家族的详细文本介绍（纯文案，不含任何数值计算 —— 数值唯一真源仍是 gemEffectAt）。
+ * 用途：宝石详情浮层 / 属性面板宝石卡的第二行说明，让玩家看懂「嵌了有啥用、在哪生效」。
+ * 措辞与短描述同风格：先说加成，再说范围与生效条件。
+ * ⚠️ 只加描述文本，不动数值与生效逻辑；生效逻辑见 src/gems.js shopPullPP。
+ */
+const GEM_DETAIL = {
+  ruby: '攻击宝石：嵌入后该塔攻击力提升，跨局永久，与图签加成乘算。',
+  sapphire: '攻速宝石：嵌入后该塔出手更快，跨局永久。',
+  emerald: '暴击宝石：嵌入后该塔暴击率提升，跨局永久。',
+  topaz: '穿透宝石：嵌入后该塔穿透提升，无视部分护甲，跨局永久。',
+  amethyst: '技能效果宝石：嵌入后该塔固有技能每条效果放大，跨局永久。',
+  opal: '技能等级宝石：嵌入后该塔固有技能等级提升，与强化叠加，跨局永久。',
+  ruby_crit: '暴伤宝石：嵌入后该塔暴击伤害提升，暴击时更痛，跨局永久。',
+  topaz_break: '破甲宝石：嵌入后该塔破甲提升，抵消敌人抗性，跨局永久。',
+  shop_pull_up: '功能宝石：该塔在商店出现权重+3，即时生效，仅作用于本塔。',
+  shop_pull_down: '功能宝石：该塔在商店出现权重-3，需3★才生效，仅作用于本塔。',
+};
+
+/** 某家族的详细文本介绍（未知家族返回空串；等级不影响文案，传参仅为接口对齐） */
+function gemDetailAt(familyId) {
+  return GEM_DETAIL[familyId] || '';
 }
 
 /** 某家族某等级的颜色（等级越高越深；未知家族给中性灰，绝不返回 undefined） */
@@ -827,6 +852,7 @@ module.exports = {
   clampGemLevel,
   gemEffectAt,
   gemDescAt,
+  gemDetailAt,
   gemLevelColor,
   gemLevelName,
   resolveGem,

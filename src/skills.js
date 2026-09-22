@@ -94,6 +94,10 @@ const EFFECT_KEYS = {
   innateStackCap:        { active: true,  name: '叠加上限',   unit: '%' },
   auraPower:             { active: true,  name: '光环强度',   unit: '%' },
   auraPenetration:       { active: true,  name: '穿透光环',   unit: '' },
+  // 星形塔「星环祝福」：给周围我方塔加暴击几率与暴击伤害的光环。
+  //   战斗侧消费方 = tower.getAuraOutput（先加技能增量、再乘进阶倍率发出），见 src/tower.js。
+  auraCritChance:        { active: true,  name: '暴击光环',   unit: '%' },
+  auraCritDamage:        { active: true,  name: '暴伤光环',   unit: '%' },
   // 十字塔「共享资源」：把自身宝石属性按该比例共享给上下左右四格的邻塔。
   //   战斗侧唯一消费方 = tower.getAuraOutput（乘进发出的光环数值），见 src/tower.js。
   shareRatio:            { active: true,  name: '共享比例',   unit: '%' },
@@ -104,9 +108,13 @@ const EFFECT_KEYS = {
   chainCount:            { active: true,  name: '传导数量',   unit: '' },
   chainRange:            { active: true,  name: '传导距离',   unit: '' },
   chainRatio:            { active: true,  name: '传导伤害比例', unit: '%' },
+  // 椭圆塔「眩晕射击」：命中时按概率使目标眩晕1秒（不能移动+不能攻击）。
+  //   战斗侧唯一消费方 = game_core.applyDamage 的 oval 分支（按技能等级 roll 点），
+  //   眩晕状态机在 src/enemy.js（stunTimer / applyStun / isStunned）。
+  stunChance:            { active: true,  name: '眩晕几率',   unit: '%' },
   // ⚠️ 生命（hp）：当前版本图形塔无敌，生命已从战斗结算里移除（TOWER_STATS 也没有 hp 字段）。
-  //    五边塔 / 八边塔的技能仍挂着它，属于"登记在案但当前不生效"——UI 上的说明已写明，
-  //    等哪天把图形塔做成可被击毁，这里改成 active:true 并在 bonusStats 里接回 ATTR.HP 即可。
+  //    保留该键仅为"登记在案但当前不生效"，等哪天把图形塔做成可被击毁，
+  //    这里改成 active:true 并在 bonusStats 里接回 ATTR.HP 即可。
   hp:                    { active: false, name: '生命',       unit: '' },
 };
 
@@ -196,34 +204,19 @@ const SKILLS = {
       { key: 'stackMax', name: '堆叠上限', base: 10, per: 2, unit: '层', desc: '同一目标可累积的最大堆叠层数' },
     ],
   },
-  pentagon: {
-    id: 'pen_bulk', name: '坚壁', innate: true, icon: 'hp',
-    desc: '本体更耐打，敢站前排（当前版本图形塔无敌，该条暂未生效）。',
-    effects: [
-      { key: 'hp', name: '生命', base: 260, per: 45, unit: '', desc: '本体更耐打（当前版本图形塔无敌）' },
-    ],
-  },
   oval: {
-    id: 'oval_range', name: '远程校准', innate: true, icon: 'range',
-    desc: '把准星推得更远，覆盖更长的路径。',
+    id: 'oval_stun', name: '眩晕射击', innate: true, icon: 'stunChance',
+    desc: '命中时有概率使目标眩晕1秒（不能移动/攻击）；升级提高触发概率，眩晕时长固定不变。',
     effects: [
-      { key: 'range', name: '射程', base: 260, per: 15, unit: '', desc: '覆盖更长的路径' },
+      { key: 'stunChance', name: '眩晕几率', base: 5, per: 5, unit: '%', desc: '命中时使目标眩晕1秒的概率（=5%×技能等级；眩晕时长固定1秒，不随等级变化）' },
     ],
   },
   star: {
-    id: 'star_crit', name: '星芒暴击', innate: true, icon: 'critChance',
-    desc: '让六芒重炮打出暴击 —— 高倍率下的收益极其夸张。',
+    id: 'star_aura', name: '星环祝福', innate: true, icon: 'auraCritChance',
+    desc: '持续给周围的我方图形塔加暴击几率与暴击伤害，自己不出手。',
     effects: [
-      // base = 5：星形塔原生就带 5% 暴击（= TOWER_STATS.star.critChance），
-      // 配上它 200% 的暴击倍率，Lv.1 就有实打实的收益，不是"0 起步"。
-      { key: 'critChance', name: '暴击几率', base: 5, per: 6, unit: '%', desc: '命中时触发暴击的概率（配上 200% 暴击倍率）' },
-    ],
-  },
-  octagon: {
-    id: 'oct_bulk', name: '均衡护体', innate: true, icon: 'hp',
-    desc: '本体更耐打（当前版本图形塔无敌，该条暂未生效）。',
-    effects: [
-      { key: 'hp', name: '生命', base: 210, per: 40, unit: '', desc: '本体更耐打（当前版本图形塔无敌）' },
+      { key: 'auraCritChance', name: '暴击光环', base: 2, per: 1, unit: '%', desc: '给周围我方塔的暴击几率光环再抬高一点（每级 +1%）' },
+      { key: 'auraCritDamage', name: '暴伤光环', base: 5, per: 2, unit: '%', desc: '给周围我方塔的暴击伤害光环再抬高一点（每级 +2%）' },
     ],
   },
   // 十字塔 2026-09 改为辅助塔：不再是"射速更凶"，而是决定"共享比例"。
@@ -835,10 +828,15 @@ function audit() {
 const NATIVE_GETTERS = {
   auraPower: (st) => (st.supportBuff && st.supportBuff.attackSpeedMultiplier) || 0,
   explosionDamage: (st) => st.explosionRatio,
+  auraPenetration: (st) => st.auraPenetration,
+  auraCritChance: (st) => st.auraCritChance || 0,
+  auraCritDamage: (st) => st.auraCritDamage || 0,
   sectorAngle: (st) => st.sectorHalfAngle,
   break: (st) => st.break || 0,
   // 十字塔「共享资源」的原生共享比例（TOWER_STATS.cross.shareRatio）
   shareRatio: (st) => st.shareRatio || 0,
+  // 椭圆塔「眩晕射击」的原生眩晕几率（TOWER_STATS.oval.stunChance）
+  stunChance: (st) => st.stunChance || 0,
 };
 
 /** 该属性在某塔型上的原生值（没有对应原生字段时返回 undefined → audit 报错） */

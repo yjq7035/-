@@ -30,7 +30,7 @@
 const config = require('./config');
 const {
   GEM, GEM_KINDS, GEM_FAMILIES, GEM_LEVELS, TOWER_DEFS, MAX_STAGE,
-  clampGemLevel, gemEffectAt, gemDescAt, gemLevelColor, gemLevelName, resolveGem,
+  clampGemLevel, gemEffectAt, gemDescAt, gemDetailAt, gemLevelColor, gemLevelName, resolveGem,
 } = config;
 const meta = require('./meta');
 
@@ -90,10 +90,19 @@ function effectAt(kind, lv) {
   return r ? gemEffectAt(r.id, r.lv) : {};
 }
 
-/** 宝石在指定等级下的效果文案，如「攻击力 +24%」 */
+/** 宝石在指定等级下的效果文案，如「攻击力 +24%」（镇守宝石自带「（需3★生效）」后缀） */
 function effectTextAt(kind, lv) {
   const r = resolveGem(kind, lv);
   return r ? gemDescAt(r.id, r.lv) : '';
+}
+
+/**
+ * 宝石详细文本介绍（纯文案，与等级无关；镇守宝石含「需3★才生效」条件说明）。
+ * 来源唯一真源 = config.gemDetailAt，本文件只做转发（避免 config↔gems 两份文案打架）。
+ */
+function detailTextAt(kind) {
+  const r = resolveGem(kind, 1);
+  return r ? gemDetailAt(r.id) : '';
 }
 
 /** 宝石 Lv.1 的基础效果文案（老接口，= effectTextAt(kind, 1)） */
@@ -261,8 +270,8 @@ function randomKind() {
 // 这两族宝石（shop_pull_up / shop_pull_down）不改任何战斗/面板数值，
 // 只通过"出货池抽取权重"影响该塔型在商店刷新时出现的几率。
 //   · 基础权重 = 100（每个塔型平等）
-//   · shop_pull_up   嵌了 → 权重 +3（永久，只看是否嵌入，不看星级）
-//   · shop_pull_down 嵌了且达到 3★ → 权重 -3（星级未到 3★ 时完全不生效）
+//   · shop_pull_up   嵌了 → 权重 +3×等级（永久，不看星级；Lv1=+3…Lv5=+15）
+//   · shop_pull_down 嵌了且达到 3★ → 权重 -3×等级（星级未到 3★ 时完全不生效；Lv1=-3…Lv5=-15）
 // 星级判定走 meta.getStage(type)（持久化的最佳星级，与战斗 setStage 同源）。
 // ⚠️ 每塔型各自算自己的权重：遍历"该塔型已嵌入的宝石"——所以加成**只作用嵌入了
 //    该宝石的特定塔型**，其他塔型权重恒为 100，绝不被波及（需求硬要求）。
@@ -276,11 +285,11 @@ function clampShopStage(stage) {
 }
 
 /**
- * 该塔型因嵌入宝石获得的"商店出现概率权重加成"（单位 = 权重点数，+3 / -3）。
+ * 该塔型因嵌入宝石获得的"商店出现概率权重加成"（单位 = 权重点数，+3×等级 / -3×等级）。
  * 只统计**该塔型**已嵌入的宝石（meta.embeddedEntries(type)），其他塔型一律返回 0。
  * @param {string} type 塔类型
  * @param {number} [stage] 该类型当前星级（持久化最佳星级；缺省当 0★）
- * @returns {number} 权重增量（如 +3 / 0 / -3）
+ * @returns {number} 权重增量（如 Lv1 +3 / 0 / Lv1 -3；Lv5 ±15）
  */
 function shopPullPP(type, stage) {
   if (!type || !TOWER_DEFS[type]) return 0;
@@ -290,8 +299,8 @@ function shopPullPP(type, stage) {
     const def = gemDef(entry.kind);
     if (!def) continue;
     const e = effectAt(entry.kind, entry.lv);
-    if (e.shopPullUp) pp += e.shopPullUp;                       // 祈愿宝石：无条件 +3
-    if (e.shopPullDown && st >= MAX_STAGE) pp -= e.shopPullDown; // 镇守宝石：仅 3★ 时 -3
+    if (e.shopPullUp) pp += e.shopPullUp;                       // 祈愿宝石：无条件 +3×等级
+    if (e.shopPullDown && st >= MAX_STAGE) pp -= e.shopPullDown; // 镇守宝石：仅 3★ 时 -3×等级
   }
   return pp;
 }
@@ -500,6 +509,7 @@ module.exports = {
   levelLine,
   effectText,
   effectTextAt,
+  detailTextAt,
   effectAt,
   gemName,
   gemDisplay,

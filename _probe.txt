@@ -1,5 +1,5 @@
 module loaded OK
-[1] layout(no sel) THREW: ReferenceError :: L is not defined
-[2] layout(sel) THREW: ReferenceError :: L is not defined
-[3] hitCodex THREW: ReferenceError :: L is not defined
-[4] drawCodex(sel) THREW: ReferenceError :: L is not defined
+[1] layout(no sel) OK rows=4 sheetY=601 sheetH=0
+[2] layout(sel) OK sheetH=350.20000000000005 sheetY=250.79999999999995
+[3] hitCodex OK -> {"kind":"close"}
+[4] drawCodex(sel) THREW: TypeError :: ctx.translate is not a function

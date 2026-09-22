@@ -24,7 +24,7 @@ const meta = require('./meta');
 const gems = require('./gems');
 const skills = require('./skills');
 
-const { THEME, roundRectPath, drawButton, drawScrollBar, drawScrollHint, ellipsize } = theme;
+const { THEME, roundRectPath, drawButton, drawScrollBar, drawScrollHint, ellipsize, wrapTextLines } = theme;
 
 // ==================== 公共助手 ====================
 
@@ -253,16 +253,17 @@ function drawEmbedPicker(game) {
     // 左：宝石图标
     gems.drawGemIcon(ctx, r.x + 22, r.y + r.h / 2, 12, row.kind, { lv: row.lv });
 
-    // 中：名称（带 Lv）+ 效果（按该颗的等级缩放）
+    // 中：名称（带 Lv）+ 效果（按该颗的等级缩放；短描述单行，超宽截断——
+    // 全系短描述最长为镇守宝石「商店出现 -3%（需3★生效）」，常规屏宽单行可容纳，窄屏截断保布局）
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.font = 'bold 12px Arial';
     ctx.fillStyle = row.color;
-    ctx.fillText(row.name, r.x + 42, r.y + r.h / 2 - 7);
+    ctx.fillText(ellipsize(ctx, row.name, r.w - 42 - (row.blocked ? 70 : 12)), r.x + 42, r.y + r.h / 2 - 7);
 
     ctx.font = '10px Arial';
     ctx.fillStyle = THEME.text.secondary;
-    ctx.fillText(row.desc, r.x + 42, r.y + r.h / 2 + 9);
+    ctx.fillText(ellipsize(ctx, row.desc, r.w - 42 - (row.blocked ? 70 : 12)), r.x + 42, r.y + r.h / 2 + 9);
     ctx.restore();
 
     // 右：拦截原因（与合成列表"等级不符"同款标注）
@@ -324,8 +325,9 @@ const INFO_UI = {
 };
 
 /**
- * 宝石详情浮层布局。
- * 底部按钮：图签来源（正在嵌入选宝石）→ 合成 + 嵌入 两颗；背包来源 → 只有合成一颗。
+ * 宝石详情浮层布局（高度自适应换行版）。
+ * 效果细节三段（当前效果 / 等级行 / 详细文本）均按正文宽换行全显，行数由换行函数决定，
+ * 高度 = 各段行数 × lineH —— 布局与绘制共用同一份行数组，绝不各算各的。
  * @returns {null|{x,y,w,h,name,desc,lv,color,synthBtn,embedBtn,close}}
  */
 function getGemInfoLayout(game) {
@@ -340,9 +342,20 @@ function getGemInfoLayout(game) {
   const w = Math.min(INFO_UI.maxW, W - 36);
   const fromCodex = info.from === 'codex' && info.type && meta.socketCount(info.type) > info.index;
 
+  const desc = gems.effectTextAt(gem.kind, gem.lv);
+  const lvLine = gems.levelLine(gem.kind, gem.lv);
+  const detail = gems.detailTextAt(gem.kind);
+  const bodyW = w - INFO_UI.padX * 2;
+  // 换行行数组（布局与绘制同源）：有 ctx 时实测，否则按单行回落（高度=旧公式，不崩）
+  const effLines = gemWrapLines(game, `当前效果：${desc}`, bodyW, '11px Arial');
+  const lvLines = gemWrapLines(game, lvLine, bodyW, '10px Arial');
+  const detailLines = gemWrapLines(game, detail, bodyW, '10px Arial');
+
   // 高度逐段累加（与绘制同源，不允许两套算法）
+  // 效果细节 = 当前效果换行 + 等级行换行 + 详细文本换行（2026-09-22 工单：全系补详细文本；追加工单：自适应换行）
+  const detailN = effLines.length + lvLines.length + detailLines.length;
   let h = INFO_UI.padTop + INFO_UI.headH
-    + INFO_UI.divH + INFO_UI.lineH * 2
+    + INFO_UI.divH + INFO_UI.lineH * detailN
     + INFO_UI.divH + INFO_UI.ruleTitleH + INFO_UI.ruleLineH * 2
     + INFO_UI.btnGap + INFO_UI.btnH + INFO_UI.padBottom;
 
@@ -366,7 +379,11 @@ function getGemInfoLayout(game) {
     kind: gem.kind,
     lv: gem.lv || 1,
     name: gems.gemName(gem.kind, gem.lv),
-    desc: gems.effectTextAt(gem.kind, gem.lv),
+    desc: desc,
+    detail: detail,
+    effLines: effLines,
+    lvLines: lvLines,
+    detailLines: detailLines,
     color: def ? def.color : '#90A4AE',
     from: info.from,
     synthBtn: synthBtn,
@@ -374,6 +391,19 @@ function getGemInfoLayout(game) {
     close: { x: x + w - 34, y: y + 10, w: 24, h: 24 },
     ruleLines: synthRuleLines(),
   };
+}
+
+/** 详情浮层换行（布局与绘制同源；无 ctx 时按单行回落，保证命中检测不崩） */
+function gemWrapLines(game, text, maxW, font) {
+  if (!text) return [];
+  const ctx = game && game.ctx;
+  if (ctx && typeof wrapTextLines === 'function') {
+    try {
+      const lines = wrapTextLines(ctx, String(text), maxW, font);
+      return lines.length ? lines : [String(text)];
+    } catch (e) { /* 回落 */ }
+  }
+  return [String(text)];
 }
 
 /**
@@ -453,21 +483,33 @@ function drawGemInfo(game) {
 
   let cy = L.y + INFO_UI.padTop + INFO_UI.headH;
 
-  // ---- 效果细节 ----
+  // ---- 效果细节（自适应换行：当前效果 / 等级行 / 详细文本逐行全显） ----
   theme.drawTaperedDivider(ctx, L.x + L.w / 2, cy + INFO_UI.divH / 2, L.w - 28, 4);
   cy += INFO_UI.divH;
 
   ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
   ctx.font = '11px Arial';
   ctx.fillStyle = L.color;
-  ctx.fillText(`当前效果：${L.desc}`, L.x + INFO_UI.padX, cy + INFO_UI.lineH / 2);
-  cy += INFO_UI.lineH;
+  for (const line of (L.effLines && L.effLines.length ? L.effLines : [`当前效果：${L.desc}`])) {
+    ctx.fillText(line, L.x + INFO_UI.padX, cy + INFO_UI.lineH / 2);
+    cy += INFO_UI.lineH;
+  }
 
   ctx.font = '10px Arial';
   ctx.fillStyle = THEME.text.off;
-  ctx.fillText(ellipsize(ctx, gems.levelLine(L.kind, L.lv), L.w - INFO_UI.padX * 2),
-    L.x + INFO_UI.padX, cy + INFO_UI.lineH / 2);
-  cy += INFO_UI.lineH;
+  for (const line of (L.lvLines && L.lvLines.length ? L.lvLines : [gems.levelLine(L.kind, L.lv)])) {
+    ctx.fillText(line, L.x + INFO_UI.padX, cy + INFO_UI.lineH / 2);
+    cy += INFO_UI.lineH;
+  }
+
+  ctx.font = '10px Arial';
+  ctx.fillStyle = THEME.text.secondary;
+  for (const line of (L.detailLines && L.detailLines.length ? L.detailLines : [L.detail || ''])) {
+    if (!line) continue;
+    ctx.fillText(line, L.x + INFO_UI.padX, cy + INFO_UI.lineH / 2);
+    cy += INFO_UI.lineH;
+  }
 
   // ---- 合成规则 ----
   theme.drawTaperedDivider(ctx, L.x + L.w / 2, cy + INFO_UI.divH / 2, L.w - 28, 4);
@@ -765,11 +807,11 @@ function drawSynth(game) {
     ctx.textBaseline = 'middle';
     ctx.font = 'bold 12px Arial';
     ctx.fillStyle = row.color;
-    ctx.fillText(row.name, r.x + 38, r.y + r.h / 2 - 7);
+    ctx.fillText(ellipsize(ctx, row.name, r.w - 38 - 44), r.x + 38, r.y + r.h / 2 - 7);
 
     ctx.font = '10px Arial';
     ctx.fillStyle = THEME.text.secondary;
-    ctx.fillText(row.desc, r.x + 38, r.y + r.h / 2 + 9);
+    ctx.fillText(ellipsize(ctx, row.desc, r.w - 38 - 44), r.x + 38, r.y + r.h / 2 + 9);
     ctx.restore();
 
     // 右侧：勾选框 / 等级不符

@@ -1,9 +1,9 @@
 // ============================================================================
 // 图签界面 —— src/codex.js
 // ----------------------------------------------------------------------------
-// 玩法（对应需求"用特殊积分解说图形塔，然后可以升级图形塔级分配图形塔的登场"）：
+// 玩法（对应需求"用藏珍点解说图形塔，然后可以升级图形塔级分配图形塔的登场"）：
 //   · 12 个图形塔格网；未解锁的显示剪影 + 🔒 + 解锁价
-//   · 花"特殊积分"解锁 → 解锁即 Lv.1，之后可继续升级到 Lv.5
+//   · 花"藏珍点"解锁 → 解锁即 Lv.1，之后可继续升级到 Lv.5
 //   · 图签等级对战斗直接生效：该类型塔 +6%/级 攻击力（Lv.5 = +30%）
 //   · 登场池：只有"已解锁 + 已登场"的塔才会出现在战斗商店的出货池里，上限 6
 //
@@ -188,7 +188,7 @@ function getCodexLayout(game) {
   const H = game.H;
   const navTop = H - LAYOUT.navHeight;
 
-  // 4 列固定：图形塔已扩到 16 种，3 列会变成 6 行把格网挤出屏幕
+  // 4 列固定：图形塔共 15 种，3 列会把格网挤出屏幕
   const cols = 4;
   const total = TOWER_ORDER.length;
   const rows = Math.ceil(total / cols);
@@ -253,7 +253,7 @@ function getCodexLayout(game) {
     };
   });
 
-  // 标题栏：左 = 「图签」徽标，中 = 已解锁 / 登场进度，右 = 特殊积分
+  // 标题栏：左 = 「图签」徽标，中 = 已解锁 / 登场进度，右 = 藏珍点
   // 宽度按屏宽自适应收窄，保证 320 宽的小屏也不会挤在一起。
   const headerCY = CODEX_UI.headerTop + CODEX_UI.headerH / 2;
   const pointsW = 76;
@@ -955,9 +955,11 @@ function drawSheetAttrs(ctx, L, block, y, left, contentW) {
     // 梯塔 → supportBuff.attackSpeedMultiplier；菱形塔 → auraPenetration。
     const auraPct = (stats.supportBuff && stats.supportBuff.attackSpeedMultiplier) || 0;
     const auraPen = stats.auraPenetration || 0;
+    const auraCrit = stats.auraCritChance || 0;
+    const auraCritDmg = stats.auraCritDamage || 0;
     ctx.fillStyle = THEME.text.dim;
-    ctx.fillText(auraPen ? `穿透 +${auraPen}` : `光环 +${auraPct}%`, left, row1);
-    ctx.fillText(`范围 ${stats.range}`, left + colW, row1);
+    ctx.fillText(auraPen ? `穿透 +${auraPen}` : ((auraCrit || auraCritDmg) ? `暴击 +${auraCrit}%` : `光环 +${auraPct}%`), left, row1);
+    ctx.fillText((auraCrit || auraCritDmg) ? `暴伤 +${auraCritDmg}%` : `范围 ${stats.range}`, left + colW, row1);
   } else {
     // 攻击：白字基础值 + 绿字图签加成（与属性面板同一套双色语义）
     ctx.fillStyle = THEME.text.primary;
@@ -1032,7 +1034,7 @@ function actCodex(game, action, type) {
     } else {
       theme.pushToast(
         game,
-        res.reason === 'points' ? '特殊积分不足' : (res.reason === 'maxed' ? '图签已满级' : '无法提升'),
+        res.reason === 'points' ? '藏珍点不足' : (res.reason === 'maxed' ? '图签已满级' : '无法提升'),
         THEME.accent.danger
       );
     }

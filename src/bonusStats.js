@@ -37,6 +37,8 @@ const ATTR = {
   ATTACK_INTERVAL: 'attackInterval',
   AURA_POWER: 'auraPower',   // 辅助塔光环强度（虚拟属性，非 TOWER_STATS 原生字段）
   AURA_PENETRATION: 'auraPenetration', // 菱形塔：穿透光环（虚拟属性，原生值在 st.auraPenetration）
+  AURA_CRIT_CHANCE: 'auraCritChance', // 星形塔：暴击光环（虚拟属性，原生值在 st.auraCritChance）
+  AURA_CRIT_DAMAGE: 'auraCritDamage', // 星形塔：暴伤光环（虚拟属性，原生值在 st.auraCritDamage）
   SHARE_RATIO: 'shareRatio',           // 十字塔：共享比例（%）
   SHARE_TARGET: 'shareTarget',         // 十字塔：共享目标（纯文案行，没有数值——"上下左右"）
   RANGE: 'range',
@@ -57,6 +59,7 @@ const ATTR = {
   CHAIN_COUNT: 'chainCount',           // 闪电塔：连锁传导的目标总数（含主目标）
   CHAIN_RANGE: 'chainRange',           // 闪电塔：连锁传导半径(px)
   CHAIN_RATIO: 'chainRatio',           // 闪电塔：副目标伤害 = 主目标 × 该比例(%)
+  STUN_CHANCE: 'stunChance',           // 椭圆塔：眩晕几率(%)——命中时挂 1 秒眩晕（不能移动+不能攻击）
 };
 
 // ---------- 来源分类（决定颜色语义与明细前缀）----------
@@ -101,6 +104,8 @@ const BUFF_LABELS = {
   explosionRadius:       { name: '爆炸范围', unit: '' },
   auraPower:             { name: '光环强度', unit: '%' },
   auraPenetration:       { name: '穿透光环', unit: '' },
+  auraCritChance:        { name: '暴击光环', unit: '%' },
+  auraCritDamage:        { name: '暴伤光环', unit: '%' },
   eliteMult:             { name: '精英伤害倍率', unit: '倍' },
   projectileScale:       { name: '弹道体积', unit: '%' },
   sectorAngle:           { name: '扇面张角', unit: '°' },
@@ -109,6 +114,7 @@ const BUFF_LABELS = {
   chainCount:            { name: '传导数量', unit: '' },
   chainRange:            { name: '传导距离', unit: '' },
   chainRatio:            { name: '传导伤害比例', unit: '%' },
+  stunChance:            { name: '眩晕几率', unit: '%' },
 };
 
 // 技能属性 key → ATTR key（两者同名；这里显式列出，新增技能效果别漏登记）
@@ -126,6 +132,8 @@ const ENHANCE_ATTR_MAP = {
   explosionRadius: ATTR.EXPLOSION_RADIUS,
   auraPower: ATTR.AURA_POWER,
   auraPenetration: ATTR.AURA_PENETRATION,
+  auraCritChance: ATTR.AURA_CRIT_CHANCE,
+  auraCritDamage: ATTR.AURA_CRIT_DAMAGE,
   shareRatio: ATTR.SHARE_RATIO,
   eliteMult: ATTR.ELITE_MULT,
   projectileScale: ATTR.PROJECTILE_SCALE,
@@ -135,6 +143,7 @@ const ENHANCE_ATTR_MAP = {
   chainCount: ATTR.CHAIN_COUNT,
   chainRange: ATTR.CHAIN_RANGE,
   chainRatio: ATTR.CHAIN_RATIO,
+  stunChance: ATTR.STUN_CHANCE,
 };
 
 function buffMeta(key) {
@@ -476,6 +485,8 @@ function collectTowerStats(game, tower, stats, towerType) {
     hp: st.hp || 0,
     auraPower: (st.supportBuff && st.supportBuff.attackSpeedMultiplier) || 0,
     auraPenetration: st.auraPenetration || 0,
+    auraCritChance: st.auraCritChance || 0,
+    auraCritDamage: st.auraCritDamage || 0,
     shareRatio: st.shareRatio || 0,
     critChance: st.critChance || 0,
     // 暴击倍率的原生值 = 倍率 + 原生「+N% 暴击伤害」（三角塔 2.1 + 10% = 2.2）
@@ -495,6 +506,8 @@ function collectTowerStats(game, tower, stats, towerType) {
     chainCount: st.chainCount || 0,
     chainRange: st.chainRange || 0,
     chainRatio: st.chainRatio || 0,
+    // 椭圆塔「眩晕射击」的原生眩晕几率（TOWER_STATS.oval.stunChance = 5）
+    stunChance: st.stunChance || 0,
   };
 
   // ================= 3. 最终值 =================
@@ -519,9 +532,12 @@ function collectTowerStats(game, tower, stats, towerType) {
   // 暴击倍率（与 tower.getAttackProfile 同一条公式，改一处必须改另一处）：
   //   倍率 × Π(1 + 百分比来源/100)  ← 百分比放大（乘算）
   //         + Σ暴击伤害点值/100     ← 三角塔固有技能「致命一击」的第二条效果（加算，单位 %）
+  //         + Σ宝石暴伤点值/100     ← 自嵌暴伤宝石（ruby_crit，attr=critDamagePercent），
+  //            与共享路径改写后的critDamage同语义（见tower.getAuraOutput），两边都要加。
   const finalCritMult = Math.max(1,
     base.critMult * percentMultiplier(sources, ATTR.CRIT_MULT)
-    + pointsSum(sources, ATTR.CRIT_DAMAGE) / 100);
+    + pointsSum(sources, ATTR.CRIT_DAMAGE) / 100
+    + pointsSum(sources, ATTR.CRIT_DAMAGE_PERCENT) / 100);
   // 破解（箭形塔）：固定值相加，直接抵消敌人抗性
   const finalBreak = Math.max(0, base.break + pointsSum(sources, ATTR.BREAK));
   // 射程 / 生命：点值相加
@@ -542,6 +558,8 @@ function collectTowerStats(game, tower, stats, towerType) {
   const finalChainCount = Math.max(0, base.chainCount + pointsSum(sources, ATTR.CHAIN_COUNT));
   const finalChainRange = Math.max(0, base.chainRange + pointsSum(sources, ATTR.CHAIN_RANGE));
   const finalChainRatio = Math.max(0, base.chainRatio + pointsSum(sources, ATTR.CHAIN_RATIO));
+  // 椭圆塔「眩晕射击」：眩晕几率同样是点值相加（时长固定 1 秒，不进面板数值）
+  const finalStunChance = Math.max(0, base.stunChance + pointsSum(sources, ATTR.STUN_CHANCE));
 
   const final = {
     damage: finalDamage,
@@ -555,6 +573,12 @@ function collectTowerStats(game, tower, stats, towerType) {
     // ⚠️ 别顺手把图签也乘进来：穿透光环按既定设计**不吃图签**（倍率里只有阶段那一项）。
     auraPenetration: Math.max(0, (base.auraPenetration + pointsSum(sources, ATTR.AURA_PENETRATION))
       * percentMultiplier(sources, ATTR.AURA_PENETRATION)),
+    // 暴击/暴伤光环（星形塔）：口径 = (原生 + 技能点值) × 进阶倍率 —— 与战斗侧
+    // towerMod.getAuraOutput 严格同源。⚠️ 同样**不吃图签**（倍率里只有阶段那一项）。
+    auraCritChance: Math.max(0, (base.auraCritChance + pointsSum(sources, ATTR.AURA_CRIT_CHANCE))
+      * percentMultiplier(sources, ATTR.AURA_CRIT_CHANCE)),
+    auraCritDamage: Math.max(0, (base.auraCritDamage + pointsSum(sources, ATTR.AURA_CRIT_DAMAGE))
+      * percentMultiplier(sources, ATTR.AURA_CRIT_DAMAGE)),
     // 共享比例（十字塔）：口径 = (原生 25 + 强化点值) × 进阶倍率 —— 与战斗侧
     // towerMod.getShareRatio / getAuraOutput 严格同源（那里也是先加点值、再乘 stage.multiplier）。
     // ⚠️ 与穿透光环一样**不吃图签**（倍率里只有阶段那一项）。
@@ -574,6 +598,7 @@ function collectTowerStats(game, tower, stats, towerType) {
     chainCount: finalChainCount,
     chainRange: finalChainRange,
     chainRatio: finalChainRatio,
+    stunChance: finalStunChance,
   };
 
   // ================= 4. 附加值（绿字/红字的那一半）=================
@@ -583,6 +608,8 @@ function collectTowerStats(game, tower, stats, towerType) {
     attackInterval: final.attackInterval - base.attackInterval,
     auraPower: final.auraPower - base.auraPower,
     auraPenetration: final.auraPenetration - base.auraPenetration,
+    auraCritChance: final.auraCritChance - base.auraCritChance,
+    auraCritDamage: final.auraCritDamage - base.auraCritDamage,
     shareRatio: final.shareRatio - base.shareRatio,
     range: final.range - base.range,
     // hp: final.hp - base.hp,  // 已移除
@@ -600,6 +627,7 @@ function collectTowerStats(game, tower, stats, towerType) {
     chainCount: final.chainCount - base.chainCount,
     chainRange: final.chainRange - base.chainRange,
     chainRatio: final.chainRatio - base.chainRatio,
+    stunChance: final.stunChance - base.stunChance,
   };
 
   // ================= 5. 面板行（渲染就绪，渲染层不再算数）=================
@@ -688,14 +716,15 @@ function buildRows(ctx) {
     });
 
     // 暴击伤害：暴击时的伤害倍率（210% = 2.1 倍）
-    //   两条来源都要列：百分比放大（倍率类）+ 暴击伤害点值（三角塔技能的第二条效果）
+    //   三条来源都要列：百分比放大（倍率类）+ 技能暴伤点值 + 自嵌宝石暴伤点值
+    //   （共享过来的已改写成critDamage，走CRIT_DAMAGE那一条）。
     rows.push({
       key: ATTR.CRIT_MULT,
       label: '暴击伤害',
       baseText: `${Math.round(base.critMult * 100)}%`,
       bonusText: signed(bonus.critMult * 100, '%'),
       sign: Math.sign(bonus.critMult),
-      parts: percentParts(sources, ATTR.CRIT_MULT).concat(pointParts(sources, ATTR.CRIT_DAMAGE)),
+      parts: percentParts(sources, ATTR.CRIT_MULT).concat(pointParts(sources, ATTR.CRIT_DAMAGE)).concat(pointParts(sources, ATTR.CRIT_DAMAGE_PERCENT)),
     });
 
     // 穿透：固定值，抵扣敌人护甲
@@ -756,6 +785,28 @@ function buildRows(ctx) {
     });
   }
 
+  // 暴击/暴伤光环（星形塔）：原生值 + 技能增量，再乘进阶倍率 —— 与 tower.getAuraOutput 同口径。
+  if (base.auraCritChance > 0) {
+    rows.push({
+      key: ATTR.AURA_CRIT_CHANCE,
+      label: '暴击光环',
+      baseText: `${numText(base.auraCritChance)}%`,
+      bonusText: signed(bonus.auraCritChance, '%'),
+      sign: Math.sign(bonus.auraCritChance),
+      parts: percentParts(sources, ATTR.AURA_CRIT_CHANCE).concat(pointParts(sources, ATTR.AURA_CRIT_CHANCE)),
+    });
+  }
+  if (base.auraCritDamage > 0) {
+    rows.push({
+      key: ATTR.AURA_CRIT_DAMAGE,
+      label: '暴伤光环',
+      baseText: `${numText(base.auraCritDamage)}%`,
+      bonusText: signed(bonus.auraCritDamage, '%'),
+      sign: Math.sign(bonus.auraCritDamage),
+      parts: percentParts(sources, ATTR.AURA_CRIT_DAMAGE).concat(pointParts(sources, ATTR.AURA_CRIT_DAMAGE)),
+    });
+  }
+
   // 共享比例（十字塔「共享资源」）：原生 25%，进阶每星 +100%，强化「共享资源」再加点值。
   //   parts 必须百分比与点值都列 —— 进阶是百分比来源，只列点值会让这一行有绿字却
   //   没有「阶段增幅」明细（数字涨了、玩家看不到为什么涨）。
@@ -807,7 +858,7 @@ function buildRows(ctx) {
   // });
 
   // ---- 强化专属属性行：原生值或技能增量只要有一项非 0 就显示 ----
-  // （避免了给 16 种塔都塞 4 行 "0倍 / 0° / 0层" 的噪音）
+  // （避免了给 15 种塔都塞 4 行 "0倍 / 0° / 0层" 的噪音）
   pushSpecialRow(rows, sources, { key: ATTR.BREAK, label: '破解', unit: '', base: base.break, bonus: bonus.break });
   pushSpecialRow(rows, sources, { key: ATTR.ELITE_MULT, label: '精英伤害倍率', unit: '倍', base: base.eliteMult, bonus: bonus.eliteMult });
   pushSpecialRow(rows, sources, { key: ATTR.PROJECTILE_SCALE, label: '弹道体积', unit: '%', base: base.projectileScale, bonus: bonus.projectileScale });
@@ -818,6 +869,8 @@ function buildRows(ctx) {
   pushSpecialRow(rows, sources, { key: ATTR.CHAIN_COUNT, label: '传导数量', unit: '', base: base.chainCount, bonus: bonus.chainCount });
   pushSpecialRow(rows, sources, { key: ATTR.CHAIN_RANGE, label: '传导距离', unit: '', base: base.chainRange, bonus: bonus.chainRange });
   pushSpecialRow(rows, sources, { key: ATTR.CHAIN_RATIO, label: '传导伤害比例', unit: '%', base: base.chainRatio, bonus: bonus.chainRatio });
+  // 椭圆塔「眩晕射击」：眩晕几率一行（时长固定 1 秒写在技能槽描述里，不进这一行的数值）
+  pushSpecialRow(rows, sources, { key: ATTR.STUN_CHANCE, label: '眩晕几率', unit: '%', base: base.stunChance, bonus: bonus.stunChance });
 
   return rows;
 }

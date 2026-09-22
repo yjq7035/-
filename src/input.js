@@ -48,15 +48,22 @@ const { THEME } = theme;
 
 /**
  * 取触摸坐标
+ * 触摸事件从 touches/changedTouches 取；鼠标事件（mousedown/mousemove/mouseup，
+ * 见 game_core.initEvents 的桌面端映射）坐标直接挂在事件对象上，也要认，
+ * 否则鼠标点哪都算成 {0,0}（点面板内误判成面板外而误关闭、滑动永远 dy=0）。
  */
 function getTouchPos(e) {
   const t = (e.touches && e.touches[0]) ||
             (e.changedTouches && e.changedTouches[0]);
-  if (!t) return { x: 0, y: 0 };
-  return {
+  if (t) return {
     x: (t.clientX !== undefined) ? t.clientX : t.x,
     y: (t.clientY !== undefined) ? t.clientY : t.y,
   };
+  if (e && (e.clientX !== undefined || e.x !== undefined)) return {
+    x: (e.clientX !== undefined) ? e.clientX : e.x,
+    y: (e.clientY !== undefined) ? e.clientY : e.y,
+  };
+  return { x: 0, y: 0 };
 }
 
 /**

@@ -54,6 +54,8 @@ function _unbindEvents(kind) {
       document.removeEventListener('touchmove', h.move);
       document.removeEventListener('touchend', h.end);
       document.removeEventListener('touchcancel', h.end);
+      document.removeEventListener('mousemove', h.move);
+      document.removeEventListener('mouseup', h.end);
     }
   } catch (e) {
     // 摘监听失败无所谓，不能因此中断启动
@@ -347,7 +349,7 @@ class Game {
    * 出货池至少 1 个（meta 保证），不足 cardCount 时货架按实际数量出，其余显示为空槽。
    *
    * 2026-09-19 改为**加权无放回抽样**：每座塔型的抽取权重 = gems.shopWeight(type, 历史最高★)，
-   *   基础权重 100；嵌了「祈愿宝石」→ +3（永久），嵌了「镇守宝石」且达到 3★ → -3。
+   *   基础权重 100；嵌了「祈愿宝石」→ +3×等级（永久），嵌了「镇守宝石」且达到 3★ → -3×等级。
    *   权重只取决于"该塔型自己嵌了什么宝石"，其他塔型权重恒为 100，互不影响。
    */
   rollShopOffers() {
@@ -443,7 +445,16 @@ class Game {
       document.addEventListener('touchmove', onTouchMove, { passive: false });
       document.addEventListener('touchend', onTouchEnd);
       document.addEventListener('touchcancel', onTouchEnd);
-      _bindEvents('dom', { start: onTouchStart, move: onTouchMove, end: onTouchEnd });
+      // 桌面端鼠标映射：同一套触摸管线（点击关闭面板 / 面板内滑动 / 按钮点按），
+      // 鼠标按下=触摸开始、移动=触摸移动、抬起=触摸结束，坐标由 input.getTouchPos 归一。
+      // 非左键不转发（右键应留给浏览器菜单，不能触发游戏点按）。
+      const onMouseDown = (e) => { if (e.button === undefined || e.button === 0) input.handleTouchStart(this, e); };
+      this.canvas.addEventListener('mousedown', onMouseDown);
+      this.canvas.addEventListener('mousemove', onTouchMove);
+      this.canvas.addEventListener('mouseup', onTouchEnd);
+      document.addEventListener('mousemove', onTouchMove);
+      document.addEventListener('mouseup', onTouchEnd);
+      _bindEvents('dom', { start: onTouchStart, move: onTouchMove, end: onTouchEnd, mouseDown: onMouseDown });
     }
   }
 
@@ -627,7 +638,7 @@ class Game {
     this.gold += Math.max(0, Math.round((amount || 0) * mult));
   }
 
-  /** 击杀结算：金币 + 特殊积分 +（BOSS 及以上）天赋点 + 精英/BOSS 宝石掉落 */
+  /** 击杀结算：金币 + 藏珍点 +（BOSS 及以上）天赋点 + 精英/BOSS 宝石掉落 */
   grantKillReward(enemy) {
     if (!enemy) return;
     const tier = enemy.tier || 0;
@@ -747,6 +758,16 @@ class Game {
       dmg = Math.max(1, dmg * (1 - reduce));
     }
 
+    // 椭圆塔「眩晕射击」：命中时按技能等级 roll 点，命中则挂 1 秒眩晕（不能移动+不能攻击）。
+    //   概率 = 5%×技能等级（Lv.1=5%、Lv.6=30%）；时长固定 1 秒，不随等级/进阶变化。
+    //   同塔单 debuff：重复命中刷新时长（见 enemy.applyStun），不叠加。
+    if (sourceTower && sourceTower.type === 'oval' && enemy && enemy.alive) {
+      const stunChance = towerMod.getStunChance(sourceTower);
+      if (stunChance > 0 && Math.random() * 100 < stunChance) {
+        enemyMod.applyStun(enemy, sourceTower);
+      }
+    }
+
     this.triggerHit(enemy, source, dmg);
     this.triggerDamage(source, dmg, enemy);
 
@@ -787,7 +808,7 @@ class Game {
     return res;
   }
 
-  /** 清空一波：特殊积分 + 波次结余金币；每 N 波给天赋点；记录最高波次 */
+  /** 清空一波：藏珍点 + 波次结余金币；每 N 波给天赋点；记录最高波次 */
   onWaveCleared() {
     meta.grantPoints(POINTS.perWave);
     // 波次结余天赋：直接入账，不吃击杀金币倍率
@@ -890,7 +911,8 @@ class Game {
     if (total > 0) {
       theme.pushToast(
         this,
-        (victory ? '通关' : '失败') + '宝石奖励 · 点亮 ' + total + ' / 9 格 · 共 ' + total + ' 颗 LV1 宝石',
+        // 展示侧已容器化（不再显示 "/9" 上限，见 renderer.drawGemReward）；发放逻辑本身仍是 9 格选位，不动
+        (victory ? '通关' : '失败') + '宝石奖励 · 共 ' + total + ' 颗 LV1 宝石',
         theme.THEME.accent.gold
       );
     } else if (bagFull) {
@@ -1398,6 +1420,7 @@ class Game {
    * 应用辅助塔光环效果：遍历所有辅助塔，给周围我方塔上光环
    *   · 梯塔   → supportBuff（攻速光环，强度随进阶/图签放大）
    *   · 菱形塔 → auraPenetration（穿透光环，强度随进阶放大、不吃图签）
+   *   · 星形塔 → auraCritChance / auraCritDamage（暴击/暴伤光环，强度随进阶放大、不吃图签）
    * 光环规则（2026-09 二次重构）：
    *  - 光环按【属性键】分别登记：不同属性可来自不同辅助塔并**同时生效**，互不排斥；
    *  - 同一个属性键上多源竞争时由 auraManager 取最强来源（阶段高者胜）；

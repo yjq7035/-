@@ -371,6 +371,21 @@ function drawEnemy(game, enemy, withHpBar = true) {
     ctx.stroke();
   }
 
+  // ---- 眩晕标识：头顶一圈金色星环（stunTimer > 0 时）----
+  // 椭圆塔「眩晕射击」挂上的 1 秒 debuff；只读 enemy.stunTimer，不写状态。
+  if ((enemy.stunTimer || 0) > 0) {
+    ctx.strokeStyle = 'rgba(255, 235, 120, 0.95)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(enemy.x, enemy.y - half - 8, Math.max(5, half * 0.55), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 235, 120, 0.95)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold ${Math.max(9, Math.round(half * 0.8))}px Arial`;
+    ctx.fillText('✦', enemy.x, enemy.y - half - 8);
+  }
+
   // ---- 血条 + 血量（低于100%才显示）----
   // 正常流程下血条由 render() 的独立图层统一绘制（withHpBar=false）
   if (withHpBar && enemy.hp < enemy.maxHp) {
@@ -878,6 +893,7 @@ function towerStageTag(tower) {
     const out = towerMod.getAuraOutput(tower, meta.codexDamageMultiplier(tower.type));
     if (out.attackSpeedMultiplier) return `攻速${Math.round(out.attackSpeedMultiplier)}`;
     if (out.penetration) return `穿透${Math.round(out.penetration)}`;
+    if (out.critChance || out.critDamage) return `暴击+${Math.round(out.critChance || 0)}%`;
     return '';
   }
   const pct = stageMod.bonusPercent('damage', stars);
@@ -1168,14 +1184,14 @@ function drawProjectiles(game) {
  *     再按朝向画一次等于**转了两遍**（飞 45°、扇面指 90°，2026-09 修的就是这个）；
  *   · 平行塔的双横不需要任何"反向旋转"补丁：它已回归默认 FOLLOW，外层按朝向转一次。
  *
- * 自适应：未登记的图形落到 `default` 分支，用 theme.drawTowerIcon 按同一个轮廓
- * 等比缩小画出来 —— **新图形一登记就自动有弹道，不会再出现"子弹隐身"**。
- * （想让某个新图形的弹道和现有 16 种一样走定制画法，就在 switch 里补一条，属于可选项。）
- */
+  * 自适应：未登记的图形落到 `default` 分支，用 theme.drawTowerIcon 按同一个轮廓
+  * 等比缩小画出来 —— **新图形一登记就自动有弹道，不会再出现"子弹隐身"**。
+  * （想让某个新图形的弹道和现有 15 种一样走定制画法，就在 switch 里补一条，属于可选项。）
+  */
 
 
 /**
- * 绘制一条弹道的轮廓（本地坐标系：0 rad = 飞行方向 = +x，朝向已由 aim 施加）。
+  * 绘制一条弹道的轮廓（本地坐标系：0 rad = 飞行方向 = +x，朝向已由 aim 施加）。
  *
  * ⚠️ 这里画的东西**一律"朝右"**：
  *   · 需要"指向飞行方向"的轮廓（三角 / 箭形 / 长方 / 半圆 / 扇形）直接朝 +x 画即可；
@@ -1183,10 +1199,10 @@ function drawProjectiles(game) {
  *     再按朝向画一次等于**转了两遍**（飞 45°、扇面指 90°，2026-09 修的就是这个）；
  *   · 平行塔的双横不需要任何"反向旋转"补丁：它已回归默认 FOLLOW，外层按朝向转一次。
  *
- * 自适应：未登记的图形落到 `default` 分支，用 theme.drawTowerIcon 按同一个轮廓
- * 等比缩小画出来 —— **新图形一登记就自动有弹道，不会再出现"子弹隐身"**。
- * （想让某个新图形的弹道和现有 16 种一样走定制画法，就在 switch 里补一条，属于可选项。）
- */
+  * 自适应：未登记的图形落到 `default` 分支，用 theme.drawTowerIcon 按同一个轮廓
+  * 等比缩小画出来 —— **新图形一登记就自动有弹道，不会再出现"子弹隐身"**。
+  * （想让某个新图形的弹道和现有 15 种一样走定制画法，就在 switch 里补一条，属于可选项。）
+  */
 function drawProjectileShape(ctx, proj) {
   // 绘制小型塔图标作为弹道
   ctx.fillStyle = proj.color;
@@ -1284,21 +1300,6 @@ function drawProjectileShape(ctx, proj) {
         ctx.stroke();
         break;
 
-      case 'pentagon':
-        // 五边塔弹道：五边形
-        ctx.beginPath();
-        for (let i = 0; i < 5; i++) {
-          const angle = (Math.PI * 2 / 5) * i - Math.PI / 2;
-          const px = size * Math.cos(angle);
-          const py = size * Math.sin(angle);
-          if (i === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
-        }
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        break;
-
       case 'oval':
         // 椭圆塔弹道：椭圆
         ctx.beginPath();
@@ -1318,21 +1319,6 @@ function drawProjectileShape(ctx, proj) {
           const sy = radius * Math.sin(angle);
           if (i === 0) ctx.moveTo(sx, sy);
           else ctx.lineTo(sx, sy);
-        }
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        break;
-
-      case 'octagon':
-        // 八边塔弹道：八边形
-        ctx.beginPath();
-        for (let i = 0; i < 8; i++) {
-          const angle = (Math.PI / 4) * i - Math.PI / 8;
-          const px = size * Math.cos(angle);
-          const py = size * Math.sin(angle);
-          if (i === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
         }
         ctx.closePath();
         ctx.fill();

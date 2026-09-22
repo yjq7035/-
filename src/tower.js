@@ -357,6 +357,17 @@ function getStackMax(tower) {
 }
 
 /**
+ * 椭圆塔：固有技能「眩晕射击」的触发概率（%）。
+ * 口径 = 原生 5% + 技能增量（每级 +5%，=5%×技能等级，含宝石/共享等级与紫晶放大），与 skills.SKILLS.oval 同源；
+ * 眩晕时长固定 1 秒（见 enemy.STUN_DURATION），不随等级/进阶变化。
+ * 公式：Lv.1=5%、Lv.6=30%（= 5% × 6）。
+ */
+function getStunChance(tower) {
+  const st = (tower && TOWER_STATS[tower.type]) || {};
+  return Math.max(0, (st.stunChance || 0) + getEnhanceAttr(tower, 'stunChance'));
+}
+
+/**
  * 平行塔：固有技能「连续射击」的攻速叠加上限（原生 100%，强化每级 +20%）。
  * 战斗口径 = 原生值 + 强化增量，与 skills.SKILLS.parallel 的 base + per×L 同源；
  * 技能宝石加的等级同样由 getEnhanceAttr 折算进来。
@@ -431,7 +442,10 @@ function getAttackProfile(tower) {
   const critMultPct = getEnhanceAttr(tower, 'critMult');       // 百分比放大（乘算）
   const baseNative = (st.critMult || BALANCE.critDamageDefaultMult) + (st.critDamage || 0) / 100;
   const critDamagePts = getEnhanceAttr(tower, 'critDamage') || 0;
-  const critDamagePct = getEnhanceAttr(tower, 'critDamagePercent') || 0;
+  // 自嵌暴伤宝石（ruby_crit，attr=critDamagePercent）：无技能效果用该键（三角技能用的是
+  // critDamage），bonusFor恒返回0，故此处直取宝石点值 —— 与共享路径改写成critDamage
+  // 同语义（见下方getAuraOutput注释），否则自嵌整颗空转而共享却生效。
+  const critDamagePct = (gem.critDamagePercent || 0) + (getEnhanceAttr(tower, 'critDamagePercent') || 0);
   // 共享光环（十字塔「共享资源」）：暴击率 / 暴击伤害 / 破解直接加在自身属性上。
   // ⚠️ 穿透**不在这里**加 —— 它由 game_core.getEffectivePenetration 统一负责，
   //    两边都加会重复计算（历史口径打架的来源之一）。
@@ -491,7 +505,7 @@ function getTowerRuntimeStats(tower) {
   //    ⚠️ 技能增量的放大系数（紫晶宝石「技能效果 +N%」）已含在 add('critDamage') 里，
   //       这里不能再乘一次 skillEffectMult。
   const critBase = (st.critMult || BALANCE.critDamageDefaultMult) + (st.critDamage || 0) / 100;
-  out.critMult = critBase * (1 + add('critMult') / 100) + add('critDamage') / 100 + add('critDamagePercent') / 100;
+  out.critMult = critBase * (1 + add('critMult') / 100) + add('critDamage') / 100 + ((gem.critDamagePercent || 0) + add('critDamagePercent')) / 100;
   if (st.isSupport) {
     // 辅助塔：技能"光环强度"直接加成在光环数值上
     const base = (st.supportBuff && st.supportBuff.attackSpeedMultiplier) || 0;
@@ -504,6 +518,14 @@ function getTowerRuntimeStats(tower) {
     // 这里必须跟着算，否则技能槽显示 Lv.5、光环却还是 5 点（"面板涨了、光环没涨"）。
     if (st.auraPenetration !== undefined) {
       out.auraPenetration = (st.auraPenetration || 0) + add('auraPenetration');
+    }
+    // 星形塔的技能是"暴击/暴伤光环"（原生值在 st.auraCritChance / st.auraCritDamage 上）——
+    // 与菱形塔同理，强化增量必须进运行时属性，否则光环数值对不上技能槽。
+    if (st.auraCritChance !== undefined) {
+      out.auraCritChance = (st.auraCritChance || 0) + add('auraCritChance');
+    }
+    if (st.auraCritDamage !== undefined) {
+      out.auraCritDamage = (st.auraCritDamage || 0) + add('auraCritDamage');
     }
   }
   // 闪电塔：连锁属性（chainCount / chainRange / chainRatio）走技能「雷电链」
@@ -557,6 +579,18 @@ function getAuraOutput(tower, codexMult) {
   if (penBase) {
     out.penetration = penBase * stage.multiplier('auraPenetration', stars);
   }
+  // 星形塔「星环祝福」：发出暴击几率 + 暴击伤害光环（原生 2% / 5%，含技能强化增量）。
+  //   口径与菱形塔一致：先加点值、再乘进阶倍率，**不吃图签**（暴击光环给太高会挤压主输出地位）。
+  //   键名复用战斗侧已有的 'critChance' / 'critDamage'：getAttackProfile 与 bonusStats
+  //   本来就认这两把键（暴击伤害点值直接加到暴击倍率上），无需新键。
+  const critBase = stats.auraCritChance;
+  if (critBase) {
+    out.critChance = critBase * stage.multiplier('auraCritChance', stars);
+  }
+  const critDmgBase = stats.auraCritDamage;
+  if (critDmgBase) {
+    out.critDamage = critDmgBase * stage.multiplier('auraCritDamage', stars);
+  }
   // 十字塔「共享资源」：把**自身吃到的宝石属性**按共享比例转给上下左右的邻塔。
   //   发出值 = 宝石值 × 共享比例（原生 25% + 强化增量）× 进阶倍率 ÷ 100
   //   ⚠️ 十字塔自身没有任何原生战斗属性，所以没有宝石 = 没有共享（发出空对象，不发光环）——
@@ -580,11 +614,15 @@ function getAuraOutput(tower, codexMult) {
       const v = scaled(gem[src]);
       if (v) out[dst] = v;
     }
-    // 技能等级：只共享宝石贡献的固有等级（不含强化等级、不含其他十字塔共享等级），
-    //   不乘 ratio —— 技能等级是整数层数（+1/+2…），不是百分比属性，
-    //   乘 ratio 会导致强化等级越高、共享越多（正反馈 → 你看到的 +5、+15、+1861）。
+    // 技能等级：只共享宝石贡献的固有等级（不含强化等级、不含其他十字塔共享等级，
+    //   避免十字塔互喂的正反馈），但必须按共享比例缩放后取整 —— 与其余 6 项属性
+    //   scaled(v)=v*ratio/100 同口径，也与下一行技能效果 floor(gem*ratio/100) 一致。
+    //   不乘 ratio 会让 25% 与 210% 发出同样的等级（人类报的 bug：25%+185% 仍只给 1 级）。
     const gemSkillLevels = gem.skillLevels || 0;
-    if (gemSkillLevels) out.skillLevels = gemSkillLevels;
+    if (gemSkillLevels) {
+      const sharedLv = Math.floor(gemSkillLevels * ratio / 100);
+      if (sharedLv > 0) out.skillLevels = sharedLv;
+    }
     // 技能效果（紫晶）：仅嵌在十字塔上的紫晶贡献（强化不影响技能效果）
     if (gem.skillEffectPercent) out.skillEffectPercent = Math.floor(gem.skillEffectPercent * ratio / 100);
   }
@@ -656,6 +694,7 @@ module.exports = {
   getProjectileSize,
   getSectorHalfAngle,
   getStackMax,
+  getStunChance,
   getInnateStackCap,
   getInnateStackStep,
   applyEnhanceAttrs,

@@ -66,8 +66,12 @@ const PANEL_UI = {
   descLineH: 17,        // 攻击介绍行高
   descSize: 12.5,
   skillH: 24,
-  gemRowH: 40,          // 宝石条单行高（36 的珠子 + 上下呼吸）
+  gemRowH: 56,          // 宝石卡兜底估计高（单卡三行单行文本时；真实高度走 gemCardHeight 自适应换行）
   gemGap: 5,            // 相邻两张宝石卡之间的间距（**区块高度与绘制共用**，见 gemBlockHeight）
+  gemWrapLineH: 13,     // 宝石卡内换行文本行高（短描述/详细文本多行时）
+  gemNameH: 15,         // 宝石卡内名字行高（单行，超宽截断）
+  gemCardPadV: 7,       // 宝石卡上下内边距
+  gemIconMinH: 40,      // 宝石卡最小高（保证图标槽不被压扁）
   enhanceH: 52,         // 强化按钮区（含标签行）
   footerH: 24,
 };
@@ -92,28 +96,65 @@ const ROW_LABEL_COLOR = {
 };
 
 /**
- * 宝石区块总高（**唯一真源**）：标题 + n 张卡 + 卡间 gap。
- *
- * ⚠️ 必须与 drawPanelGems 的 cardY 步进（cardH + gemGap）严格同源 ——
- *    旧实现只按 n×gemRowH 预留高度、绘制却按 (gemRowH + 5) 步进，两张卡起
- *    最后一张就会比区块多探出 5×(n−1) px；而区块高度决定"下面那条分隔线画在哪"
- *    （分隔线画在下一个区块的正中），于是分隔线正好压在最后一张宝石卡的边框上。
- *    这里与 src/skillSlot.js 的 skillSlotsHeight（槽高 + outerGap）是同一套算法。
- * @param {number} n 该塔型已嵌入的宝石数量
+ * 宝石卡文本可用宽（**布局唯一真源**）：内容宽 − (左pad + 槽宽 + 槽文间距) − 右pad。
+ * drawTowerPanel（算高）与 drawPanelGems（绘制）必须调同一个函数，否则"算出来放得下、画出来溢出"。
  */
+function gemTextWidth(panelW) {
+  const contentW = panelW - PANEL_UI.padX * 2;
+  const slotSize = 14 + 8;   // iconSize + 8（与 drawPanelGems 同值）
+  return Math.max(40, contentW - (6 + slotSize + 10) - 6);
+}
 
+/** 宝石卡内换行行数（无 ctx 时按字数估算，保证探针/单测不崩） */
+function gemWrapCount(ctx, text, textW, font) {
+  if (!text) return 0;
+  if (ctx && typeof wrapTextLines === 'function') {
+    try {
+      const lines = wrapTextLines(ctx, text, textW, font);
+      return Math.max(1, lines.length);
+    } catch (e) { /* 回落到字数估算 */ }
+  }
+  return Math.max(1, Math.ceil(String(text).length * 5.5 / Math.max(40, textW)));
+}
 
 /**
- * 宝石区块总高（**唯一真源**）：标题 + n 张卡 + 卡间 gap。
- *
- * ⚠️ 必须与 drawPanelGems 的 cardY 步进（cardH + gemGap）严格同源 ——
- *    旧实现只按 n×gemRowH 预留高度、绘制却按 (gemRowH + 5) 步进，两张卡起
- *    最后一张就会比区块多探出 5×(n−1) px；而区块高度决定"下面那条分隔线画在哪"
- *    （分隔线画在下一个区块的正中），于是分隔线正好压在最后一张宝石卡的边框上。
- *    这里与 src/skillSlot.js 的 skillSlotsHeight（槽高 + outerGap）是同一套算法。
- * @param {number} n 该塔型已嵌入的宝石数量
+ * 单张宝石卡高度（**自适应换行真源**）：上pad + 名字行 + 短描述换行 + 详细文本换行 + 下pad，
+ * 下限 gemIconMinH（图标槽不被压扁）。drawTowerPanel 与 drawPanelGems 共用，绝不各算各的。
  */
-function gemBlockHeight(n) {
+function gemCardHeight(ctx, entry, textW) {
+  const eff = gems.effectTextAt(entry.kind, entry.lv);
+  const detail = gems.detailTextAt(entry.kind);
+  const effN = gemWrapCount(ctx, eff, textW, '10px Arial');
+  const detN = gemWrapCount(ctx, detail, textW, '10px Arial');
+  const textH = PANEL_UI.gemNameH + effN * PANEL_UI.gemWrapLineH + detN * PANEL_UI.gemWrapLineH;
+  return Math.max(PANEL_UI.gemIconMinH, textH + PANEL_UI.gemCardPadV * 2);
+}
+
+/**
+ * 宝石区块总高（**唯一真源**）：标题 + Σ各卡自适应高 + 卡间 gap。
+ *
+ * ⚠️ 必须与 drawPanelGems 的 cardY 步进严格同源（同一 gemCardHeight 求和）——
+ *    旧实现只按 n×gemRowH 预留高度、绘制却按 (gemRowH + 5) 步进，两张卡起
+ *    最后一张就会比区块多探出；这里与 src/skillSlot.js 的 skillSlotsHeight 是同一套算法。
+ * @param {number|Array} n 该塔型已嵌入的宝石数量（数字=兼容老调用，按 gemRowH 估算），或条目数组
+ * @param {object} [ctx] 有 ctx + textW 时按换行精确求和；没有时按 gemRowH 估算
+ * @param {number} [textW] 宝石卡文本可用宽（见 gemTextWidth）
+ */
+function gemBlockHeight(n, ctx, textW) {
+  if (Array.isArray(n)) {
+    const entries = n.filter((e) => e && gems.gemDef(e.kind));
+    if (!entries.length) return 0;
+    if (ctx && textW) {
+      let sum = PANEL_UI.sectionTitleH;
+      entries.forEach((e, i) => {
+        sum += gemCardHeight(ctx, e, textW);
+        if (i < entries.length - 1) sum += PANEL_UI.gemGap;
+      });
+      return sum;
+    }
+    return PANEL_UI.sectionTitleH + entries.length * PANEL_UI.gemRowH
+      + (entries.length - 1) * PANEL_UI.gemGap;
+  }
   if (!(n > 0)) return 0;
   return PANEL_UI.sectionTitleH + n * PANEL_UI.gemRowH + (n - 1) * PANEL_UI.gemGap;
 }
@@ -168,8 +209,9 @@ function drawTowerPanel(game) {
   // 宝石槽条：展示该塔型已嵌入的宝石（嵌入操作在图签里做，这里负责"看得到"）
   // 嵌入条目带等级（合成产物 > Lv.1），名字按需求带上 Lv
   const gemEntries = gems.embeddedEntries(towerType);
-  // 高度含卡间距（唯一真源，见 gemBlockHeight）—— 少算一份，下面的分隔线就会压到卡片上
-  const gemBlockH = gemBlockHeight(gemEntries.length);
+  // 高度按换行精确求和（唯一真源 gemBlockHeight；文本宽与绘制共用 gemTextWidth）——
+  // 少算一份，下面的分隔线就会压到卡片上；多算则留白，无溢出风险
+  const gemBlockH = gemBlockHeight(gemEntries, ctx, gemTextWidth(panelW));
 
   // 组装区块（累加高度，杜绝重叠）
   const blocks = [];
@@ -586,17 +628,26 @@ function drawPanelGems(ctx, block, panelX, y, panelW) {
   ctx.fillText('宝石', left, y + PANEL_UI.sectionTitleH / 2);
 
     // 珠子逐个竖排，每颗用【圆角卡】框住（左侧图标+槽位 + 右侧名字/描述，同固有技能布局）
+    // 自适应换行：短描述 + 详细文本均按文本宽换行，卡高 = gemCardHeight（与区块高度同源）
     const gemPad = 6;
     const iconSize = 14;
     const iconR = iconSize / 2;
     const slotSize = iconSize + 8;
+    const textW = gemTextWidth(panelW);
+    const textX0 = left + gemPad + slotSize + 10; // 槽位右边缘 + 10px
     let cardY = y + PANEL_UI.sectionTitleH;
     for (const entry of entries) {
       const def = gems.gemDef(entry.kind);
       if (!def) continue;
 
       const cardW = contentW;
-      const cardH = PANEL_UI.gemRowH;
+      const cardH = gemCardHeight(ctx, entry, textW);
+      const eff = gems.effectTextAt(entry.kind, entry.lv) || '';
+      const detail = gems.detailTextAt(entry.kind) || '';
+      const effLines = eff
+        ? wrapTextLines(ctx, eff, textW, '10px Arial') : [];
+      const detLines = detail
+        ? wrapTextLines(ctx, detail, textW, '10px Arial') : [];
 
       // 圆角卡背景
       const grad = ctx.createLinearGradient(left, cardY, left, cardY + cardH);
@@ -627,22 +678,35 @@ function drawPanelGems(ctx, block, panelX, y, panelW) {
       // 宝石图标（槽位正中；钻石切面几何中心偏上 1px，故补 +1 让视觉居中）
       gems.drawGemIcon(ctx, slotCX, slotCY + 1, iconR, entry.kind, { lv: entry.lv });
 
-      // 右侧：名字（上）+ 描述（下），文字在图标槽位右边
-      const textX = slotCX + slotSize + 10; // 槽位右边缘 + 10px
+      // 右侧：名字（单行，超宽截断）+ 短描述（换行全显）+ 详细文本（换行全显）
+      const textX = textX0;
 
       // 名字
       ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
       ctx.font = 'bold 11px Arial';
       ctx.fillStyle = def.color;
       const label = gems.gemName(entry.kind, entry.lv);
-      ctx.fillText(label, textX, cardY + 14);
+      let ty = cardY + PANEL_UI.gemCardPadV + PANEL_UI.gemNameH / 2;
+      ctx.fillText(ellipsize(ctx, label, textW), textX, ty);
+      ty += PANEL_UI.gemNameH / 2;
 
-      // 描述
-      const eff = gems.effectTextAt(entry.kind, entry.lv);
-      if (eff) {
-        ctx.font = '10px Arial';
-        ctx.fillStyle = THEME.text.off;
-        ctx.fillText(eff, textX, cardY + 28);
+      // 短描述（含镇守宝石「（需3★生效）」后缀，见 config.gemDescAt）：逐行全显
+      ctx.font = '10px Arial';
+      ctx.fillStyle = THEME.text.off;
+      for (const line of effLines) {
+        ty += PANEL_UI.gemWrapLineH / 2;
+        ctx.fillText(line, textX, ty);
+        ty += PANEL_UI.gemWrapLineH / 2;
+      }
+
+      // 详细文本介绍（全系补写，纯文案；镇守宝石重申 3★ 条件）：逐行全显
+      ctx.font = '10px Arial';
+      ctx.fillStyle = THEME.text.secondary;
+      for (const line of detLines) {
+        ty += PANEL_UI.gemWrapLineH / 2;
+        ctx.fillText(line, textX, ty);
+        ty += PANEL_UI.gemWrapLineH / 2;
       }
 
       // 卡间距交给 gemGap（与区块高度同源）；**不在两卡之间画任何装饰** ——
@@ -1180,7 +1244,7 @@ function drawUI(game) {
   coreMod().drawBossBars(game, centerLineY, bgHeight);
 
   // ========== 重做后的商店板块 ==========
-  // 标题栏（商店徽标 + 特殊积分 + 刷新按钮）+ 3 张塔卡；坐标由 shop.getShopLayout 统一提供
+  // 标题栏（商店徽标 + 藏珍点 + 刷新按钮）+ 3 张塔卡；坐标由 shop.getShopLayout 统一提供
   shop.drawShop(game);
 
   // 注意：结算界面不在这里画——它必须盖住底部导航栏，
@@ -1211,7 +1275,7 @@ function drawGameOver(game) {
 
   // 居中圆角面板（自适应宽度，风格与塔属性面板一致）
   const panelW = Math.min(360, width - 32);
-  // 有宝石奖励时把面板加高，给 9 格奖励区留位置；没有（理论上 gameOver 时必已结算）保持原高
+  // 有宝石奖励时把面板加高，给奖励容器留位置；没有（理论上 gameOver 时必已结算）保持原高
   const reward = game.gemReward;
   const showReward = !!reward;
   const panelH = showReward ? 388 : 290;
@@ -1251,12 +1315,12 @@ function drawGameOver(game) {
   ctx.fillStyle = THEME.text.dim;
   ctx.fillText(
     showWin
-      ? '关卡完成 · 特殊积分与天赋点已入账'
-      : '本次收获的特殊积分已全部入账',
+      ? '关卡完成 · 藏珍点与天赋点已入账'
+      : '本次收获的藏珍点已全部入账',
     cx, panelY + 142
   );
 
-  // 宝石奖励（9 格）：观看视频复活的倒计时状态下不画，避免和倒计时文字重叠
+  // 宝石奖励（容器：有几颗画几个槽）：观看视频复活的倒计时状态下不画，避免和倒计时文字重叠
   if (reward && !game.watchingVideo) {
     drawGemReward(ctx, game, panelX, panelY, panelW);
   }
@@ -1328,19 +1392,12 @@ function drawGameOver(game) {
 }
 
 /**
- * 结算界面的「宝石奖励」9 格面板。
- * 数据来自 game.gemReward.slots（9 项，每项 {kind,count} 或 null）—— 由 game_core.grantRewardGems 写入。
- * 与背包页共用 gems.drawGemIcon，保证"奖励里长什么样、嵌进塔就长什么样"。
- *
- * @param {CanvasRenderingContext2D} ctx
- * @param {object} game
- * @param {number} panelX, panelY, panelW
- */
-
-
-/**
- * 结算界面的「宝石奖励」9 格面板。
- * 数据来自 game.gemReward.slots（9 项，每项 {kind,count} 或 null）—— 由 game_core.grantRewardGems 写入。
+ * 结算界面的「宝石奖励」容器面板（2026-09-22 工单：容器化）。
+ * 数据来自 game.gemReward.slots（发放逻辑仍是 9 格洗牌选位，见 game_core.grantRewardGems，
+ * 本函数只动展示）—— 展示时只取有效项（{kind,count} 且 count>0），空位直接丢弃：
+ *   · 不再画 9 宫格、不再显示上限（没有 "/9"、没有空虚线格）；
+ *   · 获得几颗就显示几个槽位（列数 = min(n,3)，行数 = ceil(n/列数)，末行居中）；
+ *   · 重复宝石不叠加：每颗独立占一槽（发放侧本就每格 1 颗，这里原样逐槽画出）。
  * 与背包页共用 gems.drawGemIcon，保证"奖励里长什么样、嵌进塔就长什么样"。
  *
  * @param {CanvasRenderingContext2D} ctx
@@ -1366,45 +1423,74 @@ function drawGemReward(ctx, game, panelX, panelY, panelW) {
     ctx.fillText('宝石奖励', cx, labelY);
   }
 
-  // 3×3 格子（9 格固定）
-  const cols = 3, rows = 3;
-  const slot = 30, gap = 8;
+  // 容器：只收纳实际获得的宝石（空位丢弃，不画上限格）
+  // 槽位规则：列数 = min(n,3)，行数 = ceil(n/列数)；每行独立居中（末行不满也居中）；
+  // 3 行时槽位略缩（30→28），保证容器底不压到底部按钮（面板高 388 不动）。
+  const cells = (reward.slots || []).filter((c) => c && c.count > 0 && gems.isGemKind(c.kind));
+  const n = cells.length;
+  const boxPad = 8, gap = 8;
+  const cols = n > 0 ? Math.min(n, 3) : 1;
+  const rows = n > 0 ? Math.ceil(n / cols) : 1;
+  const slot = rows >= 3 ? 28 : 30;
   const gridW = cols * slot + (cols - 1) * gap;
-  const x0 = cx - gridW / 2;
-  const y0 = labelY + 14;
+  const gridH = rows * slot + (rows - 1) * gap;
+  const boxW = gridW + boxPad * 2;
+  const boxH = n > 0 ? gridH + boxPad * 2 : 46;
+  const boxX = cx - boxW / 2;
+  const boxY = labelY + 14;
 
-  for (let i = 0; i < cols * rows; i++) {
-    const c = i % cols, r = Math.floor(i / cols);
-    const x = x0 + c * (slot + gap);
-    const y = y0 + r * (slot + gap);
-    const cell = reward.slots && reward.slots[i];
+  // 容器底
+  ctx.save();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.lineWidth = 1;
+  if (typeof ctx.roundRect === 'function') ctx.roundRect(boxX, boxY, boxW, boxH, 10);
+  else ctx.rect(boxX, boxY, boxW, boxH);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  if (n === 0) {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '11px Arial';
+    ctx.fillStyle = THEME.text.off;
+    ctx.fillText('空', cx, boxY + boxH / 2);
+    return;
+  }
+
+  for (let i = 0; i < n; i++) {
+    const r = Math.floor(i / cols);
+    // 本行实际几颗（末行可能不满）→ 行内居中
+    const rowCount = Math.min(cols, n - r * cols);
+    const rowW = rowCount * slot + (rowCount - 1) * gap;
+    const c = i % cols;
+    const x = cx - rowW / 2 + c * (slot + gap);
+    const y = boxY + boxPad + r * (slot + gap);
+    const cell = cells[i];
 
     ctx.save();
     // 格底
-    ctx.fillStyle = cell ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.028)';
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
     if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, slot, slot, 7);
     else ctx.rect(x, y, slot, slot);
     ctx.fill();
 
-    // 边框：有宝石=该宝石色描边；空=虚线灰
+    // 边框：该宝石色描边（每颗独立一槽，重复宝石各占一格不叠加）
     // 结算奖励格永远是 Lv.1 基础宝石（等级靠合成提升）
-    ctx.strokeStyle = cell ? gems.shadeColor(gems.gemColor(cell.kind, 1), -0.1, 0.6) : 'rgba(255,255,255,0.12)';
+    ctx.strokeStyle = gems.shadeColor(gems.gemColor(cell.kind, 1), -0.1, 0.6);
     ctx.lineWidth = 1;
-    if (typeof ctx.setLineDash === 'function' && !cell) ctx.setLineDash([3, 3]);
     if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, slot, slot, 7);
     else ctx.rect(x, y, slot, slot);
     ctx.stroke();
-    if (typeof ctx.setLineDash === 'function') ctx.setLineDash([]);
 
     // 宝石本体（每格恰好 1 颗 LV1 基础宝石）+ "Lv1" 标记
-    if (cell && cell.count > 0) {
-      gems.drawGemIcon(ctx, x + slot / 2, y + slot / 2 - 3, 10, cell.kind, { lv: 1 });
-      ctx.font = 'bold 9px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'alphabetic';
-      ctx.fillStyle = 'rgba(255,255,255,0.72)';
-      ctx.fillText('Lv1', x + slot / 2, y + slot - 4);
-    }
+    gems.drawGemIcon(ctx, x + slot / 2, y + slot / 2 - 3, slot / 3, cell.kind, { lv: 1 });
+    ctx.font = 'bold 9px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = 'rgba(255,255,255,0.72)';
+    ctx.fillText('Lv1', x + slot / 2, y + slot - 4);
     ctx.restore();
   }
 }

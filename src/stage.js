@@ -48,11 +48,14 @@ const STAGE_TABLES = {
   // 十字塔「共享资源」：共享比例本身也吃进阶（+100%/星，与梯塔口径一致）。
   //   发出的光环数值 = 宝石值 × 共享比例 × 本倍率，见 tower.getAuraOutput。
   shareRatio:       { 1: 100, 2: 200, 3: 300 },
+  // 星形塔「星环祝福」：暴击/暴伤光环同样 +100%/星（线性，与梯塔/菱形塔一致）。
+  auraCritChance:   { 1: 100, 2: 200, 3: 300 },
+  auraCritDamage:   { 1: 100, 2: 200, 3: 300 },
 };
 
 /**
  * 每座塔的"进阶焦点"：进阶时放大哪些属性。
- * 缺省（非辅助塔）= ['damage']，所以 14 座攻击塔都不用写。
+ * 缺省（非辅助塔）= ['damage']，所以 11 座攻击塔都不用写。
  * ⚠️ 辅助塔（TOWER_STATS[type].isSupport）**必须**在这里显式登记 ——
  *    因为它的伤害是 0，"放大攻击力"对它等于什么都没做。
  */
@@ -63,6 +66,8 @@ const STAGE_FOCUS = {
   diamond: ['auraPenetration'],
   // 十字塔：共享比例（宝石属性转给上下左右邻塔的那个 %）
   cross: ['shareRatio'],
+  // 星形塔：暴击光环 + 暴伤光环（固有技能「星环祝福」的两条效果）
+  star: ['auraCritChance', 'auraCritDamage'],
 };
 
 /** 默认焦点：非辅助塔统一放大攻击力 */
@@ -73,6 +78,8 @@ const STAGE_ATTR_META = {
   damage:          { name: '攻击力',  short: '攻击', unit: '%' },
   auraPower:       { name: '光环强度', short: '攻速', unit: '%' },
   auraPenetration: { name: '穿透光环', short: '穿透', unit: '' },
+  auraCritChance:  { name: '暴击光环', short: '暴击', unit: '%' },
+  auraCritDamage:  { name: '暴伤光环', short: '暴伤', unit: '%' },
   shareRatio:      { name: '共享比例', short: '共享', unit: '%' },
 };
 

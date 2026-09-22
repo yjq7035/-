@@ -56,7 +56,7 @@ const DEFAULT_AIM = { tower: TURN.FOLLOW, projectile: TURN.FOLLOW, projectileSpi
  * · `projectileSpin`：弹道自旋角速度（弧度/秒），缺省 0 = 不自旋。
  *
  * 平行塔 2026-09 起取消 FIXED 登记：塔本体与弹道都回归默认"跟随朝向"
- * （塔指向攻击目标、弹道指向飞行方向），与其它 16 型口径一致；
+ * （塔指向攻击目标、弹道指向飞行方向），与其它 14 型口径一致；
  * 双横轮廓 0 rad 时仍呈水平"二"字，随飞行方向整体旋转（转向下即成"||"）。
  */
 const SHAPE_AIM = {

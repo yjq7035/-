@@ -5,7 +5,7 @@
 //         布局在 renderer.drawUI 与 input.getShopSlots 各算一遍（两处真源）。
 //
 // 重构后：
-//   1【面板化】整块底部面板 = 标题栏（商店徽标 + 特殊积分 + 刷新按钮）+ 3 张塔卡；
+//   1【面板化】整块底部面板 = 标题栏（商店徽标 + 藏珍点 + 刷新按钮）+ 3 张塔卡；
 //   2【单一真源】getShopLayout() 同时供渲染层与输入层使用，坐标不可能再错位；
 //   3【玩法联动】出货池来自"图签登场配置"（meta.lineup），且只出已解锁的塔——
 //               图签里怎么排，商店就出什么；
@@ -46,7 +46,7 @@ function getShopLayout(game) {
   const headerY = panelY + SHOP_UI.padTop;
   const headerCY = headerY + SHOP_UI.headerH / 2;
 
-  // 标题栏：左 = 商店徽标，右 = 刷新按钮，刷新左边 = 特殊积分
+  // 标题栏：左 = 商店徽标，右 = 刷新按钮，刷新左边 = 藏珍点
   const brand = { x: SHOP_UI.padX, y: headerCY - 10, w: 54, h: 20 };
   const refreshBtn = {
     x: W - SHOP_UI.padX - SHOP_UI.refreshW,
@@ -214,7 +214,7 @@ function drawTrashIcon(ctx, x, y, color, active, t) {
 }
 
 /**
- * 绘制商店面板（含标题栏 / 特殊积分 / 刷新按钮 / 塔卡）
+ * 绘制商店面板（含标题栏 / 藏珍点 / 刷新按钮 / 塔卡）
  */
 function drawShop(game) {
   const ctx = game.ctx;
@@ -250,7 +250,7 @@ function drawShop(game) {
   const trashY = L.brand.y + L.brand.h / 2;
   drawTrashIcon(ctx, trashX, trashY, isSellActive ? THEME.accent.danger : THEME.text.dim, isSellActive, t);
 
-  // 特殊积分（图签货币，顺手在商店也能看到余额）
+  // 藏珍点（图签货币，顺手在商店也能看到余额）
   const m = meta.get();
   drawChip(ctx, {
     x: L.pointsChip.x, y: L.pointsChip.y, w: L.pointsChip.w, h: L.pointsChip.h,
