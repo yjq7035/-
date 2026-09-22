@@ -188,11 +188,11 @@ const TOWER_ORDER = Object.keys(TOWER_DEFS);
 // armor: 抗性值 —— 有效抗性 = max(0, armor - 塔的穿透)，减伤 = 有效抗性/(有效抗性+BALANCE.armorK)
 const ENEMY_TYPES = {
   normal:    { hp: 100,      speed: 6.0,  color: '#808080', tier: 0, reward: 10,   rewardPerWave: 1, size: 16, armor: 0 },
-  fast:      { hp: 100,      speed: 10.0, color: '#FF8C00', tier: 1, reward: 15,   rewardPerWave: 1, size: 14, armor: 0 },
-  heavy:     { hp: 500,      speed: 4.0,  color: '#555555', tier: 2, reward: 50,   rewardPerWave: 3, size: 20, armor: 45 },
+  fast:      { hp: 100,      speed: 20.0, color: '#FF8C00', tier: 1, reward: 15,   rewardPerWave: 1, size: 14, armor: 0 },
+  heavy:     { hp: 500,      speed: 3.0,  color: '#555555', tier: 2, reward: 50,   rewardPerWave: 3, size: 20, armor: 67 },
   elite:     { hp: 1500,     speed: 6.0,  color: '#FFD700', tier: 3, reward: 500,  size: 22, armor: 90 },
   boss:      { hp: 5000,     speed: 5.0,  color: '#FF0000', tier: 4, reward: 1000, size: 28, armor: 150 },
-  finalBoss: { hp: 25000,    speed: 3.0,  color: '#9900FF', tier: 5, reward: 5000, size: 36, armor: 240 },
+  finalBoss: { hp: 25000,    speed: 6.0,  color: '#9900FF', tier: 5, reward: 5000, size: 36, armor: 240 },
 };
 
 // 布局参数
