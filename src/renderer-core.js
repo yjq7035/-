@@ -718,7 +718,7 @@ function drawBossHealthBar(ctx, boss, cx, cy, team, maxW) {
 
   // 白条：残留的旧血量（画在实条下面，只露在实条右边那一截，方形）
   if (ghostPct > pct + 1e-4) {
-    const gw = Math.max(h, w * ghostPct);
+    const gw = w * ghostPct;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.82)';
     ctx.fillRect(x, y, gw, h);
     // 鬼影前锋的一道亮边：让"正在往下扣"这件事看得见（方形）
